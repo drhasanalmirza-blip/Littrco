@@ -7,7 +7,7 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <img src="/logo.svg" alt="LITTR.co" className="h-8 w-auto invert brightness-0 saturate-100 invert-100" style={{ filter: 'invert(1)' }} />
+              <img src="/logo.svg" alt="LITTR" className="h-8 w-auto" />
               <span className="font-bold text-xl">LITTR<span className="font-normal text-gray-400">.co</span></span>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
