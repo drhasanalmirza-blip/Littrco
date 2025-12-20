@@ -138,15 +138,17 @@ export async function sendVolunteerNotification(data: {
 
 export async function sendCustomEmail(to: string, subject: string, html: string) {
   try {
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: FROM_EMAIL,
       to,
       subject,
       html,
     });
-    return { success: true };
-  } catch (error) {
+    console.log('Resend API response:', JSON.stringify(result, null, 2));
+    return { success: true, result };
+  } catch (error: any) {
     console.error('Email send error:', error);
-    return { success: false, error };
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    return { success: false, error: error.message || error };
   }
 }
