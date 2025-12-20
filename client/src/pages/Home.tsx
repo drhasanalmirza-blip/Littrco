@@ -86,7 +86,7 @@ export default function Home() {
       <section className="py-0 bg-black">
         <div className="grid grid-cols-1 md:grid-cols-2">
           <div className="relative h-[50vh] md:h-[70vh]">
-            <img src={handsImage} alt="Recycling in action" className="w-full h-full object-cover" />
+            <img src={handsImage} alt="Recycling in action" className="w-full h-full object-cover" loading="lazy" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-8 left-8 right-8 text-white">
               <h3 className="text-2xl font-bold mb-2">Takes 10 seconds</h3>
@@ -94,7 +94,7 @@ export default function Home() {
             </div>
           </div>
           <div className="relative h-[50vh] md:h-[70vh]">
-            <img src={binImage} alt="LITTR bin" className="w-full h-full object-cover" />
+            <img src={binImage} alt="LITTR bin" className="w-full h-full object-cover" loading="lazy" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-8 left-8 right-8 text-white">
               <h3 className="text-2xl font-bold mb-2">Partner locations</h3>
@@ -115,7 +115,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <div className="text-center">
               <div className="relative h-64 mb-6 rounded-2xl overflow-hidden">
-                <img src={vapesImage} alt="Collect" className="w-full h-full object-cover" />
+                <img src={vapesImage} alt="Collect" className="w-full h-full object-cover" loading="lazy" />
               </div>
               <div className="text-5xl font-bold text-gray-200 mb-2">01</div>
               <h3 className="text-xl font-semibold mb-2">Collect</h3>
@@ -123,7 +123,7 @@ export default function Home() {
             </div>
             <div className="text-center">
               <div className="relative h-64 mb-6 rounded-2xl overflow-hidden">
-                <img src={shopImage} alt="Drop" className="w-full h-full object-cover" />
+                <img src={shopImage} alt="Drop" className="w-full h-full object-cover" loading="lazy" />
               </div>
               <div className="text-5xl font-bold text-gray-200 mb-2">02</div>
               <h3 className="text-xl font-semibold mb-2">Drop</h3>
@@ -131,7 +131,7 @@ export default function Home() {
             </div>
             <div className="text-center">
               <div className="relative h-64 mb-6 rounded-2xl overflow-hidden">
-                <img src={sustainImage} alt="Recycle" className="w-full h-full object-cover" />
+                <img src={sustainImage} alt="Recycle" className="w-full h-full object-cover" loading="lazy" />
               </div>
               <div className="text-5xl font-bold text-gray-200 mb-2">03</div>
               <h3 className="text-xl font-semibold mb-2">Done</h3>
@@ -143,7 +143,7 @@ export default function Home() {
 
       {/* Big visual stat section */}
       <section className="relative py-32 overflow-hidden">
-        <img src={rochesterImage} alt="Rochester" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={rochesterImage} alt="Rochester" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
         <div className="absolute inset-0 bg-black/70" />
         <div className="container mx-auto px-4 relative z-10 text-center text-white">
           <p className="text-sm uppercase tracking-widest text-gray-400 mb-6">The problem</p>
