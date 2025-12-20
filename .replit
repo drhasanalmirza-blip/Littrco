@@ -15,7 +15,6 @@ PORT = "5000"
 [deployment]
 deploymentTarget = "static"
 build = ["npm", "run", "build"]
-run = ["node", "./dist/index.cjs"]
 publicDir = "dist/public"
 
 [workflows]
