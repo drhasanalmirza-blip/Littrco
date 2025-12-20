@@ -7,7 +7,7 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div>
             <div className="mb-4">
-              <img src="/logo.svg" alt="LITTR.co" className="h-10 w-auto" />
+              <span className="font-bold text-3xl">LITTR<span className="font-normal text-gray-400">.co</span></span>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
               Modern recycling solutions for the disposable vape era. 

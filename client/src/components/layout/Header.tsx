@@ -21,7 +21,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-            <img src="/logo.svg" alt="LITTR.co" className="h-8 w-auto" />
+            <span className="font-bold tracking-tight text-2xl">LITTR<span className="font-normal text-gray-500">.co</span></span>
         </Link>
 
         {/* Desktop Nav */}
