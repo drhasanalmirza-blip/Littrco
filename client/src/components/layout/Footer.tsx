@@ -7,8 +7,8 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <img src="/logo.svg" alt="LITTR" className="h-8 w-auto invert brightness-0 saturate-100 invert-100" style={{ filter: 'invert(1)' }} />
-              <span className="font-bold text-xl">LITTR.CO</span>
+              <img src="/logo.svg" alt="LITTR.co" className="h-8 w-auto invert brightness-0 saturate-100 invert-100" style={{ filter: 'invert(1)' }} />
+              <span className="font-bold text-xl">LITTR<span className="font-normal text-gray-400">.co</span></span>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
               Modern recycling solutions for the disposable vape era. 
@@ -56,7 +56,7 @@ export function Footer() {
         </div>
         
         <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-gray-500 text-sm">© {new Date().getFullYear()} LITTR.CO. All rights reserved.</p>
+          <p className="text-gray-500 text-sm">© {new Date().getFullYear()} LITTR.co. All rights reserved.</p>
           <p className="text-gray-600 text-xs">Working toward full compliance & best practices.</p>
         </div>
       </div>

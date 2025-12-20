@@ -22,9 +22,9 @@ export function Header() {
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
             <div className="bg-black text-white p-1 rounded-sm">
-              <img src="/logo.svg" alt="LITTR" className="h-6 w-auto invert" />
+              <img src="/logo.svg" alt="LITTR.co" className="h-6 w-auto invert" />
             </div>
-            <span className="font-bold tracking-tight text-xl hidden sm:block">LITTR.CO</span>
+            <span className="font-bold tracking-tight text-xl hidden sm:block">LITTR<span className="font-normal text-gray-500">.co</span></span>
         </Link>
 
         {/* Desktop Nav */}

@@ -62,6 +62,31 @@ export default function FAQ() {
               </AccordionItem>
             </Accordion>
           </div>
+
+          {/* Legal Section */}
+          <div>
+            <h2 className="text-xl font-bold mb-6 border-b pb-2">Legal & Compliance</h2>
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="item-l-1">
+                <AccordionTrigger>Are you EPA certified?</AccordionTrigger>
+                <AccordionContent>
+                  LITTR.co operates in compliance with federal Universal Waste Regulations (40 CFR Part 273). We work exclusively with R2v3 and e-Stewards certified downstream processors to ensure all material is handled responsibly. We are currently finalizing our own state-level permits.
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="item-l-2">
+                <AccordionTrigger>Who is liable for the waste?</AccordionTrigger>
+                <AccordionContent>
+                   Once the waste is collected by our team, LITTR.co assumes chain-of-custody. However, businesses hosting bins are responsible for ensuring the bins are not tampered with and are kept in a safe location compliant with local fire codes.
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="item-l-3">
+                <AccordionTrigger>Data Privacy Policy</AccordionTrigger>
+                <AccordionContent>
+                  We prioritize user privacy. While most disposable vapes do not contain user data, any electronics containing memory collected by us are subject to physical destruction. We do not resell devices.
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
         </div>
       </div>
     </div>

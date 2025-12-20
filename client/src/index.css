@@ -43,6 +43,10 @@
   --color-chart-4: hsl(0 0% 60%);
   --color-chart-5: hsl(0 0% 80%);
 
+  /* Tertiary / Accent Color: Electric Safety Volt */
+  --color-tertiary: hsl(80 100% 50%);
+  --color-tertiary-foreground: hsl(0 0% 0%);
+
   --font-sans: 'Inter', sans-serif;
   --radius: 0.5rem;
 }
