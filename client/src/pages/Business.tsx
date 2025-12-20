@@ -62,25 +62,26 @@ export default function Business() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Hero */}
-      <div className="bg-black text-white py-20">
+      <div className="bg-black text-white py-24">
         <div className="container mx-auto px-4 text-center max-w-3xl">
-          <div className="inline-block bg-[#CCFF00] text-black px-4 py-1 rounded-full text-sm font-bold mb-6">
-            100% Free for Partners
-          </div>
-          <h1 className="text-4xl md:text-6xl font-bold mb-6">Stop finding vapes in your parking lot.</h1>
-          <p className="text-xl text-gray-400 mb-8">
-            We give you a bin. We pick it up. Zero work for you. Your customers get a place to do the right thing.
+          <p className="text-sm uppercase tracking-widest text-gray-500 mb-6">For Smoke Shops & Retailers</p>
+          <h1 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">Stop finding vapes in your parking lot.</h1>
+          <p className="text-xl text-gray-400 mb-4">
+            We give you a bin. We pick it up. Zero work for you.
+          </p>
+          <p className="inline-block border border-white/20 px-4 py-2 rounded-full text-sm text-white/80">
+            100% free for partners
           </p>
         </div>
       </div>
 
       {/* Testimonial */}
-      <div className="bg-[#CCFF00] py-8">
+      <div className="bg-gray-100 py-10 border-b border-gray-200">
         <div className="container mx-auto px-4 text-center">
-          <p className="text-lg md:text-xl font-medium text-black max-w-2xl mx-auto">
+          <p className="text-lg md:text-xl text-gray-700 max-w-2xl mx-auto italic">
             "I was so tired of sweeping up dead vapes from the parking lot every morning. Now customers just toss them in the bin on their way out."
           </p>
-          <p className="mt-4 font-bold text-black">— Tino, High End Smoke Shop</p>
+          <p className="mt-4 font-semibold text-black">— Tino, High End Smoke Shop</p>
         </div>
       </div>
 

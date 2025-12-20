@@ -1,255 +1,156 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { ArrowRight, Battery, MapPin, Recycle, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowRight, MapPin, Quote } from "lucide-react";
 import { Link } from "wouter";
 import heroImage from "@assets/generated_images/minimalist_white_recycling_bin_in_modern_space.png";
-import processImage from "@assets/generated_images/abstract_battery_recycling_process_close_up.png";
-import safetyImage from "@assets/generated_images/geometric_safety_abstract_3d_render.png";
 
 export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Hero Section */}
-      <section className="relative h-[80vh] flex items-center bg-black text-white overflow-hidden">
-        <div className="absolute inset-0 z-0 opacity-60">
+      {/* Hero Section - Full screen visual */}
+      <section className="relative min-h-[90vh] flex items-center bg-black text-white overflow-hidden">
+        <div className="absolute inset-0 z-0">
           <img 
             src={heroImage} 
             alt="Modern recycling bin" 
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover opacity-40"
           />
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30 z-0" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent z-0" />
         
-        <div className="container mx-auto px-4 relative z-10 pt-20">
-          <div className="max-w-3xl animate-in slide-in-from-bottom-5 duration-700 fade-in">
-            <div className="inline-block border border-white/20 bg-white/10 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-medium mb-6">
-              Reimagining E-Waste in Rochester, NY
-            </div>
-            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-[1.1]">
-              The end of the line <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-200 to-gray-500">
-                for disposable vapes.
-              </span>
-            </h1>
-            <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-2xl leading-relaxed">
-              We recover lithium-ion batteries and screens from disposable devices. 
-              Responsibly. Transparently. Guilt-free.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/business">
-                <Button size="lg" className="bg-white text-black hover:bg-gray-200 text-lg px-8 h-14 rounded-full font-bold">
-                  Request a LITTR Bin <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
-              <Link href="/dropoff">
-                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10 hover:text-white text-lg px-8 h-14 rounded-full font-medium">
-                  Where can I drop off? <MapPin className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Credibility Strip */}
-      <section className="bg-black border-b border-gray-800 py-12 text-white">
-        <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/10 rounded-full">
-              <ShieldCheck className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg">Safety First</h3>
-              <p className="text-sm text-gray-400">Rigorous handling protocols for Li-ion safety.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/10 rounded-full">
-              <Recycle className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg">Responsible Recovery</h3>
-              <p className="text-sm text-gray-400">Diverting hazardous waste from landfills.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/10 rounded-full">
-              <MapPin className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg">Local Impact</h3>
-              <p className="text-sm text-gray-400">Focused on cleaning up Rochester, NY.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* What We Collect */}
-      <section className="py-24 bg-white">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16 max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">What we collect</h2>
-            <p className="text-gray-500 text-lg">Specifically designed for the modern waste stream.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card className="bg-gray-50 border-gray-200">
-              <CardContent className="p-8">
-                <div className="h-12 w-12 bg-black rounded-xl flex items-center justify-center mb-6">
-                  <Trash2 className="text-white h-6 w-6" />
-                </div>
-                <h3 className="text-2xl font-bold mb-2">Disposable Vapes</h3>
-                <p className="text-gray-500 mb-4">Any brand, any condition (unless damaged/leaking). We separate the battery and components.</p>
-                <div className="flex items-center gap-2 text-sm font-medium text-green-600">
-                  <span className="h-2 w-2 rounded-full bg-green-500"></span> Accepted
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-50 border-gray-200">
-              <CardContent className="p-8">
-                <div className="h-12 w-12 bg-black rounded-xl flex items-center justify-center mb-6">
-                  <Battery className="text-white h-6 w-6" />
-                </div>
-                <h3 className="text-2xl font-bold mb-2">Small Li-ion Batteries</h3>
-                <p className="text-gray-500 mb-4">Rechargeable batteries from small electronics, phones, and wearables.</p>
-                <div className="flex items-center gap-2 text-sm font-medium text-green-600">
-                  <span className="h-2 w-2 rounded-full bg-green-500"></span> Accepted
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white border-2 border-dashed border-gray-200 opacity-75">
-              <CardContent className="p-8">
-                <div className="h-12 w-12 bg-gray-100 rounded-xl flex items-center justify-center mb-6">
-                  <XIcon className="text-gray-400 h-6 w-6" />
-                </div>
-                <h3 className="text-2xl font-bold mb-2 text-gray-500">Not Accepted</h3>
-                <p className="text-gray-400 mb-4">Swollen batteries, leaking devices, large EV batteries, or industrial waste.</p>
-                <div className="flex items-center gap-2 text-sm font-medium text-red-500">
-                  <span className="h-2 w-2 rounded-full bg-red-500"></span> Do not drop
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Process Section */}
-      <section className="py-24 bg-black text-white relative overflow-hidden">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-20 pointer-events-none hidden md:block">
-           <img src={processImage} className="h-full w-full object-cover grayscale" alt="Process" />
-        </div>
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-2xl">
-            <h2 className="text-3xl md:text-5xl font-bold mb-12 tracking-tight">What happens after drop-off?</h2>
-            
-            <div className="space-y-12">
-              <div className="flex gap-6">
-                <div className="flex-shrink-0 h-12 w-12 rounded-full border border-white/20 flex items-center justify-center font-mono text-xl">01</div>
-                <div>
-                  <h3 className="text-2xl font-bold mb-2">Collection & Transport</h3>
-                  <p className="text-gray-400 leading-relaxed">Bins are collected by our trained team using safety-compliant containers to prevent fire risks during transport.</p>
-                </div>
-              </div>
-              
-              <div className="flex gap-6">
-                <div className="flex-shrink-0 h-12 w-12 rounded-full border border-white/20 flex items-center justify-center font-mono text-xl">02</div>
-                <div>
-                  <h3 className="text-2xl font-bold mb-2">Sorting & Assessment</h3>
-                  <p className="text-gray-400 leading-relaxed">Items are inspected. Batteries are carefully identified and prepared for the appropriate recycling stream.</p>
-                </div>
-              </div>
-
-              <div className="flex gap-6">
-                <div className="flex-shrink-0 h-12 w-12 rounded-full border border-white/20 flex items-center justify-center font-mono text-xl">03</div>
-                <div>
-                  <h3 className="text-2xl font-bold mb-2">Material Recovery</h3>
-                  <p className="text-gray-400 leading-relaxed">Batteries are sent to certified processors where critical metals (Cobalt, Lithium, Nickel) are recovered for reuse.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Risk / Info Section */}
-      <section className="py-20 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <div className="bg-white rounded-3xl p-8 md:p-12 shadow-xl border border-gray-100 flex flex-col md:flex-row gap-12 items-center">
-            <div className="flex-1">
-              <h2 className="text-3xl font-bold mb-6">Why does this matter?</h2>
-              <div className="space-y-4 text-gray-600">
-                <p>
-                  Disposable vapes contain lithium-ion batteries that are <span className="text-black font-semibold">fire hazards</span> in standard trash trucks and landfills.
-                </p>
-                <p>
-                  When crushed in a garbage truck, these batteries can ignite. By separating them, you protect sanitation workers and keep toxic chemicals out of our soil and water.
-                </p>
-              </div>
+            <p className="text-sm uppercase tracking-[0.3em] text-gray-400 mb-6 font-medium">
+              Rochester, NY
+            </p>
+            <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-[1.05]">
+              Drop it.<br />
+              We handle<br />
+              the rest.
+            </h1>
+            <p className="text-xl text-gray-400 mb-10 leading-relaxed max-w-md">
+              Disposable vape and lithium battery recycling made simple.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4">
               <Link href="/dropoff">
-                <Button className="mt-8" variant="default">Find a drop-off location</Button>
+                <Button size="lg" className="bg-white text-black hover:bg-gray-100 text-base px-8 h-14 rounded-full font-semibold">
+                  Find a drop-off <MapPin className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/business">
+                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 text-base px-8 h-14 rounded-full">
+                  I'm a business <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </Link>
             </div>
-            <div className="flex-1 bg-gray-100 rounded-2xl h-64 w-full flex items-center justify-center overflow-hidden relative">
-              <img src={safetyImage} alt="Safety Illustration" className="w-full h-full object-cover" />
+          </div>
+        </div>
+
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
+          <div className="w-6 h-10 border-2 border-white/30 rounded-full flex justify-center pt-2">
+            <div className="w-1 h-2 bg-white/50 rounded-full animate-bounce" />
+          </div>
+        </div>
+      </section>
+
+      {/* Simple value props */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-5xl mx-auto text-center">
+            <div>
+              <div className="text-4xl font-bold mb-2">01</div>
+              <h3 className="text-lg font-semibold mb-2">Drop</h3>
+              <p className="text-gray-500 text-sm">Bring your dead vapes or batteries to any partner location.</p>
+            </div>
+            <div>
+              <div className="text-4xl font-bold mb-2">02</div>
+              <h3 className="text-lg font-semibold mb-2">We Collect</h3>
+              <p className="text-gray-500 text-sm">Our team safely picks up and transports hazardous materials.</p>
+            </div>
+            <div>
+              <div className="text-4xl font-bold mb-2">03</div>
+              <h3 className="text-lg font-semibold mb-2">Recycled</h3>
+              <p className="text-gray-500 text-sm">Metals are recovered. Nothing goes to landfill.</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Testimonial */}
-      <section className="py-12 bg-[#CCFF00]">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-lg md:text-xl font-medium text-black max-w-2xl mx-auto">
-            "I was so tired of sweeping up dead vapes from the parking lot every morning. Now customers just toss them in the bin on their way out."
-          </p>
-          <p className="mt-4 font-bold text-black">— Tino, High End Smoke Shop</p>
+      {/* Why it matters - visual section */}
+      <section className="py-24 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <div className="max-w-3xl mx-auto text-center">
+            <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">Why it matters</p>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">
+              Lithium batteries in garbage trucks<br />
+              <span className="text-gray-400">can start fires.</span>
+            </h2>
+            <p className="text-gray-500 text-lg mb-8 max-w-xl mx-auto">
+              Proper disposal protects sanitation workers and keeps toxic chemicals out of our water.
+            </p>
+            <Link href="/faq">
+              <Button variant="outline" className="rounded-full">Learn more</Button>
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* Partner Locations */}
-      <section className="py-20 border-t border-gray-100">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-gray-400 mb-4">Drop-off locations in Rochester</p>
-          <h2 className="text-3xl font-bold mb-12">Our Partner Shops</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            <div className="bg-black text-white p-8 rounded-2xl">
-              <h3 className="text-xl font-bold mb-2">Elite Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Rochester, NY</p>
+      {/* Testimonial - subtle integration */}
+      <section className="py-20 bg-black text-white">
+        <div className="container mx-auto px-4">
+          <div className="max-w-3xl mx-auto text-center">
+            <Quote className="h-8 w-8 mx-auto mb-6 opacity-30" />
+            <p className="text-xl md:text-2xl font-light leading-relaxed mb-6">
+              I was so tired of sweeping up dead vapes from the parking lot every morning. Now customers just toss them in the bin on their way out.
+            </p>
+            <p className="text-gray-400">
+              <span className="font-semibold text-white">Tino</span> — High End Smoke Shop
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Partner Locations - clean grid */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">Drop-off locations</p>
+            <h2 className="text-3xl font-bold">Partner Shops</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            <div className="border border-gray-200 p-6 rounded-xl text-center hover:border-black transition-colors">
+              <h3 className="font-semibold">Elite Smoke Shop</h3>
+              <p className="text-gray-400 text-sm mt-1">Rochester, NY</p>
             </div>
-            <div className="bg-black text-white p-8 rounded-2xl">
-              <h3 className="text-xl font-bold mb-2">High End Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Rochester, NY</p>
+            <div className="border border-gray-200 p-6 rounded-xl text-center hover:border-black transition-colors">
+              <h3 className="font-semibold">High End Smoke Shop</h3>
+              <p className="text-gray-400 text-sm mt-1">Rochester, NY</p>
             </div>
-            <div className="bg-black text-white p-8 rounded-2xl">
-              <h3 className="text-xl font-bold mb-2">Red Eye Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Rochester, NY</p>
+            <div className="border border-gray-200 p-6 rounded-xl text-center hover:border-black transition-colors">
+              <h3 className="font-semibold">Red Eye Smoke Shop</h3>
+              <p className="text-gray-400 text-sm mt-1">Rochester, NY</p>
             </div>
           </div>
-          <p className="mt-8 text-gray-500">Want to become a partner location? <Link href="/business" className="text-black font-semibold underline">Request a free bin</Link></p>
+          <div className="text-center mt-10">
+            <Link href="/business">
+              <Button className="rounded-full">Become a partner</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="py-24 bg-gray-50 border-t border-gray-100">
+        <div className="container mx-auto px-4 text-center">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to recycle responsibly?</h2>
+          <p className="text-gray-500 mb-8 max-w-md mx-auto">Find your nearest drop-off location and do the right thing in 30 seconds.</p>
+          <Link href="/dropoff">
+            <Button size="lg" className="rounded-full px-10 h-14 text-base font-semibold">
+              Find a location <MapPin className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
         </div>
       </section>
     </div>
   );
-}
-
-function XIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </svg>
-  )
 }
