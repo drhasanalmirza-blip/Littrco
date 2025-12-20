@@ -3,10 +3,20 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useQuery } from "@tanstack/react-query";
 
 export default function PartnerDashboard() {
-  const { role, binRequests, logout } = useStore();
+  const { role, logout } = useStore();
   const [, setLocation] = useLocation();
+
+  const { data: binRequests = [] } = useQuery({
+    queryKey: ['binRequests'],
+    queryFn: async () => {
+      const res = await fetch('/api/dashboard/bin-requests');
+      if (!res.ok) throw new Error('Failed to fetch bin requests');
+      return res.json();
+    },
+  });
 
   if (role !== 'partner' && role !== 'admin') {
      return <div className="p-8">Access Denied. <Button variant="link" onClick={() => setLocation('/partner/login')}>Login</Button></div>;

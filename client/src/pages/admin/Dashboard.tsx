@@ -3,10 +3,38 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useQuery } from "@tanstack/react-query";
 
 export default function AdminDashboard() {
-  const { role, contacts, binRequests, volunteers, logout } = useStore();
+  const { role, logout } = useStore();
   const [, setLocation] = useLocation();
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ['contacts'],
+    queryFn: async () => {
+      const res = await fetch('/api/dashboard/contacts');
+      if (!res.ok) throw new Error('Failed to fetch contacts');
+      return res.json();
+    },
+  });
+
+  const { data: binRequests = [] } = useQuery({
+    queryKey: ['binRequests'],
+    queryFn: async () => {
+      const res = await fetch('/api/dashboard/bin-requests');
+      if (!res.ok) throw new Error('Failed to fetch bin requests');
+      return res.json();
+    },
+  });
+
+  const { data: volunteers = [] } = useQuery({
+    queryKey: ['volunteers'],
+    queryFn: async () => {
+      const res = await fetch('/api/dashboard/volunteers');
+      if (!res.ok) throw new Error('Failed to fetch volunteers');
+      return res.json();
+    },
+  });
 
   if (role !== 'admin') {
     return <div className="p-8">Access Denied. <Button variant="link" onClick={() => setLocation('/admin/login')}>Login</Button></div>;

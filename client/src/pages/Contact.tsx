@@ -6,7 +6,6 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
-import { useStore } from "@/lib/store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Contact Schema
@@ -27,8 +26,6 @@ const volunteerSchema = z.object({
 
 export default function Contact() {
   const { toast } = useToast();
-  const addContact = useStore((state) => state.addContact);
-  const addVolunteer = useStore((state) => state.addVolunteer);
 
   const contactForm = useForm<z.infer<typeof contactSchema>>({
     resolver: zodResolver(contactSchema),
@@ -40,16 +37,46 @@ export default function Contact() {
     defaultValues: { name: "", email: "", interest: "", availability: "", notes: "" },
   });
 
-  function onContactSubmit(values: z.infer<typeof contactSchema>) {
-    addContact(values);
-    toast({ title: "Message Sent", description: "We'll get back to you soon." });
-    contactForm.reset();
+  async function onContactSubmit(values: z.infer<typeof contactSchema>) {
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+      
+      if (!response.ok) throw new Error('Failed to submit');
+      
+      toast({ title: "Message Sent", description: "We'll get back to you soon." });
+      contactForm.reset();
+    } catch (error) {
+      toast({ 
+        title: "Error", 
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
-  function onVolunteerSubmit(values: z.infer<typeof volunteerSchema>) {
-    addVolunteer({ ...values, notes: values.notes || "" });
-    toast({ title: "Application Sent", description: "Thanks for your interest in helping out!" });
-    volunteerForm.reset();
+  async function onVolunteerSubmit(values: z.infer<typeof volunteerSchema>) {
+    try {
+      const response = await fetch('/api/volunteer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...values, notes: values.notes || "" }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to submit');
+      
+      toast({ title: "Application Sent", description: "Thanks for your interest in helping out!" });
+      volunteerForm.reset();
+    } catch (error) {
+      toast({ 
+        title: "Error", 
+        description: "Failed to submit application. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   return (

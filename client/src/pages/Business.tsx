@@ -9,7 +9,6 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { useStore } from "@/lib/store";
 import { CheckCircle2, Package, Store, Truck } from "lucide-react";
 
 const formSchema = z.object({
@@ -23,7 +22,6 @@ const formSchema = z.object({
 
 export default function Business() {
   const { toast } = useToast();
-  const addBinRequest = useStore((state) => state.addBinRequest);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -37,13 +35,28 @@ export default function Business() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    addBinRequest(values);
-    toast({
-      title: "Request Received",
-      description: "We'll be in touch shortly to schedule your bin delivery.",
-    });
-    form.reset();
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    try {
+      const response = await fetch('/api/bin-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+      
+      if (!response.ok) throw new Error('Failed to submit');
+      
+      toast({
+        title: "Request Received",
+        description: "We'll be in touch shortly to schedule your bin delivery.",
+      });
+      form.reset();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to submit request. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   return (
