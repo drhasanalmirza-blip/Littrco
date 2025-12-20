@@ -181,7 +181,7 @@ export default function Business() {
               <Card className="shadow-xl border-0">
                 <CardHeader className="bg-black text-white rounded-t-xl p-8">
                   <CardTitle className="text-2xl">Get your bin in as little as 48 hours</CardTitle>
-                  <CardDescription className="text-gray-400">Join 3 Rochester businesses already partnering with LITTR</CardDescription>
+                  <CardDescription className="text-gray-400">Free bin, free pickup. Zero cost to you.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-8">
                   <Form {...form}>

@@ -57,7 +57,7 @@ export default function Home() {
               <span className="text-gray-500">the rest.</span>
             </h1>
             <p className="text-xl text-gray-400 mb-12 max-w-lg mx-auto">
-              Join 3 local businesses already recycling responsibly.
+              Disposable vape and lithium battery recycling. Simple. Responsible. Free.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/dropoff">
@@ -92,17 +92,17 @@ export default function Home() {
       {/* Trust Belt */}
       <section className="py-4 bg-white border-b border-gray-100">
         <div className="container mx-auto px-4">
-          <div className="flex flex-wrap justify-center items-center gap-4 md:gap-8 text-sm text-gray-600">
-            <span className="flex items-center gap-2">
-              <span className="text-green-500">●</span> 3 Partner Locations
-            </span>
-            <span className="hidden md:inline text-gray-300">•</span>
+          <div className="flex flex-wrap justify-center items-center gap-6 md:gap-8 text-sm text-gray-600">
             <span className="flex items-center gap-2">
               <span className="text-green-500">●</span> 100% Free
             </span>
             <span className="hidden md:inline text-gray-300">•</span>
             <span className="flex items-center gap-2">
-              <span className="text-green-500">●</span> EPA-Compliant Recycling
+              <span className="text-green-500">●</span> EPA-Compliant
+            </span>
+            <span className="hidden md:inline text-gray-300">•</span>
+            <span className="flex items-center gap-2">
+              <span className="text-green-500">●</span> Upstate NY
             </span>
           </div>
         </div>
