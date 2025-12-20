@@ -18,7 +18,7 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
             <span className="font-bold tracking-tight text-2xl">LITTR<span className="font-normal text-gray-500">.co</span></span>
@@ -40,7 +40,7 @@ export function Header() {
           ))}
           <Link href="/business">
             <Button variant="default" size="sm" className="font-semibold">
-              Request Bin
+              Get Free Bin
             </Button>
           </Link>
         </nav>
@@ -73,7 +73,7 @@ export function Header() {
           ))}
           <Link href="/business">
             <Button className="w-full mt-2" onClick={() => setIsOpen(false)}>
-              Request a Bin
+              Get Free Bin
             </Button>
           </Link>
         </div>

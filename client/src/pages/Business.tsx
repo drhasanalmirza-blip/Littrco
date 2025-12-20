@@ -180,8 +180,8 @@ export default function Business() {
             <div>
               <Card className="shadow-xl border-0">
                 <CardHeader className="bg-black text-white rounded-t-xl p-8">
-                  <CardTitle className="text-2xl">Request a Free Bin</CardTitle>
-                  <CardDescription className="text-gray-400">Get started with LITTR today.</CardDescription>
+                  <CardTitle className="text-2xl">Get your bin in as little as 48 hours</CardTitle>
+                  <CardDescription className="text-gray-400">Join 3 Rochester businesses already partnering with LITTR</CardDescription>
                 </CardHeader>
                 <CardContent className="p-8">
                   <Form {...form}>
@@ -276,7 +276,7 @@ export default function Business() {
                         )}
                       />
                       <Button type="submit" size="lg" className="w-full h-14 text-lg font-bold rounded-full">
-                        Get My Free Bin
+                        Reserve My Free Bin
                       </Button>
                     </form>
                   </Form>

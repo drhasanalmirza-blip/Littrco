@@ -57,20 +57,27 @@ export default function Home() {
               <span className="text-gray-500">the rest.</span>
             </h1>
             <p className="text-xl text-gray-400 mb-12 max-w-lg mx-auto">
-              Disposable vape and lithium battery recycling. Simple. Responsible. Free.
+              Join 3 local businesses already recycling responsibly.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/dropoff">
                 <Button size="lg" className="bg-white text-black hover:bg-gray-100 text-base px-10 h-14 rounded-full font-semibold w-full sm:w-auto">
-                  Find a drop-off <MapPin className="ml-2 h-4 w-4" />
+                  Find Your Drop-off <MapPin className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/business">
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 text-base px-10 h-14 rounded-full w-full sm:w-auto">
-                  Get a free bin <ArrowRight className="ml-2 h-4 w-4" />
+                  Get Your Free Bin <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
             </div>
+          </div>
+        </div>
+
+        {/* Floating Trust Badge */}
+        <div className="absolute top-24 right-8 z-20 hidden lg:block">
+          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 text-white text-sm">
+            <span className="text-green-400 mr-2">✓</span> Trusted by local businesses
           </div>
         </div>
 
@@ -78,6 +85,25 @@ export default function Home() {
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20">
           <div className="w-6 h-10 border-2 border-white/30 rounded-full flex justify-center pt-2">
             <div className="w-1 h-2 bg-white/60 rounded-full animate-bounce" />
+          </div>
+        </div>
+      </section>
+
+      {/* Trust Belt */}
+      <section className="py-4 bg-white border-b border-gray-100">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-wrap justify-center items-center gap-4 md:gap-8 text-sm text-gray-600">
+            <span className="flex items-center gap-2">
+              <span className="text-green-500">●</span> 3 Partner Locations
+            </span>
+            <span className="hidden md:inline text-gray-300">•</span>
+            <span className="flex items-center gap-2">
+              <span className="text-green-500">●</span> 100% Free
+            </span>
+            <span className="hidden md:inline text-gray-300">•</span>
+            <span className="flex items-center gap-2">
+              <span className="text-green-500">●</span> EPA-Compliant Recycling
+            </span>
           </div>
         </div>
       </section>
@@ -165,28 +191,28 @@ export default function Home() {
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+            <div className="bg-white rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={vapesImage} alt="Vapes" className="w-full h-full object-cover" />
               </div>
               <h3 className="font-semibold">Disposable Vapes</h3>
               <p className="text-xs text-green-600 mt-1">Accepted</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+            <div className="bg-white rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={batteriesImage} alt="Batteries" className="w-full h-full object-cover" />
               </div>
               <h3 className="font-semibold">Small Batteries</h3>
               <p className="text-xs text-green-600 mt-1">Accepted</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+            <div className="bg-white rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="h-32 mb-4 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
                 <span className="text-4xl">🔋</span>
               </div>
               <h3 className="font-semibold">Phone Batteries</h3>
               <p className="text-xs text-green-600 mt-1">Accepted</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 text-center shadow-sm opacity-60">
+            <div className="bg-white rounded-2xl p-6 text-center shadow-lg opacity-60">
               <div className="h-32 mb-4 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
                 <span className="text-4xl">🚗</span>
               </div>
@@ -225,29 +251,35 @@ export default function Home() {
             <h2 className="text-4xl font-bold">Partner Shops</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            <div className="group cursor-pointer">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={shopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
+              <div className="relative h-48 rounded-t-xl overflow-hidden">
+                <img src={shopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
-              <h3 className="font-semibold text-lg">Elite Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Rochester, NY</p>
+              <div className="p-4 bg-white rounded-b-xl">
+                <h3 className="font-semibold text-lg">Elite Smoke Shop</h3>
+                <p className="text-gray-400 text-sm">Rochester, NY</p>
+              </div>
             </div>
-            <div className="group cursor-pointer">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={binImage} alt="High End Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
+              <div className="relative h-48 rounded-t-xl overflow-hidden">
+                <img src={binImage} alt="High End Smoke Shop" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
-              <h3 className="font-semibold text-lg">High End Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Rochester, NY</p>
+              <div className="p-4 bg-white rounded-b-xl">
+                <h3 className="font-semibold text-lg">High End Smoke Shop</h3>
+                <p className="text-gray-400 text-sm">Rochester, NY</p>
+              </div>
             </div>
-            <div className="group cursor-pointer">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={shopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
+              <div className="relative h-48 rounded-t-xl overflow-hidden">
+                <img src={shopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
-              <h3 className="font-semibold text-lg">Red Eye Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Rochester, NY</p>
+              <div className="p-4 bg-white rounded-b-xl">
+                <h3 className="font-semibold text-lg">Red Eye Smoke Shop</h3>
+                <p className="text-gray-400 text-sm">Rochester, NY</p>
+              </div>
             </div>
           </div>
           <div className="text-center mt-12">

@@ -12,6 +12,7 @@ import About from "@/pages/About";
 import Contact from "@/pages/Contact";
 import NotFound from "@/pages/not-found";
 import { Login } from "@/components/auth/Login";
+import { MobileStickyCTA } from "@/components/MobileStickyCTA";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import StaffDashboard from "@/pages/staff/Dashboard";
 import PartnerDashboard from "@/pages/partner/Dashboard";
@@ -55,6 +56,7 @@ function Router() {
         <Route component={NotFound} />
       </Switch>
       {!isDashboard && <Footer />}
+      {!isDashboard && <MobileStickyCTA />}
     </>
   );
 }
