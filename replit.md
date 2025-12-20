@@ -2,7 +2,7 @@
 
 ## Overview
 
-LITTR.co is a modern recycling company website focused on disposable vapes and lithium-ion battery recovery. The platform serves the Rochester, NY area, offering free drop-off locations for consumers and bin programs for businesses. The application features a minimalist black/white design aesthetic with form submissions for business bin requests, contact inquiries, and volunteer applications.
+LITTR.co is a modern recycling company website focused on disposable vapes and lithium-ion battery recovery. The platform serves upstate New York (Buffalo, Rochester, Syracuse), offering free drop-off locations for consumers and bin programs for businesses. The application features a modern visual design with form submissions for business bin requests, contact inquiries, and volunteer applications. Automated email notifications are sent via Resend for all form submissions.
 
 ## User Preferences
 
@@ -21,6 +21,7 @@ Preferred communication style: Simple, everyday language.
 ### Backend Architecture
 - **Runtime**: Node.js with Express.js
 - **API Design**: RESTful endpoints under `/api/*` prefix
+- **Email**: Resend for transactional emails (notifications@littr.co)
 - **Development**: Vite dev server with HMR proxied through Express
 - **Production**: Static file serving from built client assets
 
@@ -41,6 +42,7 @@ Preferred communication style: Simple, everyday language.
 ├── server/           # Backend Express application
 │   ├── routes.ts     # API route definitions
 │   ├── storage.ts    # Database access layer
+│   ├── email.ts      # Email service (Resend)
 │   └── db.ts         # Database connection
 ├── shared/           # Shared code between client/server
 │   └── schema.ts     # Drizzle schema definitions

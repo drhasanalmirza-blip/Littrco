@@ -42,3 +42,8 @@ waitForPort = 5000
 [agent]
 mockupState = "FULLSTACK"
 integrations = ["javascript_database:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+RESEND_API_KEY = "re_DQXJei2B_DivPxDZ5cr4V31CfUfk6r5ed"
