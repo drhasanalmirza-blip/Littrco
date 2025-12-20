@@ -2,10 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { AlertTriangle, BatteryWarning, CheckCircle, MapPin, Phone, Sparkles } from "lucide-react";
 
-import smokeShopImage from "@assets/generated_images/pixel_art_smoke_shop_night.png";
-import binInteriorImage from "@assets/generated_images/pixel_art_littr_bin_interior.png";
-import handDroppingImage from "@assets/generated_images/pixel_art_hand_dropping_vape.png";
-import shopDoorsImage from "@assets/generated_images/pixel_art_shop_exit_doors.png";
+import handDroppingImage from "@assets/generated_images/pixel_art_vape_drop_action.png";
+import eliteShopImage from "@assets/generated_images/elite_smoke_shop_pixel_art.png";
+import highEndShopImage from "@assets/generated_images/high_end_smoke_shop_pixel_art.png";
+import redEyeShopImage from "@assets/generated_images/red_eye_smoke_shop_pixel_art.png";
 
 export default function Dropoff() {
   return (
@@ -13,7 +13,7 @@ export default function Dropoff() {
       {/* Hero with visual */}
       <section className="relative min-h-[60vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img src={handDroppingImage} alt="Drop off your vape responsibly" className="w-full h-full object-cover opacity-50" />
+          <img src={handDroppingImage} alt="Drop off your vape responsibly" className="w-full h-full object-cover opacity-60" style={{ imageRendering: 'pixelated' }} />
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/60 to-black" />
         
@@ -53,7 +53,7 @@ export default function Dropoff() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="group" data-testid="card-location-elite">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={smokeShopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+                <img src={eliteShopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <MapPin className="h-5 w-5" />
@@ -64,7 +64,7 @@ export default function Dropoff() {
             </div>
             <div className="group" data-testid="card-location-highend">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={binInteriorImage} alt="High End Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+                <img src={highEndShopImage} alt="High End Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <MapPin className="h-5 w-5" />
@@ -75,7 +75,7 @@ export default function Dropoff() {
             </div>
             <div className="group" data-testid="card-location-redeye">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={shopDoorsImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+                <img src={redEyeShopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <MapPin className="h-5 w-5" />

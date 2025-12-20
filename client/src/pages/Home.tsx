@@ -1,49 +1,36 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, MapPin, Quote, Recycle, Shield, Truck } from "lucide-react";
 import { Link } from "wouter";
-import { useEffect, useState } from "react";
 
 import vapesImage from "@assets/generated_images/pixel_art_vapes_collection.png";
 import binImage from "@assets/generated_images/pixel_art_littr_bin_interior.png";
 import batteriesImage from "@assets/generated_images/pixel_art_batteries_pattern.png";
 import rochesterImage from "@assets/generated_images/pixel_art_rochester_cityscape.png";
-import handsImage from "@assets/generated_images/pixel_art_hand_dropping_vape.png";
-import shopImage from "@assets/generated_images/pixel_art_smoke_shop_night.png";
+import heroActionImage from "@assets/generated_images/pixel_art_vape_drop_action.png";
 import pickupVanImage from "@assets/generated_images/pixel_art_pickup_van_night.png";
-import exitDoorsImage from "@assets/generated_images/pixel_art_shop_exit_doors.png";
-
-const collageImages = [vapesImage, binImage, batteriesImage, handsImage, shopImage, exitDoorsImage];
+import eliteShopImage from "@assets/generated_images/elite_smoke_shop_pixel_art.png";
+import highEndShopImage from "@assets/generated_images/high_end_smoke_shop_pixel_art.png";
+import redEyeShopImage from "@assets/generated_images/red_eye_smoke_shop_pixel_art.png";
+import phoneBatteryImage from "@assets/generated_images/phone_battery_pixel_art.png";
 
 export default function Home() {
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % collageImages.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div className="flex flex-col min-h-screen bg-black">
-      {/* Hero Section with Image Grid */}
+      {/* Hero Section */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
-        {/* Animated background collage */}
-        <div className="absolute inset-0 grid grid-cols-2 md:grid-cols-3 gap-1 opacity-30">
-          {collageImages.map((img, i) => (
-            <div 
-              key={i} 
-              className={`relative overflow-hidden transition-all duration-1000 ${
-                i === activeIndex ? 'opacity-100 scale-105' : 'opacity-60 scale-100'
-              }`}
-            >
-              <img src={img} alt="" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
-            </div>
-          ))}
+        {/* Hero background image - single visible image */}
+        <div className="absolute inset-0">
+          <img 
+            src={heroActionImage} 
+            alt="Vape being recycled" 
+            className="w-full h-full object-cover opacity-60" 
+            style={{ imageRendering: 'pixelated' }} 
+          />
         </div>
         
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/80 to-black z-10" />
+        {/* Gradient overlay - lighter to show image better */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/60 to-black z-10" />
         
         {/* Content */}
         <div className="container mx-auto px-4 relative z-20 pt-20">
@@ -57,17 +44,17 @@ export default function Home() {
               <span className="text-gray-500">the rest.</span>
             </h1>
             <p className="text-xl text-gray-400 mb-12 max-w-lg mx-auto">
-              Free vape and lithium battery recycling. Fast. Safe. Zero hassle.
+              Free vape and battery recycling at local smoke shops. Fast, safe, and always free.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/dropoff">
                 <Button size="lg" className="bg-white text-black hover:bg-gray-100 text-base px-10 h-14 rounded-full font-semibold w-full sm:w-auto" data-testid="button-find-dropoff">
-                  Find a Drop-off Now <MapPin className="ml-2 h-4 w-4" />
+                  Find a Drop-off <MapPin className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/business">
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 text-base px-10 h-14 rounded-full w-full sm:w-auto" data-testid="button-get-free-bin">
-                  Get Your Free Bin <ArrowRight className="ml-2 h-4 w-4" />
+                  Get a Free Bin <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
             </div>
@@ -77,14 +64,7 @@ export default function Home() {
         {/* Floating Trust Badge */}
         <div className="absolute top-24 right-8 z-20 hidden lg:block">
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 text-white text-sm">
-            <span className="text-green-400 mr-2">✓</span> Trusted by local businesses
-          </div>
-        </div>
-
-        {/* Scroll indicator */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20">
-          <div className="w-6 h-10 border-2 border-white/30 rounded-full flex justify-center pt-2">
-            <div className="w-1 h-2 bg-white/60 rounded-full animate-bounce" />
+            <span className="text-green-400 mr-2">✓</span> Trusted by local shops
           </div>
         </div>
       </section>
@@ -112,7 +92,7 @@ export default function Home() {
       <section className="py-0 bg-black">
         <div className="grid grid-cols-1 md:grid-cols-2">
           <div className="relative h-[50vh] md:h-[70vh]">
-            <img src={handsImage} alt="Drop your vape in seconds" className="w-full h-full object-cover" loading="lazy" style={{ imageRendering: 'pixelated' }} />
+            <img src={heroActionImage} alt="Drop your vape in seconds" className="w-full h-full object-cover" loading="lazy" style={{ imageRendering: 'pixelated' }} />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-8 left-8 right-8 text-white">
               <h3 className="text-2xl font-bold mb-2">Done in 10 Seconds</h3>
@@ -149,7 +129,7 @@ export default function Home() {
             </div>
             <div className="text-center">
               <div className="relative h-64 mb-6 rounded-2xl overflow-hidden">
-                <img src={shopImage} alt="Visit a partner location" className="w-full h-full object-cover" loading="lazy" style={{ imageRendering: 'pixelated' }} />
+                <img src={eliteShopImage} alt="Visit a partner location" className="w-full h-full object-cover" loading="lazy" style={{ imageRendering: 'pixelated' }} />
               </div>
               <div className="text-5xl font-bold text-gray-200 mb-2">02</div>
               <h3 className="text-xl font-semibold mb-2">Drop</h3>
@@ -206,8 +186,8 @@ export default function Home() {
               <p className="text-xs text-green-600 mt-1">Accepted</p>
             </div>
             <div className="bg-white rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
-              <div className="h-32 mb-4 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
-                <span className="text-4xl">🔋</span>
+              <div className="h-32 mb-4 rounded-xl overflow-hidden">
+                <img src={phoneBatteryImage} alt="Phone batteries" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
               </div>
               <h3 className="font-semibold">Phone Batteries</h3>
               <p className="text-xs text-green-600 mt-1">Accepted</p>
@@ -228,7 +208,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
             <div className="relative h-80 rounded-2xl overflow-hidden">
-              <img src={shopImage} alt="Partner smoke shop at night" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+              <img src={highEndShopImage} alt="Partner smoke shop at night" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
             </div>
             <div>
               <Quote className="h-10 w-10 mb-6 opacity-30" />
@@ -253,7 +233,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
               <div className="relative h-48 rounded-t-xl overflow-hidden">
-                <img src={shopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                <img src={eliteShopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
               <div className="p-4 bg-white rounded-b-xl">
@@ -263,7 +243,7 @@ export default function Home() {
             </div>
             <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
               <div className="relative h-48 rounded-t-xl overflow-hidden">
-                <img src={exitDoorsImage} alt="High End Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                <img src={highEndShopImage} alt="High End Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
               <div className="p-4 bg-white rounded-b-xl">
@@ -273,7 +253,7 @@ export default function Home() {
             </div>
             <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
               <div className="relative h-48 rounded-t-xl overflow-hidden">
-                <img src={shopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                <img src={redEyeShopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
               <div className="p-4 bg-white rounded-b-xl">
