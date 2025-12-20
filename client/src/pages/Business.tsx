@@ -10,9 +10,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Quote, Store, Truck } from "lucide-react";
 
-import shopInteriorImage from "@assets/generated_images/shop_interior_with_bin.png";
-import staffImage from "@assets/generated_images/staff_handing_bin_to_owner.png";
-import vanImage from "@assets/generated_images/pickup_van_at_shop.png";
+import smokeShopNightImage from "@assets/generated_images/pixel_art_smoke_shop_night.png";
+import binInteriorImage from "@assets/generated_images/pixel_art_littr_bin_interior.png";
+import pickupVanImage from "@assets/generated_images/pixel_art_pickup_van_night.png";
+import shopExitDoorsImage from "@assets/generated_images/pixel_art_shop_exit_doors.png";
 
 const formSchema = z.object({
   businessName: z.string().min(2, "Business name is required"),
@@ -49,14 +50,14 @@ export default function Business() {
       if (!response.ok) throw new Error('Failed to submit');
       
       toast({
-        title: "Request Received",
-        description: "We'll be in touch shortly to schedule your bin delivery.",
+        title: "You're In!",
+        description: "We'll reach out within 48 hours to schedule your free bin delivery.",
       });
       form.reset();
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to submit request. Please try again.",
+        title: "Something went wrong",
+        description: "Please try again or contact us directly.",
         variant: "destructive",
       });
     }
@@ -67,7 +68,7 @@ export default function Business() {
       {/* Hero with image */}
       <section className="relative min-h-[70vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img src={shopInteriorImage} alt="Shop interior with LITTR bin" className="w-full h-full object-cover opacity-40" />
+          <img src={smokeShopNightImage} alt="Smoke shop storefront at night" className="w-full h-full object-cover opacity-50" />
         </div>
         <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent" />
         
@@ -75,48 +76,48 @@ export default function Business() {
           <div className="max-w-2xl text-white">
             <p className="text-sm uppercase tracking-widest text-gray-400 mb-6">For Smoke Shops & Retailers</p>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-              Stop finding vapes<br />in your parking lot.
+              Dead vapes everywhere?<br />We'll handle it.
             </h1>
-            <p className="text-xl text-gray-400 mb-8">
-              We give you a bin. We pick it up. Zero work for you.
+            <p className="text-xl text-gray-300 mb-8">
+              FREE bin. FREE pickup. ZERO hassle. Your customers get a responsible way to dispose, and you get a cleaner shop.
             </p>
-            <div className="inline-block border border-white/30 px-6 py-3 rounded-full">
-              <span className="font-semibold">100% free for partners</span>
+            <div className="inline-block border border-white/30 px-6 py-3 rounded-full bg-white/5 backdrop-blur-sm">
+              <span className="font-semibold">100% free for partners — no strings attached</span>
             </div>
           </div>
         </div>
       </section>
 
       {/* Visual benefits */}
-      <section className="py-0 bg-white">
+      <section className="py-0 bg-black">
         <div className="grid grid-cols-1 md:grid-cols-3">
           <div className="relative h-64 md:h-80">
-            <img src={staffImage} alt="Staff delivering bin" className="w-full h-full object-cover" loading="lazy" />
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-6">
+            <img src={shopExitDoorsImage} alt="Shop interior with exit" className="w-full h-full object-cover" loading="lazy" />
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-6">
               <div className="text-center text-white">
-                <Store className="h-10 w-10 mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2">Zero Work</h3>
-                <p className="text-sm text-gray-300">We deliver, we pick up. You just point customers to the bin.</p>
+                <Store className="h-10 w-10 mx-auto mb-4 text-emerald-400" />
+                <h3 className="text-xl font-bold mb-2">Zero Work for You</h3>
+                <p className="text-sm text-gray-300">We deliver the bin, we pick it up when it's full. All you do is point customers to it.</p>
               </div>
             </div>
           </div>
           <div className="relative h-64 md:h-80">
-            <img src={shopInteriorImage} alt="Bin in shop" className="w-full h-full object-cover" loading="lazy" />
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-6">
+            <img src={binInteriorImage} alt="LITTR bin in shop" className="w-full h-full object-cover" loading="lazy" />
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-6">
               <div className="text-center text-white">
-                <CheckCircle2 className="h-10 w-10 mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2">Customers Love It</h3>
-                <p className="text-sm text-gray-300">Give them a guilt-free way to dispose. They'll remember you.</p>
+                <CheckCircle2 className="h-10 w-10 mx-auto mb-4 text-emerald-400" />
+                <h3 className="text-xl font-bold mb-2">Customers Appreciate It</h3>
+                <p className="text-sm text-gray-300">Give them an easy, guilt-free disposal option. They'll remember you for doing the right thing.</p>
               </div>
             </div>
           </div>
           <div className="relative h-64 md:h-80">
-            <img src={vanImage} alt="Pickup van" className="w-full h-full object-cover" loading="lazy" />
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-6">
+            <img src={pickupVanImage} alt="LITTR pickup van at night" className="w-full h-full object-cover" loading="lazy" />
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-6">
               <div className="text-center text-white">
-                <Truck className="h-10 w-10 mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2">Free Pickup</h3>
-                <p className="text-sm text-gray-300">Text us when it's full. We come get it. That simple.</p>
+                <Truck className="h-10 w-10 mx-auto mb-4 text-emerald-400" />
+                <h3 className="text-xl font-bold mb-2">Always Free Pickup</h3>
+                <p className="text-sm text-gray-300">Bin full? Text us or scan the QR code. We'll come get it — no charge, ever.</p>
               </div>
             </div>
           </div>
@@ -124,64 +125,64 @@ export default function Business() {
       </section>
 
       {/* Testimonial */}
-      <section className="py-20 bg-gray-100">
+      <section className="py-20 bg-zinc-900">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto text-center">
-            <Quote className="h-10 w-10 mx-auto mb-6 text-gray-300" />
-            <p className="text-2xl md:text-3xl font-light leading-relaxed mb-6 text-gray-800">
-              "I was so tired of sweeping up dead vapes from the parking lot every morning. Now customers just toss them in the bin on their way out."
+            <Quote className="h-10 w-10 mx-auto mb-6 text-zinc-600" />
+            <p className="text-2xl md:text-3xl font-light leading-relaxed mb-6 text-white">
+              "Every morning I was sweeping up dead vapes from the parking lot. Now my customers just drop them in the bin on their way out. Problem solved."
             </p>
-            <p className="font-semibold text-black">Tino — High End Smoke Shop</p>
+            <p className="font-semibold text-emerald-400">Tino — High End Smoke Shop, Rochester NY</p>
           </div>
         </div>
       </section>
 
       {/* How it works + Form */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-zinc-950">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 max-w-6xl mx-auto">
             {/* Left: How it works */}
             <div>
-              <h2 className="text-3xl font-bold mb-10">How it works</h2>
+              <h2 className="text-3xl font-bold mb-10 text-white">Three Simple Steps</h2>
               <div className="space-y-10">
                 <div className="flex gap-6">
-                  <div className="flex-shrink-0 h-14 w-14 rounded-full bg-black text-white flex items-center justify-center text-xl font-bold">1</div>
+                  <div className="flex-shrink-0 h-14 w-14 rounded-full bg-emerald-500 text-black flex items-center justify-center text-xl font-bold">1</div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">Request a Bin</h3>
-                    <p className="text-gray-500">Fill out the form. We'll verify your location and get in touch within 48 hours.</p>
+                    <h3 className="text-xl font-bold mb-2 text-white">Request Your Free Bin</h3>
+                    <p className="text-gray-400">Fill out the form — takes 60 seconds. We'll verify your location and reach out within 48 hours.</p>
                   </div>
                 </div>
                 <div className="flex gap-6">
-                  <div className="flex-shrink-0 h-14 w-14 rounded-full bg-black text-white flex items-center justify-center text-xl font-bold">2</div>
+                  <div className="flex-shrink-0 h-14 w-14 rounded-full bg-emerald-500 text-black flex items-center justify-center text-xl font-bold">2</div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">We Deliver</h3>
-                    <p className="text-gray-500">We drop off a secure, LITTR-branded collection bin and signage for your window.</p>
+                    <h3 className="text-xl font-bold mb-2 text-white">We Deliver Everything</h3>
+                    <p className="text-gray-400">We drop off a secure, fire-safe LITTR bin plus window signage to let customers know you're a drop-off spot.</p>
                   </div>
                 </div>
                 <div className="flex gap-6">
-                  <div className="flex-shrink-0 h-14 w-14 rounded-full bg-black text-white flex items-center justify-center text-xl font-bold">3</div>
+                  <div className="flex-shrink-0 h-14 w-14 rounded-full bg-emerald-500 text-black flex items-center justify-center text-xl font-bold">3</div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">We Pick Up</h3>
-                    <p className="text-gray-500">When it's full, text us or scan the QR on the bin. We'll come get it for free.</p>
+                    <h3 className="text-xl font-bold mb-2 text-white">We Pick Up for Free</h3>
+                    <p className="text-gray-400">When the bin is full, text us or scan the QR code. We'll come empty it — always free, always fast.</p>
                   </div>
                 </div>
               </div>
 
               {/* Fire warning */}
-              <div className="mt-12 bg-red-50 border border-red-200 rounded-xl p-6">
-                <h3 className="font-bold text-red-800 mb-2">Did you know?</h3>
-                <p className="text-red-700 text-sm">
-                  Lithium-ion batteries in vapes can catch fire when crushed in garbage trucks. Proper disposal protects sanitation workers and keeps your business compliant.
+              <div className="mt-12 bg-red-950/50 border border-red-900/50 rounded-xl p-6">
+                <h3 className="font-bold text-red-400 mb-2">Why This Matters</h3>
+                <p className="text-red-300/80 text-sm">
+                  Lithium-ion batteries in vapes can ignite when crushed in garbage trucks. Proper disposal protects sanitation workers, prevents fires, and keeps your business on the right side of regulations.
                 </p>
               </div>
             </div>
 
             {/* Right: Form */}
             <div>
-              <Card className="shadow-xl border-0">
-                <CardHeader className="bg-black text-white rounded-t-xl p-8">
-                  <CardTitle className="text-2xl">Get your bin in as little as 48 hours</CardTitle>
-                  <CardDescription className="text-gray-400">Free bin, free pickup. Zero cost to you.</CardDescription>
+              <Card className="shadow-2xl border-0 bg-zinc-900">
+                <CardHeader className="bg-emerald-500 text-black rounded-t-xl p-8">
+                  <CardTitle className="text-2xl">Get Your Free Bin — Delivered in Days</CardTitle>
+                  <CardDescription className="text-black/70 text-base">FREE bin. FREE pickup. ZERO cost. Join 50+ Rochester shops already on board.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-8">
                   <Form {...form}>
@@ -191,9 +192,9 @@ export default function Business() {
                         name="businessName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Business Name</FormLabel>
+                            <FormLabel className="text-gray-300">Business Name</FormLabel>
                             <FormControl>
-                              <Input placeholder="Your Shop Name" {...field} className="h-12" />
+                              <Input placeholder="Your Shop Name" {...field} className="h-12 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -204,9 +205,9 @@ export default function Business() {
                         name="contactPerson"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Your Name</FormLabel>
+                            <FormLabel className="text-gray-300">Your Name</FormLabel>
                             <FormControl>
-                              <Input placeholder="John Doe" {...field} className="h-12" />
+                              <Input placeholder="John Doe" {...field} className="h-12 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -218,9 +219,9 @@ export default function Business() {
                           name="email"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Email</FormLabel>
+                              <FormLabel className="text-gray-300">Email</FormLabel>
                               <FormControl>
-                                <Input placeholder="you@shop.com" {...field} className="h-12" />
+                                <Input placeholder="you@shop.com" {...field} className="h-12 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -231,9 +232,9 @@ export default function Business() {
                           name="phone"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Phone</FormLabel>
+                              <FormLabel className="text-gray-300">Phone</FormLabel>
                               <FormControl>
-                                <Input placeholder="(585) 555-0123" {...field} className="h-12" />
+                                <Input placeholder="(585) 555-0123" {...field} className="h-12 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -245,9 +246,9 @@ export default function Business() {
                         name="address"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Shop Address</FormLabel>
+                            <FormLabel className="text-gray-300">Shop Address</FormLabel>
                             <FormControl>
-                              <Textarea placeholder="123 Main St, Rochester, NY" {...field} />
+                              <Textarea placeholder="123 Main St, Rochester, NY" {...field} className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -258,14 +259,14 @@ export default function Business() {
                         name="volume"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Estimated Monthly Volume</FormLabel>
+                            <FormLabel className="text-gray-300">Estimated Monthly Volume</FormLabel>
                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                               <FormControl>
-                                <SelectTrigger className="h-12">
+                                <SelectTrigger className="h-12 bg-zinc-800 border-zinc-700 text-white">
                                   <SelectValue placeholder="How many vapes per month?" />
                                 </SelectTrigger>
                               </FormControl>
-                              <SelectContent>
+                              <SelectContent className="bg-zinc-800 border-zinc-700">
                                 <SelectItem value="low">Low (1-50 units)</SelectItem>
                                 <SelectItem value="medium">Medium (50-200 units)</SelectItem>
                                 <SelectItem value="high">High (200+ units)</SelectItem>
@@ -275,9 +276,10 @@ export default function Business() {
                           </FormItem>
                         )}
                       />
-                      <Button type="submit" size="lg" className="w-full h-14 text-lg font-bold rounded-full">
-                        Reserve My Free Bin
+                      <Button type="submit" size="lg" className="w-full h-14 text-lg font-bold rounded-full bg-emerald-500 hover:bg-emerald-400 text-black">
+                        Get My Free Bin Now
                       </Button>
+                      <p className="text-center text-zinc-500 text-sm">No credit card. No hidden fees. Just a free bin.</p>
                     </form>
                   </Form>
                 </CardContent>
@@ -288,35 +290,44 @@ export default function Business() {
       </section>
 
       {/* FAQ */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-20 bg-zinc-900">
         <div className="container mx-auto px-4 max-w-3xl">
-          <h2 className="text-3xl font-bold mb-10 text-center">Common Questions</h2>
+          <h2 className="text-3xl font-bold mb-10 text-center text-white">Got Questions? We've Got Answers.</h2>
           <div className="space-y-4">
-            <details className="group bg-white rounded-xl border border-gray-200 p-6">
-              <summary className="font-semibold cursor-pointer list-none flex justify-between items-center text-lg">
-                Is there really no cost?
-                <span className="transition group-open:rotate-180 text-gray-400">▼</span>
+            <details className="group bg-zinc-800 rounded-xl border border-zinc-700 p-6">
+              <summary className="font-semibold cursor-pointer list-none flex justify-between items-center text-lg text-white">
+                Is it really 100% free?
+                <span className="transition group-open:rotate-180 text-zinc-500">▼</span>
               </summary>
-              <p className="text-gray-500 mt-4">
-                For qualifying retail locations, yes. We subsidize the cost because more drop-off points means more collection volume, which makes our entire operation more efficient.
+              <p className="text-zinc-400 mt-4">
+                Yes — completely free for qualifying retail locations. There's no catch. More drop-off points means we collect more volume, which makes our entire recycling operation more efficient. You help us, we help you.
               </p>
             </details>
-            <details className="group bg-white rounded-xl border border-gray-200 p-6">
-              <summary className="font-semibold cursor-pointer list-none flex justify-between items-center text-lg">
-                What about liability?
-                <span className="transition group-open:rotate-180 text-gray-400">▼</span>
+            <details className="group bg-zinc-800 rounded-xl border border-zinc-700 p-6">
+              <summary className="font-semibold cursor-pointer list-none flex justify-between items-center text-lg text-white">
+                What about liability or safety concerns?
+                <span className="transition group-open:rotate-180 text-zinc-500">▼</span>
               </summary>
-              <p className="text-gray-500 mt-4">
-                We provide fire-safe containers designed to mitigate risk. Our bins are tested and approved for lithium battery storage. We recommend discussing with your insurance provider for full coverage details.
+              <p className="text-zinc-400 mt-4">
+                Our bins are specifically designed for lithium battery storage — fire-resistant and tested for safety. They're far safer than having loose vapes in your trash. We recommend a quick chat with your insurance provider, but our partners have had zero issues.
               </p>
             </details>
-            <details className="group bg-white rounded-xl border border-gray-200 p-6">
-              <summary className="font-semibold cursor-pointer list-none flex justify-between items-center text-lg">
-                How long until I get a bin?
-                <span className="transition group-open:rotate-180 text-gray-400">▼</span>
+            <details className="group bg-zinc-800 rounded-xl border border-zinc-700 p-6">
+              <summary className="font-semibold cursor-pointer list-none flex justify-between items-center text-lg text-white">
+                How quickly will I get my bin?
+                <span className="transition group-open:rotate-180 text-zinc-500">▼</span>
               </summary>
-              <p className="text-gray-500 mt-4">
-                Most partners receive their bin within 5-7 business days after approval. We'll contact you within 48 hours of your request to confirm details.
+              <p className="text-zinc-400 mt-4">
+                Most partners receive their bin within 5-7 business days after approval. We'll contact you within 48 hours of your request to confirm details and schedule delivery.
+              </p>
+            </details>
+            <details className="group bg-zinc-800 rounded-xl border border-zinc-700 p-6">
+              <summary className="font-semibold cursor-pointer list-none flex justify-between items-center text-lg text-white">
+                What if I'm outside Rochester?
+                <span className="transition group-open:rotate-180 text-zinc-500">▼</span>
+              </summary>
+              <p className="text-zinc-400 mt-4">
+                We're currently focused on the Greater Rochester area, but we're expanding soon. Submit a request anyway — we'll add you to our priority list for when we reach your area.
               </p>
             </details>
           </div>
