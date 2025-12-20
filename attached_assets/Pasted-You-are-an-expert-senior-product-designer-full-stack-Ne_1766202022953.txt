@@ -1,0 +1,182 @@
+You are an expert senior product designer + full-stack Next.js developer + brand copywriter.
+Build a complete, production-ready web app for LITTR (LITTR.CO) inside this Replit.
+
+GOAL:
+Create a modern minimalist, ultra-legit recycling company website focused on disposable vapes (recovering lithium-ion batteries + screens/components responsibly) plus other small batteries and small e-waste. It must feel credible to businesses and guilt-free to consumers scanning a QR code.
+
+IMPORTANT ENVIRONMENT:
+This must run reliably in Replit.
+Avoid native dependencies that require local compilation.
+Prefer “sqlite” (WASM/JS) over better-sqlite3 if better-sqlite3 might fail in Replit.
+If you choose better-sqlite3, confirm it installs cleanly in Replit. If it fails, immediately switch to “sqlite” (WASM) and continue without asking.
+The app MUST run with:
+- npm install
+- npm run dev
+
+TECH STACK (must follow):
+- Next.js (App Router) + TypeScript + Tailwind CSS
+- API routes under app/api/...
+- SQLite persistence (use the most Replit-safe SQLite library)
+- No external backend required
+
+DESIGN SYSTEM (must follow exactly):
+- Ultra-modern minimalist, high contrast, lots of whitespace
+- Mostly black/white palette with subtle grayscale borders/shadows
+- Typography: Inter (next/font/google)
+- Ensure text is ALWAYS readable: no black-on-black, no low-contrast overlays
+- Subtle motion but respect prefers-reduced-motion
+- Crisp buttons, cards, accordion UI
+- Avoid messy Tailwind mistakes:
+  - DO NOT create invalid classes like focus:ring-primary.light
+  - DO NOT create broken classes like bg-secondary DEFAULT or text-primary DEFAULT
+- Avoid JSX parsing bugs:
+  - NEVER include raw “>” inside JSX text. Use &gt; or {'>'}.
+
+BRAND + LOGO/FAVICON:
+- Brand name: LITTR (use “LITTR.CO” in header/footer/metadata where appropriate)
+- Provide clean SVG assets:
+  - /public/logo.svg = black square with “LITTR” in white centered, clean geometric sans-serif
+  - /public/favicon.svg = consistent with the logo (not a random L); should look like the logo style
+- The Logo component MUST load /logo.svg (not inline SVG in JSX)
+- Use only black/white in logo (grayscale allowed for UI borders)
+
+CORE COPY + POSITIONING:
+Tone: confident, clean, modern, credible, friendly, not corporate-cringe.
+Location assumption: Rochester, NY area (do NOT hard-claim permits; say “working toward compliance” and “following best practices”).
+Primary CTA: businesses request bins + pickup.
+Secondary CTA: consumer drop-offs feel guilt-free and informed.
+
+PAGES REQUIRED (build ALL):
+A) Home (/)
+- Hero with value prop + 2 CTAs:
+  - “Request a LITTR Bin” -> /business
+  - “Where can I drop off?” -> /dropoff
+- Short credibility section: safety-first, responsible handling, transparent process
+- “What we collect” tiles: clearly accepts vs does-not-accept
+- “What happens after drop-off” 3–5 steps (NO disassembly/how-to)
+- Risk section: lithium-ion trash risk (fires, contamination) careful wording (no fearmongering)
+- Social proof placeholders: “Partner Shops (coming soon)” + testimonial placeholders
+- Footer with phone, email placeholder, quick links
+
+B) For Businesses (/business)
+- Benefits: foot traffic, responsible disposal, community trust, easy pickup
+- How it works: delivery of bins, QR signage, pickup schedule, optional reporting
+- Request-a-bin form -> submits to backend SQLite
+- Business FAQ: careful language, no legal advice (suggest counsel if needed)
+
+C) Drop-off / QR Landing (/dropoff) + redirect (/qr -> /dropoff)
+Mobile-first with big buttons:
+- Headline: “Recycle your disposable vape here”
+- 3 reassurance bullets: safe diversion, responsible recycling, quick & guilt-free
+- What you can drop: disposable vapes, small Li-ion batteries, small electronics
+- What you cannot drop: damaged/swollen/hot/leaking, large packs (&gt;2Ah), e-bike/scooter packs, liquids/chemicals
+- Safety note: if damaged/hot/swollen/leaking, don’t deposit—use nonflammable container and contact local HHW program
+- Buttons:
+  - Call LITTR: tel:+15851234444
+  - Find drop location -> /locations
+  - Partner with us -> /business
+
+D) FAQ (/faq)
+- Accordion UI, scannable
+- Consumer FAQ + Business FAQ
+- Absolutely NO citation artifacts like “【…†L…】”
+
+E) About (/about)
+- Mission, values, story (local Rochester vibe)
+- “We’re starting small and scaling” authentic tone
+
+F) Contact (/contact)
+- Call + email placeholder
+- General contact form -> backend SQLite
+- Volunteer/job inquiry form -> backend SQLite
+- Link to bin request page
+
+G) Optional but include:
+- Locations (/locations) placeholder list
+- Safety & Compliance (/safety) careful wording, “working toward compliance”
+- Privacy (/privacy) + Terms (/terms) templates
+
+BACKEND + DATA (must implement):
+SQLite tables (create on startup or first write):
+1) contacts (id, name, email, message, createdAt)
+2) bin_requests (id, businessName, contactPerson, email, phone, address, volume, createdAt)
+3) volunteers (id, name, email, interest, availability, notes, createdAt)
+
+API routes:
+- POST /api/contact -> insert contact
+- POST /api/bin-request -> insert bin request
+- POST /api/volunteer -> insert volunteer
+
+AUTH + PORTALS (must implement):
+Role logins returning tokens:
+- POST /api/admin/login
+- POST /api/staff/login
+- POST /api/partner/login
+Credentials come from env vars with safe defaults:
+- ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_TOKEN
+- STAFF_USERNAME, STAFF_PASSWORD, STAFF_TOKEN
+- PARTNER_USERNAME, PARTNER_PASSWORD, PARTNER_TOKEN
+
+Protected data retrieval APIs (token in query param):
+- GET /api/admin/contacts?token=...
+- GET /api/admin/bin-requests?token=...
+- GET /api/admin/volunteers?token=...
+Allow any valid role token to read (admin/staff/partner), BUT:
+- Partner dashboard UI must only show bin requests.
+- Staff dashboard shows contacts + bin requests + volunteers.
+- Admin dashboard shows all.
+
+Portals (pages):
+- /admin/login + /admin/dashboard
+- /staff/login + /staff/dashboard
+- /partner/login + /partner/dashboard
+Implementation:
+- Store token in localStorage after login
+- Dashboards fetch data using token
+- Add Logout button clears token and redirects to login
+- Make any component using useState/useEffect a Client Component and put "use client" as the FIRST line.
+
+IMAGES / VISUALS:
+- Add tasteful high-quality visuals in /public/images: at least 3 (hero + 2 supporting)
+- If you cannot fetch online reliably, generate abstract “recycling tech” black/white visuals or use simple geometric SVG illustrations.
+- Ensure overlays keep text readable.
+
+SEO + METADATA:
+- Unique meta title + description per key page
+- OpenGraph tags
+- Add schema.org Organization JSON-LD on layout:
+  name: “LITTR”
+  url: “https://littr.co”
+  areaServed: “Rochester, NY”
+  telephone: “+1-585-123-4444”
+- Do NOT hard-claim permits/certifications; say “Partners & certifications: coming soon” where needed.
+
+BUILD QUALITY RULES:
+- No broken imports: app/layout.tsx must import global CSS correctly (e.g., import '../styles/globals.css' if placed in /styles)
+- Ensure every form has client-side validation + user-friendly success/error state
+- Ensure the site is keyboard navigable with focus styles
+- Ensure there are no overlapping elements at common breakpoints (mobile, tablet, desktop)
+- Ensure nav is sticky and readable on scroll
+- After implementing, run the app and fix all compile/runtime errors before finishing.
+
+DELIVERABLES:
+1) Create the full app codebase in this Replit.
+2) Include a short README with:
+   - npm install
+   - npm run dev
+   - env var examples for all roles
+   - where SQLite file lives
+3) Ensure everything works end-to-end:
+   - All pages render
+   - Forms write to SQLite and appear in dashboards
+   - Logins work and dashboards load
+
+CREATIVE FREEDOM:
+You may add tasteful features that improve the product as long as you don’t break requirements, such as:
+- “Impact counters” section with “Launching soon”
+- Email subscription placeholder
+- Partner resources page
+- Staff task list (local-only)
+Keep the design minimalist and premium.
+
+Now build it.
