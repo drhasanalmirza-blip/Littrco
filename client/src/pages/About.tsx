@@ -19,7 +19,7 @@ export default function About() {
         <div className="container mx-auto px-4 relative z-10 text-center text-white py-20">
           <p className="text-sm uppercase tracking-widest text-gray-400 mb-6">Our Story</p>
           <h1 className="text-4xl md:text-6xl font-bold mb-6 max-w-3xl mx-auto leading-tight">
-            Born in Rochester.<br />
+            Based in Rochester.<br />
             <span className="text-gray-400">Built for a cleaner future.</span>
           </h1>
         </div>
@@ -57,7 +57,7 @@ export default function About() {
             <div>
               <h3 className="text-2xl font-bold mb-4">Our Solution</h3>
               <p className="text-gray-600 leading-relaxed">
-                We're building a network of local drop-off points at smoke shops across Rochester. Free bins for businesses. Free drop-offs for consumers. Safe collection. Certified recycling. No excuses.
+                We're building a network of local drop-off points at smoke shops across upstate New York—Buffalo, Rochester, Syracuse, and beyond. Free bins for businesses. Free drop-offs for consumers. Safe collection. Certified recycling. No excuses.
               </p>
             </div>
           </div>
@@ -102,7 +102,7 @@ export default function About() {
                 <MapPin className="h-7 w-7" />
               </div>
               <h3 className="font-bold text-lg mb-2">Local First</h3>
-              <p className="text-gray-400 text-sm">We're starting in Rochester. Our community. Our responsibility.</p>
+              <p className="text-gray-400 text-sm">Based in Rochester, serving all of upstate NY.</p>
             </div>
           </div>
         </div>

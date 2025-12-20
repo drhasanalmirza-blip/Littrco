@@ -42,7 +42,7 @@ export default function Dropoff() {
       <section className="py-16 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <p className="text-sm uppercase tracking-widest text-gray-400 mb-2">Rochester, NY</p>
+            <p className="text-sm uppercase tracking-widest text-gray-400 mb-2">Buffalo • Rochester • Syracuse</p>
             <h2 className="text-3xl font-bold">Drop-off Locations</h2>
           </div>
           

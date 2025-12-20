@@ -11,7 +11,7 @@ export function Footer() {
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
               Modern recycling solutions for the disposable vape era. 
-              Recovering lithium-ion batteries responsibly in Rochester, NY.
+              Recovering lithium-ion batteries responsibly across upstate New York.
             </p>
           </div>
           
@@ -39,7 +39,7 @@ export function Footer() {
           <div>
             <h4 className="font-bold mb-4">Contact</h4>
             <ul className="space-y-2 text-sm text-gray-400">
-              <li>Rochester, NY</li>
+              <li>Buffalo • Rochester • Syracuse</li>
               <li><a href="tel:+16073850725" className="hover:text-white">+1 (607) 385-0725</a></li>
               <li><a href="mailto:hello@littr.co" className="hover:text-white">hello@littr.co</a></li>
             </ul>

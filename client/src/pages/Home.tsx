@@ -49,7 +49,7 @@ export default function Home() {
         <div className="container mx-auto px-4 relative z-20 pt-20">
           <div className="max-w-3xl mx-auto text-center text-white">
             <p className="text-sm uppercase tracking-[0.4em] text-gray-400 mb-8 font-medium">
-              Rochester, NY
+              Upstate New York
             </p>
             <h1 className="text-5xl md:text-8xl font-bold tracking-tight mb-8 leading-[0.95]">
               Drop it.<br />
@@ -98,7 +98,7 @@ export default function Home() {
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-8 left-8 right-8 text-white">
               <h3 className="text-2xl font-bold mb-2">Partner locations</h3>
-              <p className="text-gray-300">Bins at smoke shops across Rochester.</p>
+              <p className="text-gray-300">Bins at smoke shops across upstate NY.</p>
             </div>
           </div>
         </div>
