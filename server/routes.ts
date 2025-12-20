@@ -92,6 +92,28 @@ export async function registerRoutes(
     }
   });
 
+  // Test email endpoint (for debugging)
+  app.post("/api/test-email", async (req, res) => {
+    try {
+      const { to } = req.body;
+      const testEmail = to || 'test@example.com';
+      
+      const result = await sendCustomEmail(
+        testEmail,
+        'LITTR.co Test Email',
+        `<h2>Test Email from LITTR.co</h2><p>If you received this, your email setup is working!</p><p>Sent at: ${new Date().toISOString()}</p>`
+      );
+      
+      if (result.success) {
+        res.json({ success: true, message: `Test email sent to ${testEmail}` });
+      } else {
+        res.status(500).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   // Admin email endpoint
   app.post("/api/admin/send-email", async (req, res) => {
     try {
