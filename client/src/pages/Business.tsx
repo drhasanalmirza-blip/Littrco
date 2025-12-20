@@ -64,41 +64,62 @@ export default function Business() {
       {/* Hero */}
       <div className="bg-black text-white py-20">
         <div className="container mx-auto px-4 text-center max-w-3xl">
-          <h1 className="text-4xl md:text-6xl font-bold mb-6">Become a Partner</h1>
+          <div className="inline-block bg-[#CCFF00] text-black px-4 py-1 rounded-full text-sm font-bold mb-6">
+            100% Free for Partners
+          </div>
+          <h1 className="text-4xl md:text-6xl font-bold mb-6">Stop finding vapes in your parking lot.</h1>
           <p className="text-xl text-gray-400 mb-8">
-            Drive foot traffic, build community trust, and solve the e-waste problem at your location.
+            We give you a bin. We pick it up. Zero work for you. Your customers get a place to do the right thing.
           </p>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 -mt-10">
+      {/* Testimonial */}
+      <div className="bg-[#CCFF00] py-8">
+        <div className="container mx-auto px-4 text-center">
+          <p className="text-lg md:text-xl font-medium text-black max-w-2xl mx-auto">
+            "I was so tired of sweeping up dead vapes from the parking lot every morning. Now customers just toss them in the bin on their way out."
+          </p>
+          <p className="mt-4 font-bold text-black">— Tino, High End Smoke Shop</p>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Left Column: Benefits & Info */}
           <div className="lg:col-span-2 space-y-8">
             {/* Benefits Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
+              <Card className="border-2 border-black">
                 <CardContent className="pt-6">
                   <Store className="h-8 w-8 mb-4 text-black" />
-                  <h3 className="font-bold mb-2">Drive Traffic</h3>
-                  <p className="text-sm text-gray-500">Recycling brings conscious consumers to your door.</p>
+                  <h3 className="font-bold mb-2">Zero Work for You</h3>
+                  <p className="text-sm text-gray-500">We deliver, we pick up. You just point customers to the bin.</p>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="border-2 border-black">
                 <CardContent className="pt-6">
                   <CheckCircle2 className="h-8 w-8 mb-4 text-black" />
-                  <h3 className="font-bold mb-2">Turnkey Solution</h3>
-                  <p className="text-sm text-gray-500">We provide the bin, signage, and regular pickups.</p>
+                  <h3 className="font-bold mb-2">Customers Love It</h3>
+                  <p className="text-sm text-gray-500">Give them a guilt-free way to dispose. They'll remember you for it.</p>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="border-2 border-black">
                 <CardContent className="pt-6">
                   <Truck className="h-8 w-8 mb-4 text-black" />
-                  <h3 className="font-bold mb-2">Responsible</h3>
-                  <p className="text-sm text-gray-500">Full transparency on where the waste goes.</p>
+                  <h3 className="font-bold mb-2">Free Pickup</h3>
+                  <p className="text-sm text-gray-500">Text us when it's full. We come get it. That simple.</p>
                 </CardContent>
               </Card>
+            </div>
+
+            {/* Fire Hazard Warning */}
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <h3 className="font-bold text-red-800 mb-2">Did you know?</h3>
+              <p className="text-red-700 text-sm">
+                Lithium-ion batteries in vapes can catch fire when crushed in garbage trucks. Proper disposal protects sanitation workers and keeps your business on the right side of EPA guidelines.
+              </p>
             </div>
 
             {/* How it Works */}

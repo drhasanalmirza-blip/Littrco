@@ -198,26 +198,36 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Testimonial */}
+      <section className="py-12 bg-[#CCFF00]">
+        <div className="container mx-auto px-4 text-center">
+          <p className="text-lg md:text-xl font-medium text-black max-w-2xl mx-auto">
+            "I was so tired of sweeping up dead vapes from the parking lot every morning. Now customers just toss them in the bin on their way out."
+          </p>
+          <p className="mt-4 font-bold text-black">— Tino, High End Smoke Shop</p>
+        </div>
+      </section>
+
       {/* Partner Locations */}
       <section className="py-20 border-t border-gray-100">
         <div className="container mx-auto px-4 text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-gray-400 mb-4">Drop-off locations</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-gray-400 mb-4">Drop-off locations in Rochester</p>
           <h2 className="text-3xl font-bold mb-12">Our Partner Shops</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="bg-black text-white p-8 rounded-2xl">
               <h3 className="text-xl font-bold mb-2">Elite Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Drop-off Partner</p>
+              <p className="text-gray-400 text-sm">Rochester, NY</p>
             </div>
             <div className="bg-black text-white p-8 rounded-2xl">
               <h3 className="text-xl font-bold mb-2">High End Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Drop-off Partner</p>
+              <p className="text-gray-400 text-sm">Rochester, NY</p>
             </div>
             <div className="bg-black text-white p-8 rounded-2xl">
               <h3 className="text-xl font-bold mb-2">Red Eye Smoke Shop</h3>
-              <p className="text-gray-400 text-sm">Drop-off Partner</p>
+              <p className="text-gray-400 text-sm">Rochester, NY</p>
             </div>
           </div>
-          <p className="mt-8 text-gray-500">Want to become a partner location? <Link href="/business" className="text-black font-semibold underline">Request a bin</Link></p>
+          <p className="mt-8 text-gray-500">Want to become a partner location? <Link href="/business" className="text-black font-semibold underline">Request a free bin</Link></p>
         </div>
       </section>
     </div>
