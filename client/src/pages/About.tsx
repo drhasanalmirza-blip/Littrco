@@ -2,10 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { ArrowRight, Heart, MapPin, Recycle, Shield } from "lucide-react";
 
-import rochesterImage from "@assets/generated_images/rochester_ny_cityscape.png";
-import sustainImage from "@assets/generated_images/e-waste_sustainability_concept.png";
-import handsImage from "@assets/generated_images/hands_dropping_vape_in_bin.png";
-import macroImage from "@assets/generated_images/abstract_battery_macro.png";
+import skylineImage from "@assets/generated_images/rochester_skyline_golden_hour.png";
+import teamImage from "@assets/generated_images/team_photo_rochester.png";
+import batteryMacroImage from "@assets/generated_images/recycled_battery_cells_macro.png";
 
 export default function About() {
   return (
@@ -13,7 +12,7 @@ export default function About() {
       {/* Hero */}
       <section className="relative min-h-[60vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img src={rochesterImage} alt="Rochester, NY" className="w-full h-full object-cover opacity-50" />
+          <img src={skylineImage} alt="Rochester, NY skyline" className="w-full h-full object-cover opacity-50" />
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/70 to-black" />
         
@@ -42,7 +41,7 @@ export default function About() {
       <section className="bg-gray-50">
         <div className="grid grid-cols-1 md:grid-cols-2">
           <div className="relative h-96">
-            <img src={sustainImage} alt="Sustainability" className="w-full h-full object-cover" />
+            <img src={batteryMacroImage} alt="Recycled battery cells" className="w-full h-full object-cover" loading="lazy" />
           </div>
           <div className="flex items-center p-12 md:p-16">
             <div>
@@ -63,7 +62,7 @@ export default function About() {
             </div>
           </div>
           <div className="relative h-96 order-1 md:order-2">
-            <img src={handsImage} alt="Solution" className="w-full h-full object-cover" />
+            <img src={teamImage} alt="LITTR team" className="w-full h-full object-cover" loading="lazy" />
           </div>
         </div>
       </section>
@@ -110,9 +109,7 @@ export default function About() {
       </section>
 
       {/* Team/Local Focus */}
-      <section className="relative py-32 overflow-hidden">
-        <img src={macroImage} alt="Technology" className="absolute inset-0 w-full h-full object-cover opacity-20" />
-        <div className="absolute inset-0 bg-white" style={{ opacity: 0.9 }} />
+      <section className="relative py-32 overflow-hidden bg-white">
         <div className="container mx-auto px-4 relative z-10 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-6">We're not a giant corporation.</h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-10">

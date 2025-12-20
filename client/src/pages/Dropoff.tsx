@@ -2,11 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { AlertTriangle, BatteryWarning, CheckCircle, MapPin, Phone } from "lucide-react";
 
-import binImage from "@assets/generated_images/littr_bin_in_smoke_shop.png";
-import vapesImage from "@assets/generated_images/disposable_vapes_product_shot.png";
-import batteriesImage from "@assets/generated_images/batteries_aerial_pattern.png";
-import handsImage from "@assets/generated_images/hands_dropping_vape_in_bin.png";
-import shopImage from "@assets/generated_images/smoke_shop_storefront_night.png";
+import neighborhoodImage from "@assets/generated_images/neighborhood_drop-off_corner.png";
+import binCloseupImage from "@assets/generated_images/labeled_recycling_bin_closeup.png";
+import communityImage from "@assets/generated_images/community_members_recycling.png";
 
 export default function Dropoff() {
   return (
@@ -14,7 +12,7 @@ export default function Dropoff() {
       {/* Hero with visual */}
       <section className="relative min-h-[60vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img src={handsImage} alt="Recycling" className="w-full h-full object-cover opacity-40" />
+          <img src={neighborhoodImage} alt="Neighborhood drop-off" className="w-full h-full object-cover opacity-40" />
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/70 to-black" />
         
@@ -51,7 +49,7 @@ export default function Dropoff() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="group">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={shopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <img src={binCloseupImage} alt="Elite Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <MapPin className="h-5 w-5" />
@@ -62,7 +60,7 @@ export default function Dropoff() {
             </div>
             <div className="group">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={binImage} alt="High End Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <img src={communityImage} alt="High End Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <MapPin className="h-5 w-5" />
@@ -73,7 +71,7 @@ export default function Dropoff() {
             </div>
             <div className="group">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
-                <img src={shopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <img src={neighborhoodImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <MapPin className="h-5 w-5" />
@@ -96,8 +94,8 @@ export default function Dropoff() {
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
-              <div className="h-40">
-                <img src={vapesImage} alt="Vapes" className="w-full h-full object-cover" />
+              <div className="h-40 bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
+                <span className="text-5xl">💨</span>
               </div>
               <div className="p-4 text-center">
                 <h3 className="font-semibold">Disposable Vapes</h3>
@@ -107,8 +105,8 @@ export default function Dropoff() {
               </div>
             </div>
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
-              <div className="h-40">
-                <img src={batteriesImage} alt="Batteries" className="w-full h-full object-cover" />
+              <div className="h-40 bg-gradient-to-br from-green-100 to-teal-100 flex items-center justify-center">
+                <span className="text-5xl">🔋</span>
               </div>
               <div className="p-4 text-center">
                 <h3 className="font-semibold">Li-ion Batteries</h3>
@@ -118,7 +116,7 @@ export default function Dropoff() {
               </div>
             </div>
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
-              <div className="h-40 bg-gray-100 flex items-center justify-center">
+              <div className="h-40 bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center">
                 <span className="text-5xl">🎧</span>
               </div>
               <div className="p-4 text-center">

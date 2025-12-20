@@ -10,9 +10,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Quote, Store, Truck } from "lucide-react";
 
-import binImage from "@assets/generated_images/littr_bin_in_smoke_shop.png";
-import shopImage from "@assets/generated_images/smoke_shop_storefront_night.png";
-import handsImage from "@assets/generated_images/hands_dropping_vape_in_bin.png";
+import shopInteriorImage from "@assets/generated_images/shop_interior_with_bin.png";
+import staffImage from "@assets/generated_images/staff_handing_bin_to_owner.png";
+import vanImage from "@assets/generated_images/pickup_van_at_shop.png";
 
 const formSchema = z.object({
   businessName: z.string().min(2, "Business name is required"),
@@ -67,7 +67,7 @@ export default function Business() {
       {/* Hero with image */}
       <section className="relative min-h-[70vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img src={shopImage} alt="Smoke shop" className="w-full h-full object-cover opacity-40" />
+          <img src={shopInteriorImage} alt="Shop interior with LITTR bin" className="w-full h-full object-cover opacity-40" />
         </div>
         <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent" />
         
@@ -91,7 +91,7 @@ export default function Business() {
       <section className="py-0 bg-white">
         <div className="grid grid-cols-1 md:grid-cols-3">
           <div className="relative h-64 md:h-80">
-            <img src={binImage} alt="LITTR bin" className="w-full h-full object-cover" />
+            <img src={staffImage} alt="Staff delivering bin" className="w-full h-full object-cover" loading="lazy" />
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-6">
               <div className="text-center text-white">
                 <Store className="h-10 w-10 mx-auto mb-4" />
@@ -101,7 +101,7 @@ export default function Business() {
             </div>
           </div>
           <div className="relative h-64 md:h-80">
-            <img src={handsImage} alt="Customer using bin" className="w-full h-full object-cover" />
+            <img src={shopInteriorImage} alt="Bin in shop" className="w-full h-full object-cover" loading="lazy" />
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-6">
               <div className="text-center text-white">
                 <CheckCircle2 className="h-10 w-10 mx-auto mb-4" />
@@ -110,11 +110,14 @@ export default function Business() {
               </div>
             </div>
           </div>
-          <div className="relative h-64 md:h-80 bg-black flex items-center justify-center p-6">
-            <div className="text-center text-white">
-              <Truck className="h-10 w-10 mx-auto mb-4" />
-              <h3 className="text-xl font-bold mb-2">Free Pickup</h3>
-              <p className="text-sm text-gray-400">Text us when it's full. We come get it. That simple.</p>
+          <div className="relative h-64 md:h-80">
+            <img src={vanImage} alt="Pickup van" className="w-full h-full object-cover" loading="lazy" />
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-6">
+              <div className="text-center text-white">
+                <Truck className="h-10 w-10 mx-auto mb-4" />
+                <h3 className="text-xl font-bold mb-2">Free Pickup</h3>
+                <p className="text-sm text-gray-300">Text us when it's full. We come get it. That simple.</p>
+              </div>
             </div>
           </div>
         </div>
