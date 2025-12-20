@@ -198,21 +198,26 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Social Proof Placeholder */}
+      {/* Partner Locations */}
       <section className="py-20 border-t border-gray-100">
         <div className="container mx-auto px-4 text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-gray-400 mb-8">Partnering with local businesses</p>
-          <div className="flex justify-center gap-8 opacity-50 grayscale">
-            {/* Placeholders for partner logos */}
-            <div className="h-12 w-32 bg-gray-200 rounded"></div>
-            <div className="h-12 w-32 bg-gray-200 rounded"></div>
-            <div className="h-12 w-32 bg-gray-200 rounded"></div>
-            <div className="h-12 w-32 bg-gray-200 rounded"></div>
+          <p className="text-sm font-semibold uppercase tracking-widest text-gray-400 mb-4">Drop-off locations</p>
+          <h2 className="text-3xl font-bold mb-12">Our Partner Shops</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            <div className="bg-black text-white p-8 rounded-2xl">
+              <h3 className="text-xl font-bold mb-2">Elite Smoke Shop</h3>
+              <p className="text-gray-400 text-sm">Drop-off Partner</p>
+            </div>
+            <div className="bg-black text-white p-8 rounded-2xl">
+              <h3 className="text-xl font-bold mb-2">High End Smoke Shop</h3>
+              <p className="text-gray-400 text-sm">Drop-off Partner</p>
+            </div>
+            <div className="bg-black text-white p-8 rounded-2xl">
+              <h3 className="text-xl font-bold mb-2">Red Eye Smoke Shop</h3>
+              <p className="text-gray-400 text-sm">Drop-off Partner</p>
+            </div>
           </div>
-          <div className="mt-12 p-8 bg-gray-50 rounded-2xl max-w-2xl mx-auto italic text-gray-600">
-            "Finally, a simple way to deal with the disposable vapes we find in our parking lot. LITTR made it easy."
-            <div className="mt-4 not-italic font-semibold text-black">- Local Business Owner</div>
-          </div>
+          <p className="mt-8 text-gray-500">Want to become a partner location? <Link href="/business" className="text-black font-semibold underline">Request a bin</Link></p>
         </div>
       </section>
     </div>
