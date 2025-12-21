@@ -18,6 +18,7 @@ import {
   sendPointsClaimedEmail,
   sendRedemptionEmail,
 } from "./email";
+import bcrypt from "bcryptjs";
 import { 
   login, 
   register, 
@@ -109,6 +110,32 @@ export async function registerRoutes(
         role: req.user!.role 
       } 
     });
+  });
+
+  app.post("/api/auth/change-password", authMiddleware, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Current and new passwords required" });
+      }
+      
+      const user = await storage.getUser(req.user!.id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const passwordMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!passwordMatch) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+      
+      const newPasswordHash = await hashPassword(newPassword);
+      const updated = await storage.updateUserPassword(req.user!.id, newPasswordHash);
+      
+      res.json({ success: true, message: "Password changed successfully" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to change password" });
+    }
   });
 
   // ==================== PUBLIC FORM ROUTES ====================

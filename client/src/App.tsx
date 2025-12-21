@@ -18,6 +18,8 @@ import StaffDashboard from "@/pages/staff/Dashboard";
 import PartnerDashboard from "@/pages/partner/Dashboard";
 import CustomerDashboard from "@/pages/customer/Dashboard";
 import ClaimPage from "@/pages/customer/Claim";
+import RegisterPage from "@/pages/customer/Register";
+import ChangePasswordPage from "@/pages/customer/ChangePassword";
 
 function Router() {
   const [location] = useLocation();
@@ -61,7 +63,9 @@ function Router() {
         {/* Customer App */}
         <Route path="/app" component={CustomerDashboard} />
         <Route path="/app/login" component={() => <Login type="customer" />} />
+        <Route path="/app/register" component={RegisterPage} />
         <Route path="/app/claim" component={ClaimPage} />
+        <Route path="/app/change-password" component={ChangePasswordPage} />
 
         <Route component={NotFound} />
       </Switch>
