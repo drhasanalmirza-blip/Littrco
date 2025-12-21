@@ -49,7 +49,7 @@ import {
   pickupRequests,
 } from "@shared/schema";
 import { db } from "./db";
-import { desc, eq, and, gte, sql, lt } from "drizzle-orm";
+import { desc, eq, and, gte, sql, lt, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -230,7 +230,7 @@ export class DatabaseStorage implements IStorage {
     const members = await db.select().from(shopMembers).where(eq(shopMembers.userId, userId));
     if (members.length === 0) return [];
     const shopIds = members.map(m => m.shopId);
-    return await db.select().from(shops).where(sql`${shops.id} = ANY(${shopIds})`);
+    return await db.select().from(shops).where(inArray(shops.id, shopIds));
   }
   
   // Shop Members
