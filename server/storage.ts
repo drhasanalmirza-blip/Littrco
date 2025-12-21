@@ -76,8 +76,10 @@ export interface IStorage {
   // Shops
   createShop(shop: InsertShop): Promise<Shop>;
   getShop(id: number): Promise<Shop | undefined>;
+  getShopByPin(pin: string): Promise<Shop | undefined>;
   getAllShops(): Promise<Shop[]>;
   updateShopStatus(id: number, status: string): Promise<Shop | undefined>;
+  updateShopPin(id: number, pin: string): Promise<Shop | undefined>;
   getShopsByMemberId(userId: string): Promise<Shop[]>;
   
   // Shop Members
@@ -222,6 +224,11 @@ export class DatabaseStorage implements IStorage {
     const [shop] = await db.select().from(shops).where(eq(shops.id, id));
     return shop;
   }
+
+  async getShopByPin(pin: string): Promise<Shop | undefined> {
+    const [shop] = await db.select().from(shops).where(eq(shops.secretPin, pin));
+    return shop;
+  }
   
   async getAllShops(): Promise<Shop[]> {
     return await db.select().from(shops).orderBy(desc(shops.createdAt));
@@ -229,6 +236,11 @@ export class DatabaseStorage implements IStorage {
   
   async updateShopStatus(id: number, status: string): Promise<Shop | undefined> {
     const [shop] = await db.update(shops).set({ status: status as any }).where(eq(shops.id, id)).returning();
+    return shop;
+  }
+
+  async updateShopPin(id: number, pin: string): Promise<Shop | undefined> {
+    const [shop] = await db.update(shops).set({ secretPin: pin }).where(eq(shops.id, id)).returning();
     return shop;
   }
   

@@ -120,7 +120,7 @@ export async function registerRoutes(
       }
       
       const user = await storage.getUser(req.user!.id);
-      if (!user) {
+      if (!user || !user.passwordHash) {
         return res.status(404).json({ error: "User not found" });
       }
       
@@ -913,6 +913,284 @@ export async function registerRoutes(
       }
     } catch (error) {
       res.status(500).json({ error: "Failed to send email" });
+    }
+  });
+
+  // ==================== V1 DEVICE API (LITTR Screen Pro) ====================
+  
+  // New weighted point distribution
+  const POINT_DISTRIBUTION = [
+    { points: 1, weight: 70, label: "+1 LITTR point" },
+    { points: 2, weight: 15, label: "+2 LITTR points" },
+    { points: 5, weight: 10, label: "+5 LITTR points" },
+    { points: 10, weight: 4, label: "+10 LITTR points" },
+    { points: 25, weight: 0.9, label: "+25 LITTR points" },
+    { points: 100, weight: 0.1, label: "JACKPOT! +100 LITTR points" },
+  ];
+
+  // Device pairing with Shop PIN
+  app.post("/api/v1/device/pair", async (req, res) => {
+    try {
+      const { shopPin, deviceName, firmwareVersion } = req.body;
+      
+      if (!shopPin || !deviceName) {
+        return res.status(400).json({ error: "shopPin and deviceName required" });
+      }
+      
+      // Find shop by secret PIN
+      const shop = await storage.getShopByPin(shopPin);
+      if (!shop) {
+        return res.status(404).json({ error: "Invalid shop PIN" });
+      }
+      
+      if (shop.status !== "VERIFIED") {
+        return res.status(400).json({ error: "Shop not verified" });
+      }
+      
+      // Generate device credentials
+      const deviceKey = generateDeviceKey();
+      const deviceKeyHash = hashDeviceKey(deviceKey);
+      
+      // Create device
+      const device = await storage.createDevice({
+        shopId: shop.id,
+        name: deviceName,
+        deviceKeyHash,
+        status: "ACTIVE",
+      });
+      
+      // Create reward config if not exists
+      let config = await storage.getRewardConfig(shop.id);
+      if (!config) {
+        config = await storage.createRewardConfig({ 
+          shopId: shop.id,
+          rewardTableJson: POINT_DISTRIBUTION,
+        });
+      }
+      
+      res.json({
+        deviceId: device.id.toString(),
+        deviceKey,
+        shopId: shop.id.toString(),
+        config: {
+          minSecondsBetweenSpins: config.minSecondsBetweenSpins,
+          enabled: config.enabled,
+        },
+      });
+    } catch (error) {
+      console.error('Device pair error:', error);
+      res.status(500).json({ error: "Pairing failed" });
+    }
+  });
+
+  // V1 Device spin with new point distribution
+  app.post("/api/v1/device/spin", async (req, res) => {
+    try {
+      const deviceId = req.headers["x-device-id"] as string;
+      const deviceKey = req.headers["x-device-key"] as string;
+      
+      if (!deviceId || !deviceKey) {
+        return res.status(401).json({ error: "Device authentication required" });
+      }
+      
+      const auth = await authenticateDevice(deviceId, deviceKey);
+      if (!auth) {
+        return res.status(401).json({ error: "Invalid device credentials" });
+      }
+      
+      const { device, shop } = auth;
+      
+      // Get reward config
+      const config = await storage.getRewardConfig(shop.id);
+      if (!config || !config.enabled) {
+        return res.status(400).json({ error: "Rewards disabled for this shop" });
+      }
+      
+      // Check rate limit (20 seconds)
+      const todayEvents = await storage.getTodayDropEventsByDevice(device.id);
+      const minSeconds = 20;
+      
+      if (todayEvents.length > 0) {
+        const lastEvent = todayEvents[todayEvents.length - 1];
+        const secondsSinceLast = (Date.now() - new Date(lastEvent.createdAt).getTime()) / 1000;
+        if (secondsSinceLast < minSeconds) {
+          return res.status(429).json({ 
+            ok: false,
+            error: "Too fast", 
+            waitSeconds: Math.ceil(minSeconds - secondsSinceLast) 
+          });
+        }
+      }
+      
+      // Use new weighted point distribution
+      const totalWeight = POINT_DISTRIBUTION.reduce((sum, r) => sum + r.weight, 0);
+      let random = Math.random() * totalWeight;
+      let selectedReward = POINT_DISTRIBUTION[0];
+      
+      for (const reward of POINT_DISTRIBUTION) {
+        random -= reward.weight;
+        if (random <= 0) {
+          selectedReward = reward;
+          break;
+        }
+      }
+      
+      // Create drop event
+      const dropEvent = await storage.createDropEvent({
+        shopId: shop.id,
+        deviceId: device.id,
+        pointsAwarded: selectedReward.points,
+      });
+      
+      // Create claim token (expires in 2 minutes as per spec)
+      const token = generateClaimToken();
+      const tokenHash = hashDeviceKey(token);
+      const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
+      await storage.createClaimToken(tokenHash, dropEvent.id, expiresAt);
+      
+      res.json({
+        ok: true,
+        outcome: {
+          points: selectedReward.points,
+          label: selectedReward.label,
+        },
+        claim: {
+          token,
+          expiresAt: expiresAt.toISOString(),
+          qrUrl: `https://littr.co/app/claim?token=${token}`,
+        },
+      });
+    } catch (error) {
+      console.error('V1 Device spin error:', error);
+      res.status(500).json({ ok: false, error: "Spin failed" });
+    }
+  });
+
+  // V1 Claim endpoint
+  app.post("/api/v1/claim", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const { token, email, password } = req.body;
+      
+      if (!token) {
+        return res.status(400).json({ ok: false, error: "Token required" });
+      }
+      
+      const tokenHash = hashDeviceKey(token);
+      const claimToken = await storage.getClaimToken(tokenHash);
+      
+      if (!claimToken) {
+        return res.status(404).json({ ok: false, error: "Token not found" });
+      }
+      
+      if (claimToken.claimedAt) {
+        return res.status(400).json({ ok: false, error: "Token already claimed" });
+      }
+      
+      if (new Date(claimToken.expiresAt) < new Date()) {
+        return res.status(400).json({ ok: false, error: "Token expired" });
+      }
+      
+      let user = req.user;
+      let sessionId: string | undefined;
+      
+      // If not logged in, require email/password for registration or login
+      if (!user) {
+        if (!email || !password) {
+          return res.status(400).json({ 
+            ok: false, 
+            error: "Please log in or register to claim points",
+            requiresAuth: true 
+          });
+        }
+        
+        const existing = await storage.getUserByEmail(email);
+        if (existing) {
+          // Login
+          const result = await login(email, password);
+          if (!result) {
+            return res.status(401).json({ ok: false, error: "Invalid credentials" });
+          }
+          user = result.user;
+          sessionId = result.sessionId;
+        } else {
+          // Register
+          const result = await register(email, password, "CUSTOMER");
+          user = result.user;
+          sessionId = result.sessionId;
+        }
+      }
+      
+      // Get customer and wallet
+      const customer = await storage.getCustomerByUserId(user.id);
+      if (!customer) {
+        return res.status(404).json({ ok: false, error: "Customer profile not found" });
+      }
+      
+      const wallet = await storage.getWallet(customer.id);
+      if (!wallet) {
+        return res.status(404).json({ ok: false, error: "Wallet not found" });
+      }
+      
+      // Get drop event for points
+      const dropEvent = await storage.getDropEvent(claimToken.dropEventId);
+      if (!dropEvent) {
+        return res.status(404).json({ ok: false, error: "Drop event not found" });
+      }
+      
+      // Get shop info for receipt
+      const shop = await storage.getShop(dropEvent.shopId);
+      
+      // Claim the token
+      const claimed = await storage.claimToken(tokenHash, user.id);
+      if (!claimed) {
+        return res.status(400).json({ ok: false, error: "Failed to claim token" });
+      }
+      
+      // Update wallet
+      await storage.updateWalletBalance(customer.id, dropEvent.pointsAwarded, true);
+      
+      // Create transaction
+      await storage.createTransaction({
+        walletId: wallet.id,
+        amount: dropEvent.pointsAwarded,
+        type: "EARN",
+        description: `Recycling reward at ${shop?.name || 'LITTR location'}`,
+      });
+      
+      const newBalance = wallet.pointsBalance + dropEvent.pointsAwarded;
+      
+      // Send email
+      sendPointsClaimedEmail(user.email, dropEvent.pointsAwarded).catch(err => console.error('Email error:', err));
+      
+      res.json({ 
+        ok: true,
+        receipt: {
+          points: dropEvent.pointsAwarded,
+          shopName: shop?.name || 'LITTR Location',
+          timestamp: new Date().toISOString(),
+          newBalance,
+        },
+        sessionId,
+        user: sessionId ? { id: user.id, email: user.email, role: user.role } : undefined,
+      });
+    } catch (error) {
+      console.error('V1 Claim error:', error);
+      res.status(500).json({ ok: false, error: "Failed to claim points" });
+    }
+  });
+
+  // Staff endpoint to set shop PIN
+  app.patch("/api/staff/shops/:id/pin", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { pin } = req.body;
+      if (!pin || pin.length !== 6 || !/^\d+$/.test(pin)) {
+        return res.status(400).json({ error: "PIN must be 6 digits" });
+      }
+      
+      const shop = await storage.updateShopPin(parseInt(req.params.id), pin);
+      res.json(shop);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update shop PIN" });
     }
   });
 

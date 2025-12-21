@@ -46,6 +46,7 @@ export const shops = pgTable("shops", {
   city: text("city").notNull(),
   serviceArea: text("service_area").notNull(),
   phone: text("phone"),
+  secretPin: text("secret_pin"),
   status: shopStatusEnum("status").notNull().default("PENDING"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

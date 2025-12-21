@@ -1,0 +1,269 @@
+You are a senior full-stack engineer. This app is live on Replit Autoscale with Postgres connected and Resend working. The UI is already styled (pixel-art dark theme). Your job is to fix bugs and fully implement the missing backend and flows, with end-to-end testing and a seeded demo so we can validate everything in one run.
+
+HARD CONSTRAINTS
+
+Do NOT redesign the site. Keep pixel-art theme and layout. Only add UI needed for new features.
+
+Do NOT change the routing structure unless required for correctness.
+
+Fix “customer dashboard non-working” issue and make /app the primary customer dashboard.
+
+Partner accounts MUST be created only by staff. No partner self-signup.
+
+Staff account MUST be determined automatically:
+
+Any account created with email dr.hasanalmirza@gmail.com must be STAFF.
+
+Additional staff accounts may be created only by existing staff.
+
+Shops DO have an on-screen “spin/slot” experience in-store, but we must message it as “interactive experience” and “customer delight” and “engagement,” not as a store-run rewards program that encourages dishonesty or liability. Do this in business-friendly copy.
+
+REQUIRED FEATURES TO IMPLEMENT (BUG-FREE)
+1) AUTH + ROLES
+
+Implement real auth with sessions (cookie-based) and server-side authorization.
+Roles: STAFF, PARTNER, CUSTOMER.
+
+If user signs up with dr.hasanalmirza@gmail.com, auto-assign STAFF and grant access to /staff.
+
+Customers can self-signup.
+
+Partners cannot self-signup. Partners can only login after staff invites/creates them.
+
+2) CUSTOMER DASHBOARD /app (FULLY FUNCTIONAL)
+
+Replace the current “wallet-only” view with a true dashboard:
+
+A large primary button: “Scan QR to Claim Points”
+
+Clicking it opens a camera scanner in-browser (use html5-qrcode or similar library, mobile-friendly).
+
+Also provide a manual entry fallback: paste claim code / token.
+
+Show wallet balance, recent transactions, and redemption history.
+
+After successful claim, show a clean “receipt” page:
+
+points earned
+
+shop name
+
+timestamp
+
+updated balance
+
+3) STAFF PORTAL /staff (FULLY FUNCTIONAL)
+
+Add pages to:
+
+View and manage Leads (bin requests)
+
+Create Shops (PENDING → VERIFIED)
+
+Invite/create Partner users and attach them to shops
+
+Create/provision Devices (ESP32)
+
+Set “Shop Secret PIN” (6 digits) used to pair devices in the field
+
+View Device status (last seen, firmware)
+
+View all drop events (spins) and claims
+
+Manage store items (power banks etc.)
+
+View redemption queue and mark fulfilled
+
+4) PARTNER PORTAL /partner (CLEAN + SIMPLE)
+
+Partner sees only their shop:
+
+Summary: “Vapes collected (events count)” and “Points issued to customers”
+
+Device status (online/offline, last seen)
+
+“Request Pickup” button (creates a ticket/email to staff)
+
+IMPORTANT: Do NOT give partners the ability to configure reward odds.
+
+Include business-friendly copy:
+
+“We keep the experience consistent across shops to ensure fairness and compliance.”
+
+“Shops don’t administer the points program; LITTR manages it end-to-end.”
+
+5) DEVICE SYSTEM (ESP32 “LITTR Screen Pro”)
+
+Design the backend that ESP32 will communicate with, with a simple setup:
+
+In-store device setup flow:
+
+Device connects to WiFi
+
+User enters “Shop Secret PIN”
+
+Device pairs and receives a device token/credentials
+
+Shops should not be told it is an ESP32; just refer to it as “LITTR Screen Pro”.
+
+Implement endpoints under /api/v1/device:
+
+A) POST /api/v1/device/pair
+Inputs: { "shopPin": "123456", "deviceName": "Screen Pro #1", "firmwareVersion": "1.0.0" }
+Returns: { "deviceId": "...", "deviceKey": "..." , "shopId": "...", "config": {...} }
+
+Staff sets Shop Secret PIN in staff portal.
+
+Pairing requires correct PIN and shop must be VERIFIED.
+
+B) POST /api/v1/device/spin
+Auth: headers X-DEVICE-ID, X-DEVICE-KEY
+Server:
+
+rate-limit spins per device (e.g. 1 per 20 seconds)
+
+create a DropEvent (this is the “vape collected” proxy counter)
+
+generate points randomly using a fixed weighted distribution:
+
+1 point: common (e.g. 70%)
+
+2 points: 15%
+
+5 points: 10%
+
+10 points: 4%
+
+25 points: 0.9%
+
+100 points: 0.1% jackpot
+
+create a single-use ClaimToken (expires in 2 minutes)
+Return:
+
+{
+  "ok": true,
+  "outcome": { "points": 1, "label": "+1 LITTR point" },
+  "claim": {
+    "token": "RAW_TOKEN",
+    "expiresAt": "ISO",
+    "qrUrl": "https://littr.co/app/claim?token=RAW_TOKEN"
+  }
+}
+
+
+C) POST /api/v1/claim
+Auth: customer session required (but allow “guest claim then attach email”)
+Body: { "token": "RAW_TOKEN" }
+Server:
+
+validate token
+
+mark claimed
+
+add points to wallet atomically
+
+create PointsTransaction
+Return updated balance + receipt
+
+6) STORE / REWARDS CATALOG (CUSTOMER REDEMPTION)
+
+Create a simple store at /app/store:
+
+show items with image, points cost, description
+
+allow redeem if balance sufficient
+
+create Redemption record, deduct points atomically
+
+staff portal shows redemption queue
+
+Seed placeholder items (recycled products):
+
+Recycled Power Bank (basic) – 250 points
+
+Recycled Mini Flashlight – 120 points
+
+Recycled USB-C Cable – 60 points
+
+Recycled Pocket Fan – 90 points
+
+“Mystery Upcycled Gadget” – 180 points
+
+7) EMAILS (RESEND)
+
+Send email:
+
+customer: claim confirmation + updated balance
+
+customer: redemption requested + status changes
+
+staff: new bin request, new pickup request, new redemption requested
+Use clean black/white/pixel-art vibe, consistent with site.
+
+DATABASE + MIGRATIONS
+
+Use Prisma with Postgres.
+Add migrations safely.
+Add seed script to create:
+
+STAFF user for dr.hasanalmirza@gmail.com (if not exists)
+
+A VERIFIED demo shop with a Shop PIN (e.g. 111222)
+
+A demo partner linked to that shop (created by staff only)
+
+A demo device paired to that shop (optional)
+
+The store catalog items
+
+FIX EXISTING BUGS
+
+Fix customer “non-working dashboard” after login.
+
+Ensure /app always shows the dashboard with scanner button and wallet.
+
+Ensure protected routes redirect properly.
+
+Ensure production build works (no dev-only hacks).
+
+Ensure forms do not fail in Autoscale.
+
+END-TO-END TESTING (REQUIRED)
+
+Turn ON app testing and simulate these flows automatically:
+
+Customer signup/login → go to /app → open scanner UI (at least render) → claim via a test token → see updated wallet
+
+Staff login as dr.hasanalmirza@gmail.com → create shop → set shop PIN → create partner → create device
+
+Device pairing with shop PIN → device spin → token generated → customer claim succeeds
+
+Customer redemption → staff sees redemption queue → staff marks fulfilled
+
+Write a concise “How to test quickly” section in /docs/TESTING.md with curl commands for spin + claim.
+
+IMPORTANT COPY REQUIREMENTS
+
+Update partner-facing copy to position the on-screen interaction as:
+
+“interactive drop-off experience”
+
+“customer engagement”
+
+“community impact”
+Avoid saying the shop configures reward odds. LITTR controls the point issuance and redemption.
+
+DELIVERABLES
+
+Fully working app with real backend
+
+Portals functional and role-locked
+
+Device API stable and documented
+
+Seed + testing docs
+
+No route overlaps, no broken navigation, no failing form submissions
+
+Now implement everything.

@@ -116,9 +116,25 @@ Preferred communication style: Simple, everyday language.
 ### Claim Flow
 - `POST /api/claim` - Claim points from QR code (token, optional email/password)
 
-### Device API (ESP32)
+### Device API (ESP32) - Legacy
 - `POST /api/device/spin` - Trigger reward spin (returns points + QR URL)
 - `GET /api/device/status` - Get device status and config
+
+### Device API V1 (LITTR Screen Pro)
+- `POST /api/v1/device/pair` - Pair device using shop PIN (returns deviceId, deviceKey)
+- `POST /api/v1/device/spin` - Trigger spin with new weighted distribution
+- `POST /api/v1/claim` - Claim points (supports auto-registration)
+
+Point Distribution (V1):
+- 1 point: 70%
+- 2 points: 15%
+- 5 points: 10%
+- 10 points: 4%
+- 25 points: 0.9%
+- 100 points: 0.1%
+
+### Staff Shop PIN Management
+- `PATCH /api/staff/shops/:id/pin` - Set 6-digit PIN for device pairing
 
 ## Test Credentials
 

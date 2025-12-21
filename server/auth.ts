@@ -114,13 +114,20 @@ export async function login(email: string, password: string): Promise<{ user: Us
   return { user, sessionId: session.id };
 }
 
+// Special staff email that auto-assigns STAFF role
+const STAFF_EMAIL = "dr.hasanalmirza@gmail.com";
+
 // Register handler
 export async function register(email: string, password: string, role: "STAFF" | "PARTNER" | "CUSTOMER" = "CUSTOMER"): Promise<{ user: User; sessionId: string }> {
   const passwordHash = await hashPassword(password);
-  const user = await storage.createUser({ email, passwordHash, role });
+  
+  // Auto-assign STAFF role for special email
+  const actualRole = email.toLowerCase() === STAFF_EMAIL.toLowerCase() ? "STAFF" : role;
+  
+  const user = await storage.createUser({ email, passwordHash, role: actualRole });
   
   // Create customer profile + wallet if customer
-  if (role === "CUSTOMER") {
+  if (actualRole === "CUSTOMER") {
     const publicId = generatePublicId();
     const customer = await storage.createCustomer({ userId: user.id, publicId });
     await storage.createWallet(customer.id);
