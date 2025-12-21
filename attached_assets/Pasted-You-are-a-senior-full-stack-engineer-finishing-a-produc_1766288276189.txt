@@ -1,0 +1,378 @@
+You are a senior full-stack engineer finishing a production system, not a prototype.
+
+CONTEXT (IMPORTANT – DO NOT IGNORE)
+
+This is LITTR.co, already live on Replit Autoscale with a connected Postgres production database.
+
+The frontend is React + Tailwind with a pixel-art dark aesthetic already finalized.
+
+Email is Resend and is working.
+
+Current dashboards and auth are mocked (zustand/local storage). You must replace them with real backend logic.
+
+Do NOT redesign the site visually unless required for functionality.
+
+Do NOT rework branding, layout, or pixel art assets.
+
+Focus on backend completion, data integrity, portals, and APIs.
+
+Your job is to convert this app into a fully deployable recycling + rewards platform.
+
+1️⃣ CORE GOAL
+
+Replace all frontend-only logic with a real backend that supports:
+
+real users (staff, partners, customers)
+
+real shops
+
+real devices (ESP32)
+
+real points
+
+real rewards
+
+real analytics
+
+safe anti-abuse rules
+
+Everything must persist in the production database.
+
+2️⃣ STACK (USE WHAT IS ALREADY THERE)
+
+Runtime: Node.js (existing Replit autoscale)
+
+Frontend: React + Tailwind (keep pixel art theme)
+
+Backend: Express OR Next.js API routes (use whichever is already present — do NOT migrate frameworks)
+
+Database: Postgres (already connected)
+
+ORM: Prisma (add if missing)
+
+Auth: Session-based or token-based (simple, secure, role-aware)
+
+Email: Resend ONLY
+
+No external auth providers required
+
+3️⃣ USER ROLES (STRICT)
+
+Implement real authentication + authorization:
+
+Roles
+
+STAFF – LITTR admins/operators
+
+PARTNER – smoke shop owners/managers
+
+CUSTOMER – people recycling vapes
+
+Each request must enforce role permissions server-side.
+
+4️⃣ DATABASE (REAL SCHEMA – REQUIRED)
+
+Create tables (or Prisma models) for:
+
+Users
+
+id
+
+email
+
+password_hash (or magic link token)
+
+role (STAFF | PARTNER | CUSTOMER)
+
+created_at
+
+Shops
+
+id
+
+name
+
+address
+
+service_area (Upstate NY – Buffalo/Rochester/Syracuse)
+
+status (PENDING | VERIFIED | SUSPENDED)
+
+created_at
+
+ShopMembers
+
+user_id
+
+shop_id
+
+role (OWNER | MANAGER)
+
+Leads (from “Request a Bin”)
+
+business_name
+
+contact_name
+
+email
+
+phone
+
+address
+
+status
+
+created_at
+
+Devices (ESP32)
+
+id
+
+shop_id
+
+name
+
+device_key_hash
+
+status
+
+last_seen_at
+
+RewardConfigs (per shop)
+
+shop_id
+
+enabled
+
+min_seconds_between_spins
+
+daily_spin_cap
+
+daily_point_cap
+
+reward_table_json (weighted random config)
+
+DropEvents
+
+id
+
+shop_id
+
+device_id
+
+points_awarded
+
+created_at
+
+ClaimTokens
+
+token_hash
+
+drop_event_id
+
+expires_at
+
+claimed_at
+
+Customers
+
+user_id
+
+public_id (anonymous display ID)
+
+Wallets
+
+customer_id
+
+points_balance
+
+lifetime_earned
+
+Transactions
+
+wallet_id
+
+amount
+
+type (EARN | REDEEM | ADJUST)
+
+created_at
+
+StoreItems
+
+name
+
+description
+
+points_cost
+
+active
+
+Redemptions
+
+customer_id
+
+store_item_id
+
+status
+
+5️⃣ PORTALS (REPLACE MOCKS WITH REAL BACKEND)
+🛠 STAFF PORTAL
+
+View all leads
+
+Verify shops
+
+Create partner accounts
+
+Create devices (generate device keys ONCE)
+
+View all drop events
+
+Adjust points
+
+Manage store rewards
+
+View suspicious activity
+
+🏪 PARTNER PORTAL
+
+View their shop data
+
+Enable/disable rewards system
+
+Configure reward probabilities (simple UI)
+
+View total spins / estimated intake
+
+View anonymous top customers (public_id only)
+
+Request pickup
+
+📱 CUSTOMER PORTAL (PWA-style)
+
+Wallet balance
+
+Transaction history
+
+Claim points via QR
+
+Redeem rewards
+
+6️⃣ ESP32 API (CRITICAL – MUST BE CLEAN)
+
+Implement /api/device/spin
+
+Device Auth
+
+Header:
+
+X-DEVICE-ID
+
+X-DEVICE-KEY
+
+Verify hashed key
+
+Spin Logic
+
+Enforce rate limits + caps
+
+Weighted random reward selection
+
+Create DropEvent
+
+Create short-lived ClaimToken (2–3 min)
+
+Return:
+
+{
+  "points": 3,
+  "message": "+3 points",
+  "qr_url": "https://littr.co/app/claim?token=..."
+}
+
+7️⃣ CLAIM FLOW (CUSTOMERS)
+
+QR opens claim page
+
+If not logged in → quick login or guest → attach later
+
+Token validated server-side
+
+Wallet updated atomically
+
+Token invalidated
+
+8️⃣ REWARDS SYSTEM
+
+Points mostly low, occasionally high (weighted randomness)
+
+Partners can configure probabilities
+
+StoreItems redeemable with points (power banks etc.)
+
+Redemptions tracked for staff approval
+
+9️⃣ EMAIL (USE RESEND)
+
+Send clean, branded emails for:
+
+New bin request
+
+Shop verification
+
+Successful point claim
+
+Redemption status
+
+No Gmail. No AgentMail.
+
+🔒 SECURITY & ANTI-ABUSE
+
+Rate limit device spins
+
+One-time claim tokens
+
+Daily caps
+
+Server-side permission checks everywhere
+
+Never trust frontend state
+
+🚫 DO NOT
+
+Do not redesign UI
+
+Do not change pixel art theme
+
+Do not rework routing unless required
+
+Do not add unnecessary integrations
+
+Do not hardcode probabilities without configs
+
+📦 DELIVERABLES
+
+When done:
+
+All dashboards backed by real DB data
+
+ESP32 API documented in /docs/device.md
+
+Seed script for:
+
+1 staff admin
+
+1 demo shop
+
+1 demo device
+
+App runs cleanly in Autoscale
+
+No console errors
+
+FINAL INSTRUCTION
+
+Finish this like a real startup backend, not a demo.
+Preserve what works. Replace what is fake.
+Ship something stable, secure, and extensible.

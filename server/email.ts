@@ -281,3 +281,120 @@ export async function sendCustomEmail(to: string, subject: string, html: string)
     return { success: false, error: error.message || error };
   }
 }
+
+export async function sendPointsClaimedEmail(email: string, points: number) {
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject: `You earned ${points} points! — LITTR.co`,
+      html: emailWrapper(`
+        <div style="text-align: center; padding: 20px 0;">
+          <div style="background-color: #000; border-radius: 50%; width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 36px;">🎉</span>
+          </div>
+          <h2 style="margin: 0 0 8px 0; color: #000; font-size: 28px; font-weight: 600;">+${points} Points!</h2>
+          <p style="margin: 0 0 24px 0; color: #666; font-size: 16px;">Thanks for recycling responsibly!</p>
+          
+          <div style="background-color: #f9f9f9; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: left;">
+            <p style="margin: 0; color: #666; font-size: 14px; line-height: 1.6;">
+              Your points have been added to your wallet. Keep recycling to earn more and unlock awesome rewards!
+            </p>
+          </div>
+          
+          <a href="https://littr.co/app" style="display: inline-block; background-color: #000; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 14px;">View My Wallet</a>
+        </div>
+      `),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Email send error:', error);
+    return { success: false, error };
+  }
+}
+
+export async function sendRedemptionEmail(email: string, itemName: string) {
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject: `Redemption confirmed: ${itemName} — LITTR.co`,
+      html: emailWrapper(`
+        <div style="text-align: center; padding: 20px 0;">
+          <div style="background-color: #000; border-radius: 50%; width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 36px;">🎁</span>
+          </div>
+          <h2 style="margin: 0 0 8px 0; color: #000; font-size: 28px; font-weight: 600;">Redemption Confirmed!</h2>
+          <p style="margin: 0 0 24px 0; color: #666; font-size: 16px;">You've redeemed: <strong style="color: #000;">${itemName}</strong></p>
+          
+          <div style="background-color: #f9f9f9; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: left;">
+            <p style="margin: 0 0 12px 0; color: #000; font-weight: 600;">What's next?</p>
+            <p style="margin: 0; color: #666; font-size: 14px; line-height: 1.6;">
+              We're processing your redemption and will notify you when it's ready for pickup. This usually takes 2-3 business days.
+            </p>
+          </div>
+          
+          <p style="margin: 0; color: #666; font-size: 14px;">
+            Questions? Reply to this email or call <a href="tel:+16073850725" style="color: #000;">(607) 385-0725</a>
+          </p>
+        </div>
+      `),
+    });
+
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ADMIN_EMAIL,
+      subject: `New Redemption: ${itemName}`,
+      html: emailWrapper(`
+        <h2 style="margin: 0 0 24px 0; color: #000; font-size: 24px; font-weight: 600;">New Redemption Request</h2>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          ${dataRow('Customer Email', email)}
+          ${dataRow('Item', itemName)}
+          ${dataRow('Status', 'Pending Fulfillment')}
+        </table>
+        <div style="margin-top: 32px;">
+          <a href="https://littr.co/staff/dashboard" style="display: inline-block; background-color: #000; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 14px;">View in Dashboard</a>
+        </div>
+      `, true),
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Email send error:', error);
+    return { success: false, error };
+  }
+}
+
+export async function sendShopVerificationEmail(email: string, shopName: string) {
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject: `${shopName} is now verified! — LITTR.co`,
+      html: emailWrapper(`
+        <div style="text-align: center; padding: 20px 0;">
+          <div style="background-color: #000; border-radius: 50%; width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 36px;">✅</span>
+          </div>
+          <h2 style="margin: 0 0 8px 0; color: #000; font-size: 28px; font-weight: 600;">You're Verified!</h2>
+          <p style="margin: 0 0 24px 0; color: #666; font-size: 16px;"><strong style="color: #000;">${shopName}</strong> is now an official LITTR partner.</p>
+          
+          <div style="background-color: #f9f9f9; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: left;">
+            <p style="margin: 0 0 12px 0; color: #000; font-weight: 600;">What's next?</p>
+            <ul style="margin: 0; padding-left: 20px; color: #666; font-size: 14px; line-height: 1.8;">
+              <li>Your LITTR bin will be delivered within 5 business days</li>
+              <li>Access your partner dashboard to track activity</li>
+              <li>Customers can now earn rewards at your location</li>
+            </ul>
+          </div>
+          
+          <a href="https://littr.co/partner/login" style="display: inline-block; background-color: #000; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 14px;">Partner Dashboard</a>
+        </div>
+      `),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Email send error:', error);
+    return { success: false, error };
+  }
+}
