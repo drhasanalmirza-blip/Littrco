@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// Types
+export interface User {
+  id: string;
+  email: string;
+  role: 'STAFF' | 'PARTNER' | 'CUSTOMER';
+}
+
 export interface Contact {
   id: string;
   name: string;
@@ -31,20 +36,23 @@ export interface Volunteer {
   createdAt: string;
 }
 
-type Role = 'admin' | 'staff' | 'partner' | null;
+type Role = 'admin' | 'staff' | 'partner' | 'customer' | null;
 
 interface StoreState {
-  // Auth
+  user: User | null;
+  sessionId: string | null;
   role: Role;
+  
+  setAuth: (user: User, sessionId: string) => void;
+  clearAuth: () => void;
+  
   login: (role: Role) => void;
   logout: () => void;
 
-  // Data
   contacts: Contact[];
   binRequests: BinRequest[];
   volunteers: Volunteer[];
 
-  // Actions
   addContact: (contact: Omit<Contact, 'id' | 'createdAt'>) => void;
   addBinRequest: (request: Omit<BinRequest, 'id' | 'createdAt'>) => void;
   addVolunteer: (volunteer: Omit<Volunteer, 'id' | 'createdAt'>) => void;
@@ -53,9 +61,21 @@ interface StoreState {
 export const useStore = create<StoreState>()(
   persist(
     (set) => ({
+      user: null,
+      sessionId: null,
       role: null,
+      
+      setAuth: (user, sessionId) => {
+        const role = user.role === 'STAFF' ? 'staff' : 
+                     user.role === 'PARTNER' ? 'partner' : 
+                     user.role === 'CUSTOMER' ? 'customer' : null;
+        set({ user, sessionId, role });
+      },
+      
+      clearAuth: () => set({ user: null, sessionId: null, role: null }),
+      
       login: (role) => set({ role }),
-      logout: () => set({ role: null }),
+      logout: () => set({ user: null, sessionId: null, role: null }),
 
       contacts: [],
       binRequests: [],
@@ -90,3 +110,25 @@ export const useStore = create<StoreState>()(
     }
   )
 );
+
+export function getAuthHeaders(): HeadersInit {
+  const state = useStore.getState();
+  if (state.sessionId) {
+    return { 'X-Session-Id': state.sessionId };
+  }
+  return {};
+}
+
+export async function apiRequest(url: string, options: RequestInit = {}): Promise<Response> {
+  const state = useStore.getState();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  if (state.sessionId) {
+    (headers as Record<string, string>)['X-Session-Id'] = state.sessionId;
+  }
+  
+  return fetch(url, { ...options, headers });
+}

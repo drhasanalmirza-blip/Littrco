@@ -16,12 +16,17 @@ import { MobileStickyCTA } from "@/components/MobileStickyCTA";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import StaffDashboard from "@/pages/staff/Dashboard";
 import PartnerDashboard from "@/pages/partner/Dashboard";
+import CustomerDashboard from "@/pages/customer/Dashboard";
+import ClaimPage from "@/pages/customer/Claim";
 
 function Router() {
   const [location] = useLocation();
   
-  // Hide header/footer for dashboard routes
-  const isDashboard = location.includes('/admin') || location.includes('/staff') || location.includes('/partner');
+  // Hide header/footer for dashboard/app routes
+  const isDashboard = location.includes('/admin') || 
+                      location.includes('/staff') || 
+                      location.includes('/partner') ||
+                      location.includes('/app');
 
   return (
     <>
@@ -38,10 +43,10 @@ function Router() {
         <Route path="/faq" component={FAQ} />
         <Route path="/about" component={About} />
         <Route path="/contact" component={Contact} />
-        <Route path="/locations" component={Dropoff} /> {/* Reuse Dropoff for locations */}
-        <Route path="/safety" component={Dropoff} /> {/* Reuse Dropoff for safety info */}
-        <Route path="/privacy" component={About} /> {/* Placeholder */}
-        <Route path="/terms" component={About} /> {/* Placeholder */}
+        <Route path="/locations" component={Dropoff} />
+        <Route path="/safety" component={Dropoff} />
+        <Route path="/privacy" component={About} />
+        <Route path="/terms" component={About} />
 
         {/* Auth Portals */}
         <Route path="/admin/login" component={() => <Login type="admin" />} />
@@ -52,6 +57,11 @@ function Router() {
         
         <Route path="/partner/login" component={() => <Login type="partner" />} />
         <Route path="/partner/dashboard" component={PartnerDashboard} />
+
+        {/* Customer App */}
+        <Route path="/app" component={CustomerDashboard} />
+        <Route path="/app/login" component={() => <Login type="customer" />} />
+        <Route path="/app/claim" component={ClaimPage} />
 
         <Route component={NotFound} />
       </Switch>
