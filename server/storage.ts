@@ -30,6 +30,12 @@ import {
   type Session,
   type PickupRequest,
   type InsertPickupRequest,
+  type Bin,
+  type InsertBin,
+  type BinReading,
+  type InsertBinReading,
+  type FireAlert,
+  type InsertFireAlert,
   users,
   contacts,
   volunteers,
@@ -47,6 +53,9 @@ import {
   redemptions,
   sessions,
   pickupRequests,
+  bins,
+  binReadings,
+  fireAlerts,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gte, sql, lt, inArray } from "drizzle-orm";
@@ -142,6 +151,33 @@ export interface IStorage {
   // Volunteers
   createVolunteer(volunteer: InsertVolunteer): Promise<Volunteer>;
   getAllVolunteers(): Promise<Volunteer[]>;
+  
+  // Bins
+  createBin(bin: InsertBin): Promise<Bin>;
+  getBin(id: number): Promise<Bin | undefined>;
+  getBinsByShop(shopId: number): Promise<Bin[]>;
+  getAllBins(): Promise<Bin[]>;
+  updateBinStatus(id: number, status: string): Promise<Bin | undefined>;
+  updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; vapeCount?: number }): Promise<Bin | undefined>;
+  
+  // Bin Readings
+  createBinReading(reading: InsertBinReading): Promise<BinReading>;
+  getBinReadings(binId: number, limit?: number): Promise<BinReading[]>;
+  
+  // Fire Alerts
+  createFireAlert(alert: InsertFireAlert): Promise<FireAlert>;
+  getFireAlert(id: number): Promise<FireAlert | undefined>;
+  getActiveFireAlerts(): Promise<FireAlert[]>;
+  getFireAlertsByShop(shopId: number): Promise<FireAlert[]>;
+  acknowledgeFireAlert(id: number, userId: string): Promise<FireAlert | undefined>;
+  resolveFireAlert(id: number): Promise<FireAlert | undefined>;
+  
+  // Shop coordinates
+  updateShopCoordinates(id: number, lat: number, lng: number): Promise<Shop | undefined>;
+  getVerifiedShopsWithCoordinates(): Promise<Shop[]>;
+  
+  // Staff check
+  hasAnyStaff(): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -456,6 +492,90 @@ export class DatabaseStorage implements IStorage {
 
   async getAllVolunteers(): Promise<Volunteer[]> {
     return await db.select().from(volunteers).orderBy(desc(volunteers.createdAt));
+  }
+
+  // Bins
+  async createBin(bin: InsertBin): Promise<Bin> {
+    const [newBin] = await db.insert(bins).values(bin).returning();
+    return newBin;
+  }
+
+  async getBin(id: number): Promise<Bin | undefined> {
+    const [bin] = await db.select().from(bins).where(eq(bins.id, id));
+    return bin;
+  }
+
+  async getBinsByShop(shopId: number): Promise<Bin[]> {
+    return await db.select().from(bins).where(eq(bins.shopId, shopId)).orderBy(desc(bins.createdAt));
+  }
+
+  async getAllBins(): Promise<Bin[]> {
+    return await db.select().from(bins).orderBy(desc(bins.createdAt));
+  }
+
+  async updateBinStatus(id: number, status: string): Promise<Bin | undefined> {
+    const [bin] = await db.update(bins).set({ status: status as any, lastSeenAt: new Date() }).where(eq(bins.id, id)).returning();
+    return bin;
+  }
+
+  async updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; vapeCount?: number }): Promise<Bin | undefined> {
+    const [bin] = await db.update(bins).set({ ...data, lastSeenAt: new Date(), status: 'ONLINE' as any }).where(eq(bins.id, id)).returning();
+    return bin;
+  }
+
+  // Bin Readings
+  async createBinReading(reading: InsertBinReading): Promise<BinReading> {
+    const [newReading] = await db.insert(binReadings).values(reading).returning();
+    return newReading;
+  }
+
+  async getBinReadings(binId: number, limit: number = 100): Promise<BinReading[]> {
+    return await db.select().from(binReadings).where(eq(binReadings.binId, binId)).orderBy(desc(binReadings.createdAt)).limit(limit);
+  }
+
+  // Fire Alerts
+  async createFireAlert(alert: InsertFireAlert): Promise<FireAlert> {
+    const [newAlert] = await db.insert(fireAlerts).values(alert).returning();
+    return newAlert;
+  }
+
+  async getFireAlert(id: number): Promise<FireAlert | undefined> {
+    const [alert] = await db.select().from(fireAlerts).where(eq(fireAlerts.id, id));
+    return alert;
+  }
+
+  async getActiveFireAlerts(): Promise<FireAlert[]> {
+    return await db.select().from(fireAlerts).where(eq(fireAlerts.acknowledged, false)).orderBy(desc(fireAlerts.createdAt));
+  }
+
+  async getFireAlertsByShop(shopId: number): Promise<FireAlert[]> {
+    return await db.select().from(fireAlerts).where(eq(fireAlerts.shopId, shopId)).orderBy(desc(fireAlerts.createdAt));
+  }
+
+  async acknowledgeFireAlert(id: number, userId: string): Promise<FireAlert | undefined> {
+    const [alert] = await db.update(fireAlerts).set({ acknowledged: true, acknowledgedAt: new Date(), acknowledgedById: userId }).where(eq(fireAlerts.id, id)).returning();
+    return alert;
+  }
+
+  async resolveFireAlert(id: number): Promise<FireAlert | undefined> {
+    const [alert] = await db.update(fireAlerts).set({ resolvedAt: new Date() }).where(eq(fireAlerts.id, id)).returning();
+    return alert;
+  }
+
+  // Shop coordinates
+  async updateShopCoordinates(id: number, lat: number, lng: number): Promise<Shop | undefined> {
+    const [shop] = await db.update(shops).set({ latitude: lat, longitude: lng }).where(eq(shops.id, id)).returning();
+    return shop;
+  }
+
+  async getVerifiedShopsWithCoordinates(): Promise<Shop[]> {
+    return await db.select().from(shops).where(and(eq(shops.status, 'VERIFIED'), sql`${shops.latitude} IS NOT NULL AND ${shops.longitude} IS NOT NULL`));
+  }
+
+  // Staff check
+  async hasAnyStaff(): Promise<boolean> {
+    const [result] = await db.select().from(users).where(eq(users.role, 'STAFF')).limit(1);
+    return !!result;
   }
 }
 

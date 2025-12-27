@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -9,6 +9,8 @@ export const shopStatusEnum = pgEnum("shop_status", ["PENDING", "VERIFIED", "SUS
 export const shopMemberRoleEnum = pgEnum("shop_member_role", ["OWNER", "MANAGER"]);
 export const leadStatusEnum = pgEnum("lead_status", ["NEW", "CONTACTED", "CONVERTED", "REJECTED"]);
 export const deviceStatusEnum = pgEnum("device_status", ["ACTIVE", "INACTIVE", "MAINTENANCE"]);
+export const binStatusEnum = pgEnum("bin_status", ["ONLINE", "OFFLINE", "FIRE_ALERT", "MAINTENANCE"]);
+export const alertSeverityEnum = pgEnum("alert_severity", ["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["EARN", "REDEEM", "ADJUST"]);
 export const redemptionStatusEnum = pgEnum("redemption_status", ["PENDING", "APPROVED", "FULFILLED", "REJECTED"]);
 
@@ -47,6 +49,8 @@ export const shops = pgTable("shops", {
   serviceArea: text("service_area").notNull(),
   phone: text("phone"),
   secretPin: text("secret_pin"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
   status: shopStatusEnum("status").notNull().default("PENDING"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -300,3 +304,68 @@ export const insertPickupRequestSchema = createInsertSchema(pickupRequests).omit
 });
 export type InsertPickupRequest = z.infer<typeof insertPickupRequestSchema>;
 export type PickupRequest = typeof pickupRequests.$inferSelect;
+
+// Bins table - smart recycling bins with sensors
+export const bins = pgTable("bins", {
+  id: serial("id").primaryKey(),
+  shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
+  deviceId: integer("device_id").references(() => devices.id),
+  name: text("name").notNull(),
+  binType: text("bin_type").notNull().default("vape"),
+  status: binStatusEnum("status").notNull().default("OFFLINE"),
+  fillLevel: integer("fill_level").notNull().default(0),
+  vapeCount: integer("vape_count").notNull().default(0),
+  lastTemperature: doublePrecision("last_temperature"),
+  lastAirQuality: integer("last_air_quality"),
+  lastSeenAt: timestamp("last_seen_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBinSchema = createInsertSchema(bins).omit({
+  id: true,
+  createdAt: true,
+  lastSeenAt: true,
+});
+export type InsertBin = z.infer<typeof insertBinSchema>;
+export type Bin = typeof bins.$inferSelect;
+
+// BinReadings table - sensor data history
+export const binReadings = pgTable("bin_readings", {
+  id: serial("id").primaryKey(),
+  binId: integer("bin_id").notNull().references(() => bins.id, { onDelete: "cascade" }),
+  temperature: doublePrecision("temperature"),
+  airQuality: integer("air_quality"),
+  fillLevel: integer("fill_level"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBinReadingSchema = createInsertSchema(binReadings).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBinReading = z.infer<typeof insertBinReadingSchema>;
+export type BinReading = typeof binReadings.$inferSelect;
+
+// FireAlerts table - fire detection events
+export const fireAlerts = pgTable("fire_alerts", {
+  id: serial("id").primaryKey(),
+  binId: integer("bin_id").notNull().references(() => bins.id, { onDelete: "cascade" }),
+  shopId: integer("shop_id").notNull().references(() => shops.id),
+  severity: alertSeverityEnum("severity").notNull().default("HIGH"),
+  temperature: doublePrecision("temperature"),
+  temperatureRise: doublePrecision("temperature_rise"),
+  acknowledged: boolean("acknowledged").notNull().default(false),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedById: varchar("acknowledged_by_id").references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFireAlertSchema = createInsertSchema(fireAlerts).omit({
+  id: true,
+  createdAt: true,
+  acknowledgedAt: true,
+  resolvedAt: true,
+});
+export type InsertFireAlert = z.infer<typeof insertFireAlertSchema>;
+export type FireAlert = typeof fireAlerts.$inferSelect;
