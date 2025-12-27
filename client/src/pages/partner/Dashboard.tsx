@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle } from "lucide-react";
+import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
@@ -120,10 +120,10 @@ export default function PartnerDashboard() {
 
   if (role !== 'partner' && role !== 'admin') {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl mb-4">Access Denied</p>
-          <Button onClick={() => setLocation('/partner/login')}>Partner Login</Button>
+      <div className="littr-dashboard flex items-center justify-center">
+        <div className="littr-card-solid p-8 rounded-2xl text-center">
+          <p className="text-xl mb-4 text-white">Access Denied</p>
+          <Button onClick={() => setLocation('/partner/login')} className="littr-btn littr-btn-primary">Partner Login</Button>
         </div>
       </div>
     );
@@ -131,27 +131,41 @@ export default function PartnerDashboard() {
 
   if (!shop) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="bg-black text-white p-4 flex justify-between items-center">
-          <h1 className="font-bold">Partner Dashboard</h1>
-          <Button variant="outline" size="sm" onClick={handleLogout}>Logout</Button>
+      <div className="littr-dashboard">
+        <div className="littr-nav px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center">
+              <Recycle className="h-5 w-5 text-white" />
+            </div>
+            <h1 className="font-bold text-white">Partner Dashboard</h1>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-400 hover:text-white hover:bg-white/10">
+            <LogOut className="h-4 w-4 mr-2" />
+            Logout
+          </Button>
         </div>
         <div className="container mx-auto px-4 py-20 text-center">
-          <p className="text-gray-500">No shop assigned to your account.</p>
-          <p className="text-sm text-gray-400 mt-2">Contact LITTR support for assistance.</p>
+          <p className="text-gray-400">No shop assigned to your account.</p>
+          <p className="text-sm text-gray-500 mt-2">Contact LITTR support for assistance.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-black text-white p-4 flex justify-between items-center">
-        <div>
-          <h1 className="font-bold text-lg">{shop.name}</h1>
-          <p className="text-sm text-gray-400">{user?.email}</p>
+    <div className="littr-dashboard">
+      <div className="littr-nav px-4 py-3 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center">
+            <Recycle className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="font-bold text-white">{shop.name}</h1>
+            <p className="text-xs text-gray-500">{user?.email}</p>
+          </div>
         </div>
-        <Button variant="outline" size="sm" onClick={handleLogout} data-testid="button-logout">
+        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-400 hover:text-white hover:bg-white/10" data-testid="button-logout">
+          <LogOut className="h-4 w-4 mr-2" />
           Logout
         </Button>
       </div>

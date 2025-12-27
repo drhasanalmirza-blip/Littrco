@@ -4,51 +4,47 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --radius-sm: 0.2rem;
-  --radius-md: 0.4rem;
-  --radius-lg: 0.6rem;
-  --radius-xl: 0.8rem;
+  --radius-sm: 0.4rem;
+  --radius-md: 0.6rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
 
   --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(0 0% 0%);
+  --color-foreground: hsl(220 15% 15%);
 
   --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(0 0% 0%);
+  --color-card-foreground: hsl(220 15% 15%);
 
   --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(0 0% 0%);
+  --color-popover-foreground: hsl(220 15% 15%);
 
-  --color-primary: hsl(0 0% 0%);
+  --color-primary: hsl(142 70% 45%);
   --color-primary-foreground: hsl(0 0% 100%);
 
-  --color-secondary: hsl(0 0% 96%);
-  --color-secondary-foreground: hsl(0 0% 0%);
+  --color-secondary: hsl(220 10% 96%);
+  --color-secondary-foreground: hsl(220 15% 15%);
 
-  --color-muted: hsl(0 0% 96%);
-  --color-muted-foreground: hsl(0 0% 45%);
+  --color-muted: hsl(220 10% 96%);
+  --color-muted-foreground: hsl(220 10% 45%);
 
-  --color-accent: hsl(0 0% 96%);
-  --color-accent-foreground: hsl(0 0% 0%);
+  --color-accent: hsl(142 70% 45%);
+  --color-accent-foreground: hsl(0 0% 100%);
 
   --color-destructive: hsl(0 84% 60%);
   --color-destructive-foreground: hsl(0 0% 98%);
 
-  --color-border: hsl(0 0% 90%);
-  --color-input: hsl(0 0% 90%);
-  --color-ring: hsl(0 0% 0%);
+  --color-border: hsl(220 10% 90%);
+  --color-input: hsl(220 10% 90%);
+  --color-ring: hsl(142 70% 45%);
 
-  --color-chart-1: hsl(0 0% 0%);
-  --color-chart-2: hsl(0 0% 20%);
-  --color-chart-3: hsl(0 0% 40%);
-  --color-chart-4: hsl(0 0% 60%);
-  --color-chart-5: hsl(0 0% 80%);
+  --color-chart-1: hsl(142 70% 45%);
+  --color-chart-2: hsl(142 60% 55%);
+  --color-chart-3: hsl(142 50% 65%);
+  --color-chart-4: hsl(142 40% 75%);
+  --color-chart-5: hsl(142 30% 85%);
 
-  /* Tertiary / Accent Color: Electric Safety Volt */
-  --color-tertiary: hsl(80 100% 50%);
-  --color-tertiary-foreground: hsl(0 0% 0%);
-
-  --font-sans: 'Inter', sans-serif;
-  --radius: 0.5rem;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --radius: 0.75rem;
 }
 
 @layer base {
@@ -59,60 +55,162 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply font-sans antialiased bg-background text-foreground selection:bg-black selection:text-white;
+    @apply font-sans antialiased bg-background text-foreground selection:bg-green-500 selection:text-white;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-sans tracking-tight font-bold;
   }
 }
 
+/* LITTR Brand Colors */
+:root {
+  --littr-green: #22c55e;
+  --littr-green-dark: #16a34a;
+  --littr-midnight: #0f1419;
+  --littr-charcoal: #1a1f2e;
+  --littr-slate: #2d3748;
+  --littr-neon: #4ade80;
+}
+
+/* Glass Panels */
 .glass-panel {
   @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-sm;
 }
 
+.glass-dark {
+  background: rgba(15, 20, 25, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Text Effects */
 .text-stroke {
   -webkit-text-stroke: 1px black;
   color: transparent;
 }
 
-/* iOS-style mobile UI patterns */
-.ios-card {
-  @apply bg-white rounded-2xl shadow-sm border border-gray-100;
+.text-glow {
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
 }
 
-.ios-list-item {
-  @apply flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100 last:border-b-0 active:bg-gray-50 transition-colors;
+/* LITTR Midnight Theme - Dashboard Base */
+.littr-dashboard {
+  background: linear-gradient(135deg, var(--littr-midnight) 0%, var(--littr-charcoal) 50%, var(--littr-slate) 100%);
+  min-height: 100vh;
 }
 
-.ios-section {
-  @apply bg-gray-50 rounded-2xl overflow-hidden;
+.littr-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  backdrop-filter: blur(8px);
 }
 
-.ios-nav-bar {
-  @apply sticky top-0 z-50 bg-white/90 backdrop-blur-lg border-b border-gray-200 px-4 py-3;
+.littr-card-solid {
+  background: var(--littr-charcoal);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
 }
 
-.ios-tab-bar {
-  @apply fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-200 flex justify-around py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];
+/* Gradient Backgrounds */
+.littr-gradient-green {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
 }
 
-.ios-tab-item {
-  @apply flex flex-col items-center gap-1 text-xs text-gray-500 transition-colors;
+.littr-gradient-hero {
+  background: linear-gradient(180deg, var(--littr-midnight) 0%, var(--littr-charcoal) 100%);
 }
 
-.ios-tab-item.active {
-  @apply text-green-600;
+/* Nav Bar Styles */
+.littr-nav {
+  background: rgba(15, 20, 25, 0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.ios-button {
-  @apply h-12 rounded-xl font-semibold transition-all active:scale-[0.98];
+/* Tab Bar - iOS Style */
+.littr-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(15, 20, 25, 0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem 0;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
-.ios-input {
-  @apply h-12 rounded-xl bg-gray-100 border-0 px-4 text-base focus:ring-2 focus:ring-green-500;
+.littr-tab-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s;
+  border-radius: 0.5rem;
 }
 
-/* Pixel art enhancements */
+.littr-tab-item:hover,
+.littr-tab-item.active {
+  color: var(--littr-green);
+}
+
+.littr-tab-item.active {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+/* iOS List Styles */
+.littr-list {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.littr-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.2s;
+}
+
+.littr-list-item:last-child {
+  border-bottom: none;
+}
+
+.littr-list-item:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Buttons */
+.littr-btn {
+  height: 3rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.littr-btn:active {
+  transform: scale(0.98);
+}
+
+.littr-btn-primary {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: white;
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3);
+}
+
+.littr-btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+}
+
+/* Pixel Art Styling */
 .pixel-border {
   box-shadow: 
     4px 0 0 0 currentColor,
@@ -122,10 +220,36 @@
 }
 
 .pixel-shadow {
-  box-shadow: 4px 4px 0 0 rgba(0,0,0,0.2);
+  box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.3);
 }
 
-/* Mobile-first safe areas */
+.pixel-image {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Input Styles */
+.littr-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  height: 3rem;
+  padding: 0 1rem;
+  color: white;
+  transition: all 0.2s;
+}
+
+.littr-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.littr-input:focus {
+  outline: none;
+  border-color: var(--littr-green);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+}
+
+/* Safe Areas */
 .safe-top {
   padding-top: env(safe-area-inset-top);
 }
@@ -140,8 +264,43 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.scroll-snap-item {
-  scroll-snap-align: start;
+/* Badge Styles */
+.littr-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.littr-badge-green {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.littr-badge-red {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.littr-badge-yellow {
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+}
+
+/* Animation */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(34, 197, 94, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.6);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
 }
 
 /* Touch-friendly spacing */
@@ -150,4 +309,22 @@
     min-height: 44px;
     min-width: 44px;
   }
+}
+
+/* Scrollbar styling for dashboards */
+.littr-dashboard::-webkit-scrollbar {
+  width: 6px;
+}
+
+.littr-dashboard::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.littr-dashboard::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.littr-dashboard::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

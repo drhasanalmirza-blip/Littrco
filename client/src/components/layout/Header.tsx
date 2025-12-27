@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Recycle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -11,17 +11,21 @@ export function Header() {
   const links = [
     { href: "/", label: "Home" },
     { href: "/business", label: "For Business" },
-    { href: "/dropoff", label: "Drop-off Locations" },
+    { href: "/dropoff", label: "Drop-off" },
     { href: "/about", label: "About" },
     { href: "/faq", label: "FAQ" },
-    { href: "/contact", label: "Contact" },
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md shadow-sm">
+    <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-            <span className="font-bold tracking-tight text-2xl">LITTR<span className="font-normal text-gray-500">.co</span></span>
+          <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+            <Recycle className="h-5 w-5 text-white" />
+          </div>
+          <span className="font-bold tracking-tight text-xl text-gray-900">
+            LITTR<span className="font-normal text-green-500">.co</span>
+          </span>
         </Link>
 
         {/* Desktop Nav */}
@@ -31,15 +35,20 @@ export function Header() {
               key={link.href} 
               href={link.href}
               className={cn(
-                "text-sm font-medium transition-colors hover:text-black",
-                location === link.href ? "text-black font-semibold" : "text-gray-500"
+                "text-sm font-medium transition-colors hover:text-green-600",
+                location === link.href ? "text-green-600 font-semibold" : "text-gray-600"
               )}
             >
               {link.label}
             </Link>
           ))}
+          <Link href="/app">
+            <Button variant="outline" size="sm" className="border-green-500 text-green-600 hover:bg-green-50">
+              My Wallet
+            </Button>
+          </Link>
           <Link href="/business">
-            <Button variant="default" size="sm" className="font-semibold">
+            <Button size="sm" className="bg-green-500 hover:bg-green-600 text-white font-semibold">
               Get Free Bin
             </Button>
           </Link>
@@ -47,35 +56,44 @@ export function Header() {
 
         {/* Mobile Toggle */}
         <button
-          className="md:hidden p-2"
+          className="md:hidden p-2 rounded-lg hover:bg-gray-100"
           onClick={() => setIsOpen(!isOpen)}
           aria-label="Toggle menu"
         >
-          {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          {isOpen ? <X className="h-6 w-6 text-gray-700" /> : <Menu className="h-6 w-6 text-gray-700" />}
         </button>
       </div>
 
       {/* Mobile Nav */}
       {isOpen && (
-        <div className="md:hidden border-t bg-background p-4 flex flex-col gap-4 shadow-lg animate-in slide-in-from-top-2">
+        <div className="md:hidden border-t bg-white p-4 flex flex-col gap-2 shadow-lg animate-in slide-in-from-top-2">
           {links.map((link) => (
             <Link 
               key={link.href} 
               href={link.href}
               className={cn(
-                "text-lg font-medium py-2 border-b border-gray-100",
-                location === link.href ? "text-black" : "text-gray-500"
+                "text-base font-medium py-3 px-4 rounded-lg transition-colors",
+                location === link.href 
+                  ? "bg-green-50 text-green-600" 
+                  : "text-gray-600 hover:bg-gray-50"
               )}
               onClick={() => setIsOpen(false)}
             >
               {link.label}
             </Link>
           ))}
-          <Link href="/business">
-            <Button className="w-full mt-2" onClick={() => setIsOpen(false)}>
-              Get Free Bin
-            </Button>
-          </Link>
+          <div className="pt-2 border-t mt-2 space-y-2">
+            <Link href="/app" onClick={() => setIsOpen(false)}>
+              <Button variant="outline" className="w-full border-green-500 text-green-600">
+                My Wallet
+              </Button>
+            </Link>
+            <Link href="/business" onClick={() => setIsOpen(false)}>
+              <Button className="w-full bg-green-500 hover:bg-green-600 text-white">
+                Get Free Bin
+              </Button>
+            </Link>
+          </div>
         </div>
       )}
     </header>

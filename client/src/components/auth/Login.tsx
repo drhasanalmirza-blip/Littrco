@@ -3,8 +3,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import { useState } from "react";
-import { useLocation } from "wouter";
-import { Lock, Mail, LogIn } from "lucide-react";
+import { useLocation, Link } from "wouter";
+import { Lock, Mail, LogIn, Recycle, ArrowLeft } from "lucide-react";
+
+import pixelShopImage from "@assets/generated_images/pixel_art_smoke_shop_night.png";
 
 export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'customer' }) {
   const [email, setEmail] = useState("");
@@ -39,10 +41,10 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
       const roleMap: Record<string, string> = {
         'STAFF': 'staff',
         'PARTNER': 'partner',
-        'CUSTOMER': 'customer',
+        'CUSTOMER': 'app',
       };
       
-      const dashboardPath = `/${roleMap[data.user.role] || type}/dashboard`;
+      const dashboardPath = roleMap[data.user.role] === 'app' ? '/app' : `/${roleMap[data.user.role] || type}/dashboard`;
       setLocation(dashboardPath);
     } catch (err) {
       setError('Connection error. Please try again.');
@@ -68,31 +70,52 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
   const { title, subtitle } = getTitleAndSubtitle();
   
   const isCustomer = type === 'customer';
-  const isPartner = type === 'partner';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
-      <div className="w-full max-w-md">
+    <div className="littr-dashboard flex items-center justify-center p-4 safe-top safe-bottom">
+      {/* Background */}
+      <div className="absolute inset-0 opacity-15">
+        <img 
+          src={pixelShopImage} 
+          alt="" 
+          className="w-full h-full object-cover pixel-image"
+        />
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--littr-midnight)]/90 to-[var(--littr-midnight)]" />
+      
+      <div className="relative z-10 w-full max-w-md">
+        {/* Back Link */}
+        <Link href="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 text-sm">
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
+        </Link>
+
         {/* Card */}
-        <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div className="littr-card-solid rounded-2xl overflow-hidden">
           {/* Header */}
-          <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 py-8 border-b border-gray-700">
-            <h1 className="text-3xl font-bold text-white mb-2">{title}</h1>
+          <div className="px-8 py-8 border-b border-white/10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center">
+                <Recycle className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-white">LITTR</span>
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-1">{title}</h1>
             {subtitle && <p className="text-gray-400 text-sm">{subtitle}</p>}
           </div>
 
           {/* Content */}
           <div className="px-8 py-8">
             {error && (
-              <div className="mb-6 p-4 bg-red-900/20 border border-red-700/30 text-red-400 rounded-lg text-sm flex items-start gap-3">
-                <span className="text-red-500 mt-0.5">⚠</span>
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm flex items-start gap-3">
+                <span className="text-red-400 mt-0.5">⚠</span>
                 <span>{error}</span>
               </div>
             )}
             
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2">
+                <Label className="text-gray-300 mb-2 flex items-center gap-2 text-sm">
                   <Mail className="h-4 w-4" />
                   Email Address
                 </Label>
@@ -101,14 +124,14 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500"
+                  className="littr-input w-full"
                   data-testid="input-email"
                   required
                 />
               </div>
               
               <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2">
+                <Label className="text-gray-300 mb-2 flex items-center gap-2 text-sm">
                   <Lock className="h-4 w-4" />
                   Password
                 </Label>
@@ -117,7 +140,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500"
+                  className="littr-input w-full"
                   data-testid="input-password"
                   required
                 />
@@ -125,7 +148,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
               
               <Button 
                 type="submit" 
-                className="w-full bg-white text-black hover:bg-gray-100 font-semibold py-2 h-10 flex items-center justify-center gap-2"
+                className="littr-btn littr-btn-primary w-full flex items-center justify-center gap-2"
                 disabled={loading}
                 data-testid="button-login"
               >
@@ -135,37 +158,21 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
             </form>
 
             {/* Links */}
-            <div className="mt-6 space-y-3 border-t border-gray-700 pt-6">
-              {isCustomer && (
+            {isCustomer && (
+              <div className="mt-6 space-y-3 border-t border-white/10 pt-6">
                 <p className="text-center text-sm text-gray-400">
                   Don't have an account?{' '}
-                  <a href="/app/register" className="text-white font-semibold hover:underline">
+                  <Link href="/app/register" className="text-green-400 font-semibold hover:underline">
                     Create one
-                  </a>
+                  </Link>
                 </p>
-              )}
-              
-              {isCustomer && (
-                <div className="text-center">
-                  <a href="/app/change-password" className="text-sm text-gray-400 hover:text-gray-300 font-medium">
-                    Change password
-                  </a>
-                </div>
-              )}
-
-              {(isCustomer || isPartner) && (
-                <div className="text-center">
-                  <a href="/" className="text-sm text-gray-400 hover:text-gray-300">
-                    Back to home
-                  </a>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Footer */}
-        <p className="text-center text-gray-500 text-xs mt-6">
+        <p className="text-center text-gray-600 text-xs mt-6">
           LITTR.co © 2025 — Recycling Made Simple
         </p>
       </div>
