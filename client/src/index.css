@@ -328,3 +328,150 @@
 .littr-dashboard::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* Dark Theme Overrides for Shadcn Components inside littr-dashboard */
+.littr-dashboard [data-slot="card"],
+.littr-dashboard .card,
+.littr-dashboard [class*="rounded-lg"][class*="border"][class*="bg-card"] {
+  background: var(--littr-charcoal) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+.littr-dashboard [data-slot="card-content"],
+.littr-dashboard .card-content {
+  color: white !important;
+}
+
+.littr-dashboard [data-slot="card-title"],
+.littr-dashboard .card-title {
+  color: white !important;
+}
+
+.littr-dashboard [data-slot="card-description"],
+.littr-dashboard .card-description {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Dark Tabs */
+.littr-dashboard [role="tablist"] {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.littr-dashboard [role="tab"] {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.littr-dashboard [role="tab"][data-state="active"] {
+  background: var(--littr-charcoal) !important;
+  color: white !important;
+}
+
+/* Dark Tables */
+.littr-dashboard table {
+  background: var(--littr-charcoal) !important;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.littr-dashboard thead {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.littr-dashboard th {
+  color: rgba(255, 255, 255, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.littr-dashboard td {
+  color: white !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.littr-dashboard tr:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Dark Dialogs */
+.littr-dashboard [role="dialog"],
+.littr-dashboard [data-state="open"][class*="fixed"] {
+  background: var(--littr-charcoal) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+/* Dark Select */
+.littr-dashboard [role="listbox"],
+.littr-dashboard [data-radix-select-content] {
+  background: var(--littr-charcoal) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.littr-dashboard [role="option"] {
+  color: white !important;
+}
+
+.littr-dashboard [role="option"]:hover,
+.littr-dashboard [role="option"][data-highlighted] {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Dark Inputs in Dashboard */
+.littr-dashboard input:not(.littr-input),
+.littr-dashboard textarea,
+.littr-dashboard select {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+.littr-dashboard input:not(.littr-input)::placeholder,
+.littr-dashboard textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.littr-dashboard input:not(.littr-input):focus,
+.littr-dashboard textarea:focus {
+  border-color: var(--littr-green) !important;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2) !important;
+}
+
+/* Dark Labels */
+.littr-dashboard label {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Dark Progress Bars */
+.littr-dashboard [role="progressbar"] {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Dark Badges */
+.littr-dashboard .badge,
+.littr-dashboard [class*="inline-flex"][class*="rounded-full"][class*="px-"] {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Typography fixes for dashboard paragraphs */
+.littr-dashboard p {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.littr-dashboard .text-gray-500 {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.littr-dashboard .text-gray-400 {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Button overrides in dashboard */
+.littr-dashboard button[class*="bg-primary"] {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+}
+
+.littr-dashboard button[class*="outline"] {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+}
