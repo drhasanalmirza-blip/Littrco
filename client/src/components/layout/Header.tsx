@@ -3,10 +3,12 @@ import { cn } from "@/lib/utils";
 import { Menu, X, Recycle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useStore } from "@/lib/store";
 
 export function Header() {
   const [location] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const { user } = useStore();
 
   const links = [
     { href: "/", label: "Home" },
@@ -19,12 +21,21 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-            <Recycle className="h-5 w-5 text-white" />
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className={cn(
+            "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-500",
+            user ? "bg-green-500" : "bg-gray-100"
+          )}>
+            <Recycle className={cn(
+              "h-5 w-5 transition-all duration-500",
+              user ? "text-white opacity-100 scale-100" : "text-gray-400 opacity-0 scale-0"
+            )} />
           </div>
           <span className="font-bold tracking-tight text-xl text-gray-900">
-            LITTR<span className="font-normal text-green-500">.co</span>
+            LITTR<span className={cn(
+              "font-normal transition-colors duration-500",
+              user ? "text-green-500" : "text-gray-400"
+            )}>.co</span>
           </span>
         </Link>
 
