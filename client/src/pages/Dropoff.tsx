@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { AlertTriangle, BatteryWarning, CheckCircle, MapPin, Phone, Sparkles } from "lucide-react";
+import { ShopMap } from "@/components/ShopMap";
 
 import handDroppingImage from "@assets/generated_images/pixel_art_vape_drop_action.png";
 import eliteShopImage from "@assets/generated_images/elite_smoke_shop_pixel_art.png";
@@ -84,6 +85,19 @@ export default function Dropoff() {
               <h3 className="font-semibold text-lg">Red Eye Smoke Shop</h3>
               <p className="text-gray-500 text-sm">Rochester, NY</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Interactive Map */}
+      <section className="py-16 bg-gray-100">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold mb-2">Find a Bin Near You</h2>
+            <p className="text-gray-500">Tap on a pin to see shop details</p>
+          </div>
+          <div className="max-w-4xl mx-auto">
+            <ShopMap height="400px" />
           </div>
         </div>
       </section>
