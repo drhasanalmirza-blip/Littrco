@@ -94,7 +94,7 @@ export function Header() {
               className={cn(
                 "text-base font-medium py-3 px-4 rounded-lg transition-colors",
                 location === link.href 
-                  ? "bg-green-50 text-green-600" 
+                  ? (user ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-900")
                   : "text-gray-600 hover:bg-gray-50"
               )}
               onClick={() => setIsOpen(false)}
@@ -103,13 +103,23 @@ export function Header() {
             </Link>
           ))}
           <div className="pt-2 border-t mt-2 space-y-2">
-            <Link href="/app" onClick={() => setIsOpen(false)}>
-              <Button variant="outline" className="w-full border-green-500 text-green-600">
-                My Wallet
+            <Link href={user ? "/app" : "/app/login"} onClick={() => setIsOpen(false)}>
+              <Button variant="outline" className={cn(
+                "w-full transition-colors duration-500",
+                user 
+                  ? "border-green-500 text-green-600" 
+                  : "border-gray-400 text-gray-600"
+              )}>
+                {user ? "My Wallet" : "Login"}
               </Button>
             </Link>
             <Link href="/business" onClick={() => setIsOpen(false)}>
-              <Button className="w-full bg-green-500 hover:bg-green-600 text-white">
+              <Button className={cn(
+                "w-full transition-colors duration-500",
+                user 
+                  ? "bg-green-500 hover:bg-green-600 text-white" 
+                  : "bg-gray-500 hover:bg-gray-600 text-white"
+              )}>
                 Get Free Bin
               </Button>
             </Link>
