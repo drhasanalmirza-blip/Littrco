@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 export default function StaffDashboard() {
   const { user, role, clearAuth } = useStore();
@@ -81,6 +82,52 @@ export default function StaffDashboard() {
     },
   });
 
+  const { data: bins = [] } = useQuery({
+    queryKey: ['bins'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/bins');
+      if (!res.ok) throw new Error('Failed to fetch bins');
+      return res.json();
+    },
+  });
+
+  const { data: fireAlerts = [] } = useQuery({
+    queryKey: ['fireAlerts'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/fire-alerts');
+      if (!res.ok) throw new Error('Failed to fetch fire alerts');
+      return res.json();
+    },
+  });
+
+  const acknowledgeAlert = useMutation({
+    mutationFn: async (alertId: number) => {
+      const res = await apiRequest(`/api/staff/fire-alerts/${alertId}/acknowledge`, {
+        method: 'PATCH',
+      });
+      if (!res.ok) throw new Error('Failed to acknowledge alert');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fireAlerts'] });
+      queryClient.invalidateQueries({ queryKey: ['bins'] });
+    },
+  });
+
+  const resolveAlert = useMutation({
+    mutationFn: async (alertId: number) => {
+      const res = await apiRequest(`/api/staff/fire-alerts/${alertId}/resolve`, {
+        method: 'PATCH',
+      });
+      if (!res.ok) throw new Error('Failed to resolve alert');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fireAlerts'] });
+      queryClient.invalidateQueries({ queryKey: ['bins'] });
+    },
+  });
+
   const handleLogout = async () => {
     await apiRequest('/api/auth/logout', { method: 'POST' });
     clearAuth();
@@ -108,6 +155,8 @@ export default function StaffDashboard() {
       today.setHours(0, 0, 0, 0);
       return new Date(e.createdAt) >= today;
     }).length,
+    activeFireAlerts: fireAlerts.filter((a: any) => !a.acknowledged).length,
+    totalBins: bins.length,
   };
 
   return (
@@ -123,7 +172,7 @@ export default function StaffDashboard() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -149,10 +198,21 @@ export default function StaffDashboard() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <Cpu className="h-8 w-8 text-purple-500" />
+                <Trash2 className="h-8 w-8 text-teal-500" />
                 <div>
-                  <p className="text-2xl font-bold">{stats.totalDevices}</p>
-                  <p className="text-xs text-gray-500">Devices</p>
+                  <p className="text-2xl font-bold">{stats.totalBins}</p>
+                  <p className="text-xs text-gray-500">Bins</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className={stats.activeFireAlerts > 0 ? "border-red-500 bg-red-50" : ""}>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <Flame className={`h-8 w-8 ${stats.activeFireAlerts > 0 ? "text-red-500 animate-pulse" : "text-gray-400"}`} />
+                <div>
+                  <p className={`text-2xl font-bold ${stats.activeFireAlerts > 0 ? "text-red-600" : ""}`}>{stats.activeFireAlerts}</p>
+                  <p className="text-xs text-gray-500">Fire Alerts</p>
                 </div>
               </div>
             </CardContent>
@@ -182,9 +242,13 @@ export default function StaffDashboard() {
         </div>
 
         <Tabs defaultValue="leads" className="space-y-4">
-          <TabsList className="grid grid-cols-6 w-full max-w-2xl">
+          <TabsList className="grid grid-cols-7 w-full max-w-3xl">
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="shops">Shops</TabsTrigger>
+            <TabsTrigger value="bins" className="flex items-center gap-1">
+              <Trash2 className="h-4 w-4" />
+              Bins
+            </TabsTrigger>
             <TabsTrigger value="devices">Devices</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
@@ -281,6 +345,185 @@ export default function StaffDashboard() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="bins">
+            <div className="space-y-4">
+              {fireAlerts.length > 0 && (
+                <Card className="border-red-500 bg-red-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-red-700">
+                      <Flame className="h-5 w-5 animate-pulse" />
+                      Active Fire Alerts
+                    </CardTitle>
+                    <CardDescription className="text-red-600">
+                      Immediate attention required for these alerts
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {fireAlerts.map((alert: any) => (
+                        <div 
+                          key={alert.id} 
+                          className={`p-4 rounded-lg border ${
+                            alert.severity === 'CRITICAL' ? 'bg-red-100 border-red-500 animate-pulse' :
+                            alert.severity === 'HIGH' ? 'bg-red-100 border-red-400' :
+                            alert.severity === 'MEDIUM' ? 'bg-orange-100 border-orange-400' :
+                            'bg-yellow-100 border-yellow-400'
+                          }`}
+                          data-testid={`fire-alert-${alert.id}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Flame className={`h-6 w-6 ${
+                                alert.severity === 'CRITICAL' ? 'text-red-600 animate-pulse' :
+                                alert.severity === 'HIGH' ? 'text-red-500' :
+                                alert.severity === 'MEDIUM' ? 'text-orange-500' :
+                                'text-yellow-500'
+                              }`} />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <Badge 
+                                    variant={
+                                      alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'destructive' :
+                                      alert.severity === 'MEDIUM' ? 'default' : 'secondary'
+                                    }
+                                    className={
+                                      alert.severity === 'CRITICAL' ? 'animate-pulse bg-red-600' :
+                                      alert.severity === 'HIGH' ? 'bg-red-500' :
+                                      alert.severity === 'MEDIUM' ? 'bg-orange-500' :
+                                      'bg-yellow-500 text-black'
+                                    }
+                                    data-testid={`severity-badge-${alert.id}`}
+                                  >
+                                    {alert.severity}
+                                  </Badge>
+                                  <span className="font-semibold">{alert.bin?.name || `Bin #${alert.binId}`}</span>
+                                  <span className="text-sm text-gray-600">at {alert.shop?.name || 'Unknown Shop'}</span>
+                                </div>
+                                <div className="text-sm text-gray-700 mt-1">
+                                  {alert.temperature !== null && (
+                                    <span className="mr-3">🌡️ {alert.temperature?.toFixed(1)}°C</span>
+                                  )}
+                                  {alert.temperatureRise !== null && alert.temperatureRise > 0 && (
+                                    <span className="text-red-600">↑ +{alert.temperatureRise?.toFixed(1)}°C rise</span>
+                                  )}
+                                  <span className="ml-3 text-gray-500">
+                                    {new Date(alert.createdAt).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              {!alert.acknowledged && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => acknowledgeAlert.mutate(alert.id)}
+                                  disabled={acknowledgeAlert.isPending}
+                                  data-testid={`acknowledge-alert-${alert.id}`}
+                                >
+                                  Acknowledge
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant={alert.acknowledged ? "default" : "secondary"}
+                                onClick={() => resolveAlert.mutate(alert.id)}
+                                disabled={resolveAlert.isPending}
+                                data-testid={`resolve-alert-${alert.id}`}
+                              >
+                                Resolve
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Trash2 className="h-5 w-5" />
+                    All Bins
+                  </CardTitle>
+                  <CardDescription>Smart recycling bins across all locations</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Shop</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Fill Level</TableHead>
+                        <TableHead>Vape Count</TableHead>
+                        <TableHead>Temperature</TableHead>
+                        <TableHead>Air Quality</TableHead>
+                        <TableHead>Last Seen</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bins.map((bin: any) => (
+                        <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`}>
+                          <TableCell className="font-medium">{bin.name}</TableCell>
+                          <TableCell>{bin.shop?.name || 'Unknown'}</TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={
+                                bin.status === 'ONLINE' ? 'default' : 
+                                bin.status === 'FIRE_ALERT' ? 'destructive' :
+                                bin.status === 'MAINTENANCE' ? 'secondary' : 'outline'
+                              }
+                              className={bin.status === 'FIRE_ALERT' ? 'animate-pulse' : ''}
+                              data-testid={`bin-status-${bin.id}`}
+                            >
+                              {bin.status === 'FIRE_ALERT' && <Flame className="h-3 w-3 mr-1" />}
+                              {bin.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full ${
+                                    bin.fillLevel >= 80 ? 'bg-red-500' :
+                                    bin.fillLevel >= 50 ? 'bg-yellow-500' :
+                                    'bg-green-500'
+                                  }`}
+                                  style={{ width: `${bin.fillLevel || 0}%` }}
+                                />
+                              </div>
+                              <span className="text-sm">{bin.fillLevel || 0}%</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{bin.vapeCount || 0}</TableCell>
+                          <TableCell>
+                            {bin.lastTemperature !== null ? (
+                              <span className={bin.lastTemperature >= 45 ? 'text-red-600 font-semibold' : ''}>
+                                {bin.lastTemperature?.toFixed(1)}°C
+                              </span>
+                            ) : '-'}
+                          </TableCell>
+                          <TableCell>{bin.lastAirQuality !== null ? bin.lastAirQuality : '-'}</TableCell>
+                          <TableCell>
+                            {bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : 'Never'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {bins.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-gray-500">No bins yet</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="devices">
