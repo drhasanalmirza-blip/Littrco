@@ -268,9 +268,9 @@ export default function PartnerDashboard() {
           <TabsContent value="bins">
             <div className="space-y-4">
               {shopFireAlerts.filter((a: any) => !a.resolvedAt).length > 0 && (
-                <Card className="border-red-500 bg-red-50">
+                <Card className="border-red-500 !bg-red-900/30">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-700">
+                    <CardTitle className="flex items-center gap-2 text-red-400">
                       <Flame className="h-5 w-5 animate-pulse" />
                       Fire Alerts
                     </CardTitle>
@@ -281,21 +281,21 @@ export default function PartnerDashboard() {
                         <div 
                           key={alert.id} 
                           className={`p-3 rounded-lg ${
-                            alert.severity === 'CRITICAL' ? 'bg-red-100 border border-red-500' :
-                            alert.severity === 'HIGH' ? 'bg-red-100 border border-red-400' :
-                            'bg-orange-100 border border-orange-400'
+                            alert.severity === 'CRITICAL' ? 'bg-red-900/50 border border-red-500' :
+                            alert.severity === 'HIGH' ? 'bg-red-900/40 border border-red-400' :
+                            'bg-orange-900/40 border border-orange-400'
                           }`}
                           data-testid={`partner-fire-alert-${alert.id}`}
                         >
                           <div className="flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-red-600" />
+                            <AlertTriangle className="h-5 w-5 text-red-400" />
                             <Badge variant="destructive">{alert.severity}</Badge>
-                            <span className="font-medium">{alert.bin?.name || `Bin #${alert.binId}`}</span>
+                            <span className="font-medium text-white">{alert.bin?.name || `Bin #${alert.binId}`}</span>
                             {alert.temperature && (
-                              <span className="text-sm">🌡️ {alert.temperature.toFixed(1)}°C</span>
+                              <span className="text-sm text-gray-300">🌡️ {alert.temperature.toFixed(1)}°C</span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-600 mt-1">
+                          <p className="text-xs text-gray-400 mt-1">
                             Contact LITTR support immediately if you notice smoke or fire.
                           </p>
                         </div>
@@ -319,35 +319,35 @@ export default function PartnerDashboard() {
                         <div 
                           key={bin.id} 
                           className={`p-4 rounded-lg border ${
-                            bin.status === 'FIRE_ALERT' ? 'border-red-500 bg-red-50' :
-                            bin.status === 'ONLINE' ? 'border-green-200 bg-green-50' :
-                            'border-gray-200 bg-gray-50'
+                            bin.status === 'FIRE_ALERT' ? 'border-red-500 bg-red-900/30' :
+                            bin.status === 'ONLINE' ? 'border-green-500/30 bg-green-900/20' :
+                            'border-gray-600 bg-gray-800/50'
                           }`}
                           data-testid={`partner-bin-${bin.id}`}
                         >
                           <div className="flex justify-between items-start mb-3">
                             <div>
-                              <h4 className="font-semibold">{bin.name}</h4>
+                              <h4 className="font-semibold text-white">{bin.name}</h4>
                               <Badge variant={bin.status === 'ONLINE' ? 'default' : bin.status === 'FIRE_ALERT' ? 'destructive' : 'secondary'}>
                                 {bin.status}
                               </Badge>
                             </div>
-                            <div className="text-right text-sm text-gray-500">
-                              <div className="font-bold text-lg text-green-600">{bin.vapeCount || 0}</div>
-                              <div>vapes recycled</div>
+                            <div className="text-right text-sm">
+                              <div className="font-bold text-lg text-green-400">{bin.vapeCount || 0}</div>
+                              <div className="text-gray-400">vapes recycled</div>
                             </div>
                           </div>
                           
                           <div className="space-y-2">
                             <div>
-                              <div className="flex justify-between text-sm mb-1">
+                              <div className="flex justify-between text-sm mb-1 text-gray-300">
                                 <span>Fill Level</span>
                                 <span>{bin.fillLevel || 0}%</span>
                               </div>
                               <Progress value={bin.fillLevel || 0} className="h-2" />
                             </div>
                             
-                            <div className="flex gap-4 text-sm text-gray-600">
+                            <div className="flex gap-4 text-sm text-gray-400">
                               {bin.lastTemperature && (
                                 <span>🌡️ {bin.lastTemperature.toFixed(1)}°C</span>
                               )}
@@ -363,10 +363,10 @@ export default function PartnerDashboard() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-gray-500">
+                    <div className="text-center py-8 text-gray-400">
                       <Trash2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
                       <p>No bins linked to your shop yet.</p>
-                      <p className="text-sm">Contact LITTR to get your smart bin installed.</p>
+                      <p className="text-sm text-gray-500">Contact LITTR to get your smart bin installed.</p>
                     </div>
                   )}
                 </CardContent>

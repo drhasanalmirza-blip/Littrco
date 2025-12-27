@@ -91,7 +91,7 @@ export default function CustomerDashboard() {
   return (
     <div className="littr-dashboard pb-24">
       {/* Nav Bar */}
-      <div className="littr-nav px-4 py-3 safe-top">
+      <div className="littr-nav px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 littr-gradient-green rounded-lg flex items-center justify-center">
@@ -114,24 +114,27 @@ export default function CustomerDashboard() {
         </div>
       </div>
 
-      <div className="px-4 py-6 space-y-6">
-        {/* Points Balance - Hero Card */}
-        <div className="littr-gradient-green rounded-2xl p-6 text-white relative overflow-hidden shadow-lg">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10" />
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-8 -mb-8" />
-          <div className="relative z-10">
-            <p className="text-green-100 text-sm mb-1">Your Points</p>
-            <p className="text-5xl font-bold mb-1" data-testid="text-points-balance">
-              {wallet?.pointsBalance || 0}
-            </p>
-            <p className="text-green-200 text-xs">
-              Lifetime: {wallet?.lifetimeEarned || 0} pts earned
-            </p>
-            {customer && (
-              <p className="text-green-300/60 text-xs mt-3 font-mono">
-                ID: {customer.publicId}
+      <div className="px-4 py-4 space-y-4">
+        {/* Points Balance - Compact Card */}
+        <div className="littr-gradient-green rounded-xl p-4 text-white relative overflow-hidden shadow-lg">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -mr-6 -mt-6" />
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <p className="text-green-100 text-xs mb-0.5">Your Points</p>
+              <p className="text-3xl font-bold" data-testid="text-points-balance">
+                {wallet?.pointsBalance || 0}
               </p>
-            )}
+            </div>
+            <div className="text-right">
+              <p className="text-green-200 text-xs">
+                Lifetime: {wallet?.lifetimeEarned || 0}
+              </p>
+              {customer && (
+                <p className="text-green-300/50 text-[10px] font-mono mt-1">
+                  {customer.publicId}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 

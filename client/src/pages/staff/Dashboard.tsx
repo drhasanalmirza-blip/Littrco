@@ -212,12 +212,12 @@ export default function StaffDashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className={stats.activeFireAlerts > 0 ? "border-red-500 bg-red-50" : ""}>
+          <Card className={stats.activeFireAlerts > 0 ? "border-red-500 !bg-red-900/30" : ""}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
                 <Flame className={`h-8 w-8 ${stats.activeFireAlerts > 0 ? "text-red-500 animate-pulse" : "text-gray-400"}`} />
                 <div>
-                  <p className={`text-2xl font-bold ${stats.activeFireAlerts > 0 ? "text-red-600" : ""}`}>{stats.activeFireAlerts}</p>
+                  <p className={`text-2xl font-bold ${stats.activeFireAlerts > 0 ? "text-red-400" : ""}`}>{stats.activeFireAlerts}</p>
                   <p className="text-xs text-gray-500">Fire Alerts</p>
                 </div>
               </div>
@@ -356,13 +356,13 @@ export default function StaffDashboard() {
           <TabsContent value="bins">
             <div className="space-y-4">
               {fireAlerts.length > 0 && (
-                <Card className="border-red-500 bg-red-50">
+                <Card className="border-red-500 !bg-red-900/30">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-700">
+                    <CardTitle className="flex items-center gap-2 text-red-400">
                       <Flame className="h-5 w-5 animate-pulse" />
                       Active Fire Alerts
                     </CardTitle>
-                    <CardDescription className="text-red-600">
+                    <CardDescription className="text-red-300/70">
                       Immediate attention required for these alerts
                     </CardDescription>
                   </CardHeader>
@@ -372,20 +372,20 @@ export default function StaffDashboard() {
                         <div 
                           key={alert.id} 
                           className={`p-4 rounded-lg border ${
-                            alert.severity === 'CRITICAL' ? 'bg-red-100 border-red-500 animate-pulse' :
-                            alert.severity === 'HIGH' ? 'bg-red-100 border-red-400' :
-                            alert.severity === 'MEDIUM' ? 'bg-orange-100 border-orange-400' :
-                            'bg-yellow-100 border-yellow-400'
+                            alert.severity === 'CRITICAL' ? 'bg-red-900/50 border-red-500 animate-pulse' :
+                            alert.severity === 'HIGH' ? 'bg-red-900/40 border-red-400' :
+                            alert.severity === 'MEDIUM' ? 'bg-orange-900/40 border-orange-400' :
+                            'bg-yellow-900/40 border-yellow-400'
                           }`}
                           data-testid={`fire-alert-${alert.id}`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <Flame className={`h-6 w-6 ${
-                                alert.severity === 'CRITICAL' ? 'text-red-600 animate-pulse' :
-                                alert.severity === 'HIGH' ? 'text-red-500' :
-                                alert.severity === 'MEDIUM' ? 'text-orange-500' :
-                                'text-yellow-500'
+                                alert.severity === 'CRITICAL' ? 'text-red-500 animate-pulse' :
+                                alert.severity === 'HIGH' ? 'text-red-400' :
+                                alert.severity === 'MEDIUM' ? 'text-orange-400' :
+                                'text-yellow-400'
                               }`} />
                               <div>
                                 <div className="flex items-center gap-2">
@@ -404,15 +404,15 @@ export default function StaffDashboard() {
                                   >
                                     {alert.severity}
                                   </Badge>
-                                  <span className="font-semibold">{alert.bin?.name || `Bin #${alert.binId}`}</span>
-                                  <span className="text-sm text-gray-600">at {alert.shop?.name || 'Unknown Shop'}</span>
+                                  <span className="font-semibold text-white">{alert.bin?.name || `Bin #${alert.binId}`}</span>
+                                  <span className="text-sm text-gray-400">at {alert.shop?.name || 'Unknown Shop'}</span>
                                 </div>
-                                <div className="text-sm text-gray-700 mt-1">
+                                <div className="text-sm text-gray-300 mt-1">
                                   {alert.temperature !== null && (
                                     <span className="mr-3">🌡️ {alert.temperature?.toFixed(1)}°C</span>
                                   )}
                                   {alert.temperatureRise !== null && alert.temperatureRise > 0 && (
-                                    <span className="text-red-600">↑ +{alert.temperatureRise?.toFixed(1)}°C rise</span>
+                                    <span className="text-red-400">↑ +{alert.temperatureRise?.toFixed(1)}°C rise</span>
                                   )}
                                   <span className="ml-3 text-gray-500">
                                     {new Date(alert.createdAt).toLocaleString()}
