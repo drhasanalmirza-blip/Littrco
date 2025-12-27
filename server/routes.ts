@@ -1194,5 +1194,373 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== V1 BIN SENSOR API (ESP32) ====================
+  
+  // Fire detection thresholds
+  const TEMP_THRESHOLDS = {
+    LOW: 45,      // Warning level
+    MEDIUM: 55,   // Concern level
+    HIGH: 65,     // Danger level
+    CRITICAL: 75, // Critical - immediate action
+  };
+  
+  // Report sensor telemetry from ESP32 bin
+  app.post("/api/v1/bin/telemetry", async (req, res) => {
+    try {
+      const deviceId = req.headers["x-device-id"] as string;
+      const deviceKey = req.headers["x-device-key"] as string;
+      
+      if (!deviceId || !deviceKey) {
+        return res.status(401).json({ ok: false, error: "Device authentication required" });
+      }
+      
+      const auth = await authenticateDevice(deviceId, deviceKey);
+      if (!auth) {
+        return res.status(401).json({ ok: false, error: "Invalid device credentials" });
+      }
+      
+      const { device, shop } = auth;
+      const { binId, temperature, airQuality, fillLevel, vapeCount } = req.body;
+      
+      if (!binId) {
+        return res.status(400).json({ ok: false, error: "Bin ID required" });
+      }
+      
+      const bin = await storage.getBin(parseInt(binId));
+      if (!bin || bin.deviceId !== device.id) {
+        return res.status(404).json({ ok: false, error: "Bin not found or not linked to device" });
+      }
+      
+      // Create sensor reading
+      await storage.createBinReading({
+        binId: bin.id,
+        temperature: temperature ?? null,
+        airQuality: airQuality ?? null,
+        fillLevel: fillLevel ?? null,
+      });
+      
+      // Update bin status
+      const updateData: any = { fillLevel, vapeCount };
+      if (temperature !== undefined) updateData.lastTemperature = temperature;
+      if (airQuality !== undefined) updateData.lastAirQuality = airQuality;
+      if (vapeCount !== undefined) updateData.vapeCount = vapeCount;
+      
+      await storage.updateBinSensorData(bin.id, updateData);
+      
+      // Check for fire alert conditions
+      let fireAlertCreated = false;
+      if (temperature !== undefined) {
+        let severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | null = null;
+        
+        if (temperature >= TEMP_THRESHOLDS.CRITICAL) {
+          severity = 'CRITICAL';
+        } else if (temperature >= TEMP_THRESHOLDS.HIGH) {
+          severity = 'HIGH';
+        } else if (temperature >= TEMP_THRESHOLDS.MEDIUM) {
+          severity = 'MEDIUM';
+        } else if (temperature >= TEMP_THRESHOLDS.LOW) {
+          severity = 'LOW';
+        }
+        
+        if (severity) {
+          // Check for recent temp reading to calculate rise
+          const recentReadings = await storage.getBinReadings(bin.id, 5);
+          let tempRise = 0;
+          if (recentReadings.length >= 2 && recentReadings[1].temperature) {
+            tempRise = temperature - recentReadings[1].temperature;
+          }
+          
+          // Create fire alert
+          await storage.createFireAlert({
+            binId: bin.id,
+            shopId: shop.id,
+            severity,
+            temperature,
+            temperatureRise: tempRise,
+            acknowledged: false,
+          });
+          
+          // Update bin status to FIRE_ALERT
+          await storage.updateBinStatus(bin.id, 'FIRE_ALERT');
+          fireAlertCreated = true;
+        }
+      }
+      
+      res.json({
+        ok: true,
+        binId: bin.id,
+        status: fireAlertCreated ? 'FIRE_ALERT' : 'ONLINE',
+        fireAlert: fireAlertCreated,
+      });
+    } catch (error) {
+      console.error('Bin telemetry error:', error);
+      res.status(500).json({ ok: false, error: "Failed to process telemetry" });
+    }
+  });
+  
+  // Get bin config for ESP32
+  app.get("/api/v1/bin/config", async (req, res) => {
+    try {
+      const deviceId = req.headers["x-device-id"] as string;
+      const deviceKey = req.headers["x-device-key"] as string;
+      
+      if (!deviceId || !deviceKey) {
+        return res.status(401).json({ ok: false, error: "Device authentication required" });
+      }
+      
+      const auth = await authenticateDevice(deviceId, deviceKey);
+      if (!auth) {
+        return res.status(401).json({ ok: false, error: "Invalid device credentials" });
+      }
+      
+      const { device, shop } = auth;
+      
+      // Get bins linked to this device
+      const allBins = await storage.getBinsByShop(shop.id);
+      const deviceBins = allBins.filter(b => b.deviceId === device.id);
+      
+      res.json({
+        ok: true,
+        deviceId: device.id,
+        shopId: shop.id,
+        shopName: shop.name,
+        bins: deviceBins.map(b => ({
+          id: b.id,
+          name: b.name,
+          binType: b.binType,
+        })),
+        config: {
+          telemetryIntervalMs: 30000, // 30 seconds
+          tempAlertThreshold: TEMP_THRESHOLDS.LOW,
+        },
+      });
+    } catch (error) {
+      console.error('Bin config error:', error);
+      res.status(500).json({ ok: false, error: "Failed to get config" });
+    }
+  });
+  
+  // ==================== STAFF BIN MANAGEMENT ====================
+  
+  // Get all bins (staff only)
+  app.get("/api/staff/bins", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allBins = await storage.getAllBins();
+      const shops = await storage.getAllShops();
+      
+      // Enrich bins with shop info
+      const enrichedBins = allBins.map(bin => ({
+        ...bin,
+        shop: shops.find(s => s.id === bin.shopId),
+      }));
+      
+      res.json(enrichedBins);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch bins" });
+    }
+  });
+  
+  // Create a bin (staff only)
+  app.post("/api/staff/bins", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { shopId, name, binType, deviceId } = req.body;
+      
+      if (!shopId || !name) {
+        return res.status(400).json({ error: "Shop ID and name required" });
+      }
+      
+      const bin = await storage.createBin({
+        shopId,
+        name,
+        binType: binType || 'vape',
+        deviceId: deviceId || null,
+        status: 'OFFLINE',
+        fillLevel: 0,
+        vapeCount: 0,
+      });
+      
+      res.json(bin);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create bin" });
+    }
+  });
+  
+  // Get active fire alerts (staff only)
+  app.get("/api/staff/fire-alerts", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const alerts = await storage.getActiveFireAlerts();
+      const allBins = await storage.getAllBins();
+      const shops = await storage.getAllShops();
+      
+      const enrichedAlerts = alerts.map(alert => ({
+        ...alert,
+        bin: allBins.find(b => b.id === alert.binId),
+        shop: shops.find(s => s.id === alert.shopId),
+      }));
+      
+      res.json(enrichedAlerts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch fire alerts" });
+    }
+  });
+  
+  // Acknowledge fire alert (staff only)
+  app.patch("/api/staff/fire-alerts/:id/acknowledge", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const alert = await storage.acknowledgeFireAlert(parseInt(req.params.id), req.user!.id);
+      if (!alert) {
+        return res.status(404).json({ error: "Alert not found" });
+      }
+      res.json(alert);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to acknowledge alert" });
+    }
+  });
+  
+  // Resolve fire alert (staff only)
+  app.patch("/api/staff/fire-alerts/:id/resolve", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const alert = await storage.resolveFireAlert(parseInt(req.params.id));
+      if (!alert) {
+        return res.status(404).json({ error: "Alert not found" });
+      }
+      
+      // Reset bin status to ONLINE
+      if (alert.binId) {
+        await storage.updateBinStatus(alert.binId, 'ONLINE');
+      }
+      
+      res.json(alert);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to resolve alert" });
+    }
+  });
+  
+  // Update shop coordinates (staff only)
+  app.patch("/api/staff/shops/:id/coordinates", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { latitude, longitude } = req.body;
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({ error: "Latitude and longitude required" });
+      }
+      
+      const shop = await storage.updateShopCoordinates(parseInt(req.params.id), latitude, longitude);
+      res.json(shop);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update coordinates" });
+    }
+  });
+  
+  // ==================== PARTNER BIN ENDPOINTS ====================
+  
+  // Get partner's bins
+  app.get("/api/partner/shops/:shopId/bins", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const shopId = parseInt(req.params.shopId);
+      
+      // Verify partner owns this shop
+      const shops = await storage.getShopsByMemberId(req.user!.id);
+      if (!shops.find(s => s.id === shopId)) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      
+      const shopBins = await storage.getBinsByShop(shopId);
+      res.json(shopBins);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch bins" });
+    }
+  });
+  
+  // Get partner's fire alerts
+  app.get("/api/partner/shops/:shopId/fire-alerts", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const shopId = parseInt(req.params.shopId);
+      
+      // Verify partner owns this shop
+      const shops = await storage.getShopsByMemberId(req.user!.id);
+      if (!shops.find(s => s.id === shopId)) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      
+      const alerts = await storage.getFireAlertsByShop(shopId);
+      const bins = await storage.getBinsByShop(shopId);
+      
+      const enrichedAlerts = alerts.map(alert => ({
+        ...alert,
+        bin: bins.find(b => b.id === alert.binId),
+      }));
+      
+      res.json(enrichedAlerts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch fire alerts" });
+    }
+  });
+  
+  // ==================== PUBLIC ENDPOINTS ====================
+  
+  // Get verified shops with coordinates for map
+  app.get("/api/shops/locations", async (req, res) => {
+    try {
+      const shops = await storage.getVerifiedShopsWithCoordinates();
+      res.json(shops.map(s => ({
+        id: s.id,
+        name: s.name,
+        address: s.address,
+        city: s.city,
+        latitude: s.latitude,
+        longitude: s.longitude,
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch shop locations" });
+    }
+  });
+  
+  // Check if staff exists (for first-time setup)
+  app.get("/api/setup/check", async (req, res) => {
+    try {
+      const hasStaff = await storage.hasAnyStaff();
+      res.json({ hasStaff });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check setup status" });
+    }
+  });
+  
+  // First-time staff setup
+  app.post("/api/setup/staff", async (req, res) => {
+    try {
+      // Only allow if no staff exists
+      const hasStaff = await storage.hasAnyStaff();
+      if (hasStaff) {
+        return res.status(403).json({ error: "Staff account already exists" });
+      }
+      
+      const { email, password, name } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password required" });
+      }
+      
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(400).json({ error: "Email already in use" });
+      }
+      
+      // Create staff user
+      const result = await register(email, password, "STAFF");
+      
+      res.json({
+        success: true,
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          role: result.user.role,
+        },
+        sessionId: result.sessionId,
+      });
+    } catch (error) {
+      console.error('Setup error:', error);
+      res.status(500).json({ error: "Failed to create staff account" });
+    }
+  });
+
   return httpServer;
 }
