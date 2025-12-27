@@ -74,3 +74,80 @@
   -webkit-text-stroke: 1px black;
   color: transparent;
 }
+
+/* iOS-style mobile UI patterns */
+.ios-card {
+  @apply bg-white rounded-2xl shadow-sm border border-gray-100;
+}
+
+.ios-list-item {
+  @apply flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100 last:border-b-0 active:bg-gray-50 transition-colors;
+}
+
+.ios-section {
+  @apply bg-gray-50 rounded-2xl overflow-hidden;
+}
+
+.ios-nav-bar {
+  @apply sticky top-0 z-50 bg-white/90 backdrop-blur-lg border-b border-gray-200 px-4 py-3;
+}
+
+.ios-tab-bar {
+  @apply fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-200 flex justify-around py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];
+}
+
+.ios-tab-item {
+  @apply flex flex-col items-center gap-1 text-xs text-gray-500 transition-colors;
+}
+
+.ios-tab-item.active {
+  @apply text-green-600;
+}
+
+.ios-button {
+  @apply h-12 rounded-xl font-semibold transition-all active:scale-[0.98];
+}
+
+.ios-input {
+  @apply h-12 rounded-xl bg-gray-100 border-0 px-4 text-base focus:ring-2 focus:ring-green-500;
+}
+
+/* Pixel art enhancements */
+.pixel-border {
+  box-shadow: 
+    4px 0 0 0 currentColor,
+    -4px 0 0 0 currentColor,
+    0 4px 0 0 currentColor,
+    0 -4px 0 0 currentColor;
+}
+
+.pixel-shadow {
+  box-shadow: 4px 4px 0 0 rgba(0,0,0,0.2);
+}
+
+/* Mobile-first safe areas */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Smooth scroll for mobile */
+.scroll-snap-y {
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-snap-item {
+  scroll-snap-align: start;
+}
+
+/* Touch-friendly spacing */
+@media (max-width: 768px) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

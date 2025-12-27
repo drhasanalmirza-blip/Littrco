@@ -66,12 +66,15 @@ function Router() {
 
         {/* Customer App */}
         <Route path="/app" component={CustomerDashboard} />
+        <Route path="/app/dashboard" component={CustomerDashboard} />
         <Route path="/app/login" component={() => <Login type="customer" />} />
         <Route path="/app/register" component={RegisterPage} />
         <Route path="/app/claim" component={ClaimPage} />
         <Route path="/app/scan" component={ScanPage} />
         <Route path="/app/store" component={StorePage} />
         <Route path="/app/change-password" component={ChangePasswordPage} />
+        <Route path="/app/settings" component={ChangePasswordPage} />
+        <Route path="/app/history" component={CustomerDashboard} />
 
         <Route component={NotFound} />
       </Switch>
