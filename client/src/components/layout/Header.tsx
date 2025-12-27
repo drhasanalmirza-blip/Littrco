@@ -42,20 +42,33 @@ export function Header() {
               key={link.href} 
               href={link.href}
               className={cn(
-                "text-sm font-medium transition-colors hover:text-green-600",
-                location === link.href ? "text-green-600 font-semibold" : "text-gray-600"
+                "text-sm font-medium transition-colors",
+                user ? "hover:text-green-600" : "hover:text-gray-900",
+                location === link.href 
+                  ? (user ? "text-green-600 font-semibold" : "text-gray-900 font-semibold")
+                  : "text-gray-600"
               )}
             >
               {link.label}
             </Link>
           ))}
-          <Link href="/app">
-            <Button variant="outline" size="sm" className="border-green-500 text-green-600 hover:bg-green-50">
-              My Wallet
+          <Link href={user ? "/app" : "/app/login"}>
+            <Button variant="outline" size="sm" className={cn(
+              "transition-colors duration-500",
+              user 
+                ? "border-green-500 text-green-600 hover:bg-green-50" 
+                : "border-gray-400 text-gray-600 hover:bg-gray-50"
+            )}>
+              {user ? "My Wallet" : "Login"}
             </Button>
           </Link>
           <Link href="/business">
-            <Button size="sm" className="bg-green-500 hover:bg-green-600 text-white font-semibold">
+            <Button size="sm" className={cn(
+              "font-semibold transition-colors duration-500",
+              user 
+                ? "bg-green-500 hover:bg-green-600 text-white" 
+                : "bg-gray-500 hover:bg-gray-600 text-white"
+            )}>
               Get Free Bin
             </Button>
           </Link>
