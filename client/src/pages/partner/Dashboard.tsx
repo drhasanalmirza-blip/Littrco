@@ -8,7 +8,9 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, Zap, Package, Calendar } from "lucide-react";
+import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 
 export default function PartnerDashboard() {
   const { user, role, clearAuth } = useStore();
@@ -57,6 +59,29 @@ export default function PartnerDashboard() {
       return res.json();
     },
     enabled: !!shop,
+  });
+
+  const { data: shopBins = [] } = useQuery({
+    queryKey: ['partner-bins', shop?.id],
+    queryFn: async () => {
+      if (!shop) return [];
+      const res = await apiRequest(`/api/partner/shops/${shop.id}/bins`);
+      if (!res.ok) throw new Error('Failed to fetch bins');
+      return res.json();
+    },
+    enabled: !!shop,
+  });
+
+  const { data: shopFireAlerts = [] } = useQuery({
+    queryKey: ['partner-fire-alerts', shop?.id],
+    queryFn: async () => {
+      if (!shop) return [];
+      const res = await apiRequest(`/api/partner/shops/${shop.id}/fire-alerts`);
+      if (!res.ok) throw new Error('Failed to fetch fire alerts');
+      return res.json();
+    },
+    enabled: !!shop,
+    refetchInterval: 10000,
   });
 
   const updateConfig = useMutation({
@@ -182,6 +207,12 @@ export default function PartnerDashboard() {
         <Tabs defaultValue="activity" className="space-y-4">
           <TabsList>
             <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="bins" className="flex items-center gap-1">
+              {shopFireAlerts.filter((a: any) => !a.acknowledged).length > 0 && (
+                <Flame className="h-4 w-4 text-red-500 animate-pulse" />
+              )}
+              Bins
+            </TabsTrigger>
             <TabsTrigger value="rewards">Rewards Config</TabsTrigger>
             <TabsTrigger value="pickup">Request Pickup</TabsTrigger>
           </TabsList>
@@ -218,6 +249,115 @@ export default function PartnerDashboard() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="bins">
+            <div className="space-y-4">
+              {shopFireAlerts.filter((a: any) => !a.resolvedAt).length > 0 && (
+                <Card className="border-red-500 bg-red-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-red-700">
+                      <Flame className="h-5 w-5 animate-pulse" />
+                      Fire Alerts
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {shopFireAlerts.filter((a: any) => !a.resolvedAt).map((alert: any) => (
+                        <div 
+                          key={alert.id} 
+                          className={`p-3 rounded-lg ${
+                            alert.severity === 'CRITICAL' ? 'bg-red-100 border border-red-500' :
+                            alert.severity === 'HIGH' ? 'bg-red-100 border border-red-400' :
+                            'bg-orange-100 border border-orange-400'
+                          }`}
+                          data-testid={`partner-fire-alert-${alert.id}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-red-600" />
+                            <Badge variant="destructive">{alert.severity}</Badge>
+                            <span className="font-medium">{alert.bin?.name || `Bin #${alert.binId}`}</span>
+                            {alert.temperature && (
+                              <span className="text-sm">🌡️ {alert.temperature.toFixed(1)}°C</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Contact LITTR support immediately if you notice smoke or fire.
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Trash2 className="h-5 w-5" />
+                    Your Bins
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {shopBins.length > 0 ? (
+                    <div className="space-y-4">
+                      {shopBins.map((bin: any) => (
+                        <div 
+                          key={bin.id} 
+                          className={`p-4 rounded-lg border ${
+                            bin.status === 'FIRE_ALERT' ? 'border-red-500 bg-red-50' :
+                            bin.status === 'ONLINE' ? 'border-green-200 bg-green-50' :
+                            'border-gray-200 bg-gray-50'
+                          }`}
+                          data-testid={`partner-bin-${bin.id}`}
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4 className="font-semibold">{bin.name}</h4>
+                              <Badge variant={bin.status === 'ONLINE' ? 'default' : bin.status === 'FIRE_ALERT' ? 'destructive' : 'secondary'}>
+                                {bin.status}
+                              </Badge>
+                            </div>
+                            <div className="text-right text-sm text-gray-500">
+                              <div className="font-bold text-lg text-green-600">{bin.vapeCount || 0}</div>
+                              <div>vapes recycled</div>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div>
+                              <div className="flex justify-between text-sm mb-1">
+                                <span>Fill Level</span>
+                                <span>{bin.fillLevel || 0}%</span>
+                              </div>
+                              <Progress value={bin.fillLevel || 0} className="h-2" />
+                            </div>
+                            
+                            <div className="flex gap-4 text-sm text-gray-600">
+                              {bin.lastTemperature && (
+                                <span>🌡️ {bin.lastTemperature.toFixed(1)}°C</span>
+                              )}
+                              {bin.lastAirQuality && (
+                                <span>💨 AQI: {bin.lastAirQuality}</span>
+                              )}
+                              {bin.lastSeenAt && (
+                                <span>Last seen: {new Date(bin.lastSeenAt).toLocaleString()}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Trash2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                      <p>No bins linked to your shop yet.</p>
+                      <p className="text-sm">Contact LITTR to get your smart bin installed.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="rewards">
