@@ -22,15 +22,11 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 group">
-          <div className={cn(
-            "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-500",
-            user ? "bg-green-500" : "bg-gray-100"
-          )}>
-            <Recycle className={cn(
-              "h-5 w-5 transition-all duration-500",
-              user ? "text-white opacity-100 scale-100" : "text-gray-400 opacity-0 scale-0"
-            )} />
-          </div>
+          {user && (
+            <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center transition-all duration-500 animate-in zoom-in">
+              <Recycle className="h-5 w-5 text-white transition-all duration-500" />
+            </div>
+          )}
           <span className="font-bold tracking-tight text-xl text-gray-900">
             LITTR<span className={cn(
               "font-normal transition-colors duration-500",
