@@ -15,6 +15,7 @@ import { Login } from "@/components/auth/Login";
 import { MobileStickyCTA } from "@/components/MobileStickyCTA";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import StaffDashboard from "@/pages/staff/Dashboard";
+import StaffSetup from "@/pages/staff/Setup";
 import PartnerDashboard from "@/pages/partner/Dashboard";
 import CustomerDashboard from "@/pages/customer/Dashboard";
 import ClaimPage from "@/pages/customer/Claim";
@@ -57,6 +58,7 @@ function Router() {
         <Route path="/admin/dashboard" component={AdminDashboard} />
         
         <Route path="/staff/login" component={() => <Login type="staff" />} />
+        <Route path="/staff/setup" component={StaffSetup} />
         <Route path="/staff/dashboard" component={StaffDashboard} />
         
         <Route path="/partner/login" component={() => <Login type="partner" />} />
