@@ -97,6 +97,20 @@
 .littr-dashboard {
   background: linear-gradient(135deg, var(--littr-midnight) 0%, var(--littr-charcoal) 50%, var(--littr-slate) 100%);
   min-height: 100vh;
+  
+  /* Override Tailwind/Shadcn CSS variables for dark theme */
+  --color-background: hsl(220 20% 8%);
+  --color-foreground: hsl(0 0% 98%);
+  --color-card: hsl(220 20% 12%);
+  --color-card-foreground: hsl(0 0% 98%);
+  --color-popover: hsl(220 20% 12%);
+  --color-popover-foreground: hsl(0 0% 98%);
+  --color-secondary: hsl(220 15% 20%);
+  --color-secondary-foreground: hsl(0 0% 90%);
+  --color-muted: hsl(220 15% 18%);
+  --color-muted-foreground: hsl(0 0% 65%);
+  --color-border: hsl(220 15% 22%);
+  --color-input: hsl(220 15% 22%);
 }
 
 .littr-card {
@@ -330,11 +344,12 @@
 }
 
 /* Dark Theme Overrides for Shadcn Components inside littr-dashboard */
-.littr-dashboard [data-slot="card"],
-.littr-dashboard .card,
-.littr-dashboard [class*="rounded-lg"][class*="border"][class*="bg-card"] {
-  background: var(--littr-charcoal) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
+.littr-dashboard .bg-card {
+  background-color: var(--littr-charcoal) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.littr-dashboard .text-card-foreground {
   color: white !important;
 }
 
