@@ -119,10 +119,21 @@ Preferred communication style: Simple, everyday language.
 ### Device API (ESP32) - Legacy
 - `POST /api/device/spin` - Trigger reward spin (returns points + QR URL)
 - `GET /api/device/status` - Get device status and config
+- `POST /api/device/telemetry` - Report sensor data (temperature, VOC, fill level)
+- `GET /api/device/telemetry/history` - Get historical sensor readings
 
 ### Device API V1 (LITTR Screen Pro)
 - `POST /api/v1/device/pair` - Pair device using shop PIN (returns deviceId, deviceKey)
 - `POST /api/v1/device/spin` - Trigger spin with new weighted distribution
+
+### Telemetry & Fire Alerts
+The telemetry endpoint accepts sensor data from ESP32 bins:
+- **DS18B20**: Temperature sensor (triggers fire alert at ≥60°C, critical at ≥80°C)
+- **MQ135**: VOC sensor with analog (0-4095 ADC) and digital outputs
+- **Fill Level**: Ultrasonic-based percentage (0-100%)
+
+Fire alerts are auto-created when thresholds are exceeded and displayed in staff/partner dashboards.
+
 - `POST /api/v1/claim` - Claim points (supports auto-registration)
 
 Point Distribution (V1):
