@@ -155,10 +155,11 @@ export interface IStorage {
   // Bins
   createBin(bin: InsertBin): Promise<Bin>;
   getBin(id: number): Promise<Bin | undefined>;
+  getBinByDeviceId(deviceId: number): Promise<Bin | undefined>;
   getBinsByShop(shopId: number): Promise<Bin[]>;
   getAllBins(): Promise<Bin[]>;
   updateBinStatus(id: number, status: string): Promise<Bin | undefined>;
-  updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; vapeCount?: number }): Promise<Bin | undefined>;
+  updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; lastVocAnalog?: number; lastVocDigital?: boolean; vapeCount?: number }): Promise<Bin | undefined>;
   
   // Bin Readings
   createBinReading(reading: InsertBinReading): Promise<BinReading>;
@@ -518,8 +519,13 @@ export class DatabaseStorage implements IStorage {
     return bin;
   }
 
-  async updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; vapeCount?: number }): Promise<Bin | undefined> {
+  async updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; lastVocAnalog?: number; lastVocDigital?: boolean; vapeCount?: number }): Promise<Bin | undefined> {
     const [bin] = await db.update(bins).set({ ...data, lastSeenAt: new Date(), status: 'ONLINE' as any }).where(eq(bins.id, id)).returning();
+    return bin;
+  }
+
+  async getBinByDeviceId(deviceId: number): Promise<Bin | undefined> {
+    const [bin] = await db.select().from(bins).where(eq(bins.deviceId, deviceId));
     return bin;
   }
 

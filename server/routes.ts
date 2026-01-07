@@ -835,6 +835,181 @@ export async function registerRoutes(
     }
   });
 
+  // Rate limit tracking for telemetry (in-memory, resets on restart)
+  const telemetryLastSeen = new Map<number, number>();
+  const TELEMETRY_MIN_INTERVAL_MS = 30000; // 30 seconds minimum between readings
+  const FIRE_ALERT_TEMP_THRESHOLD = 60; // Celsius - trigger fire alert above this
+
+  // Device telemetry endpoint - receives sensor data from ESP32
+  app.post("/api/device/telemetry", async (req, res) => {
+    try {
+      const deviceId = req.headers["x-device-id"] as string;
+      const deviceKey = req.headers["x-device-key"] as string;
+      
+      if (!deviceId || !deviceKey) {
+        return res.status(401).json({ error: "Device authentication required" });
+      }
+      
+      const auth = await authenticateDevice(deviceId, deviceKey);
+      if (!auth) {
+        return res.status(401).json({ error: "Invalid device credentials" });
+      }
+      
+      const { device, shop } = auth;
+      
+      // Rate limiting
+      const lastSeen = telemetryLastSeen.get(device.id);
+      const now = Date.now();
+      if (lastSeen && now - lastSeen < TELEMETRY_MIN_INTERVAL_MS) {
+        const waitSeconds = Math.ceil((TELEMETRY_MIN_INTERVAL_MS - (now - lastSeen)) / 1000);
+        return res.status(429).json({ error: "Too fast", waitSeconds });
+      }
+      telemetryLastSeen.set(device.id, now);
+      
+      // Validate request body
+      const { temperatureC, vocAnalog, vocDigital, fillPercent } = req.body;
+      
+      // Basic validation
+      if (fillPercent !== undefined && (fillPercent < 0 || fillPercent > 100)) {
+        return res.status(400).json({ error: "fillPercent must be 0-100" });
+      }
+      if (vocAnalog !== undefined && (vocAnalog < 0 || vocAnalog > 4095)) {
+        return res.status(400).json({ error: "vocAnalog must be 0-4095 (12-bit ADC)" });
+      }
+      if (temperatureC !== undefined && (temperatureC < -40 || temperatureC > 125)) {
+        return res.status(400).json({ error: "temperatureC out of valid range" });
+      }
+      
+      // Get or create bin for this device
+      let bin = await storage.getBinByDeviceId(device.id);
+      
+      if (!bin) {
+        // Auto-create bin for device if it doesn't exist
+        bin = await storage.createBin({
+          shopId: shop.id,
+          deviceId: device.id,
+          name: device.name || `Bin ${device.id}`,
+          binType: "vape",
+          status: "ONLINE",
+          fillLevel: 0,
+          vapeCount: 0,
+        });
+      }
+      
+      // Store historical reading
+      await storage.createBinReading({
+        binId: bin.id,
+        temperature: temperatureC,
+        airQuality: vocAnalog,
+        vocAnalog: vocAnalog,
+        vocDigital: vocDigital,
+        fillLevel: fillPercent,
+      });
+      
+      // Update bin with latest sensor data
+      const updatedBin = await storage.updateBinSensorData(bin.id, {
+        fillLevel: fillPercent ?? bin.fillLevel,
+        lastTemperature: temperatureC ?? bin.lastTemperature,
+        lastAirQuality: vocAnalog ?? bin.lastAirQuality,
+        lastVocAnalog: vocAnalog ?? bin.lastVocAnalog,
+        lastVocDigital: vocDigital ?? bin.lastVocDigital,
+      });
+      
+      // Check for fire alert conditions
+      let fireAlertTriggered = false;
+      if (temperatureC !== undefined && temperatureC >= FIRE_ALERT_TEMP_THRESHOLD) {
+        // Check if there's already an active (unacknowledged) fire alert for this bin
+        const existingAlerts = await storage.getFireAlertsByShop(shop.id);
+        const hasActiveAlert = existingAlerts.some(a => 
+          a.binId === bin!.id && !a.acknowledged && !a.resolvedAt
+        );
+        
+        if (!hasActiveAlert) {
+          await storage.createFireAlert({
+            binId: bin.id,
+            shopId: shop.id,
+            severity: temperatureC >= 80 ? "CRITICAL" : "HIGH",
+            temperature: temperatureC,
+            acknowledged: false,
+          });
+          fireAlertTriggered = true;
+          
+          // Update bin status to FIRE_ALERT
+          await storage.updateBinStatus(bin.id, "FIRE_ALERT");
+        }
+      } else if (vocDigital === true) {
+        // VOC digital pin high also indicates potential hazard
+        const existingAlerts = await storage.getFireAlertsByShop(shop.id);
+        const hasActiveAlert = existingAlerts.some(a => 
+          a.binId === bin!.id && !a.acknowledged && !a.resolvedAt
+        );
+        
+        if (!hasActiveAlert) {
+          await storage.createFireAlert({
+            binId: bin.id,
+            shopId: shop.id,
+            severity: "HIGH",
+            temperature: temperatureC,
+            acknowledged: false,
+          });
+          fireAlertTriggered = true;
+          await storage.updateBinStatus(bin.id, "FIRE_ALERT");
+        }
+      }
+      
+      // Update device last seen
+      await storage.updateDeviceLastSeen(device.id);
+      
+      res.json({
+        status: "ok",
+        binId: bin.id,
+        fireAlertTriggered,
+        nextPollSeconds: 60, // Recommend next poll in 60 seconds
+      });
+    } catch (error) {
+      console.error("Telemetry error:", error);
+      res.status(500).json({ error: "Telemetry failed" });
+    }
+  });
+
+  // Get telemetry history for a device/bin
+  app.get("/api/device/telemetry/history", async (req, res) => {
+    try {
+      const deviceId = req.headers["x-device-id"] as string;
+      const deviceKey = req.headers["x-device-key"] as string;
+      
+      if (!deviceId || !deviceKey) {
+        return res.status(401).json({ error: "Device authentication required" });
+      }
+      
+      const auth = await authenticateDevice(deviceId, deviceKey);
+      if (!auth) {
+        return res.status(401).json({ error: "Invalid device credentials" });
+      }
+      
+      const bin = await storage.getBinByDeviceId(auth.device.id);
+      if (!bin) {
+        return res.status(404).json({ error: "No bin found for this device" });
+      }
+      
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);
+      const readings = await storage.getBinReadings(bin.id, limit);
+      
+      res.json({
+        binId: bin.id,
+        readings: readings.map(r => ({
+          temperature: r.temperature,
+          vocAnalog: r.vocAnalog,
+          vocDigital: r.vocDigital,
+          fillPercent: r.fillLevel,
+          recordedAt: r.createdAt,
+        })),
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get telemetry history" });
+    }
+  });
+
   // ==================== LEGACY DASHBOARD ROUTES (for backwards compatibility) ====================
   
   app.get("/api/dashboard/contacts", async (req, res) => {
