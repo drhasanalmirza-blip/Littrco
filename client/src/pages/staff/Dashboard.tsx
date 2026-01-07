@@ -899,7 +899,7 @@ function CreateDeviceDialog({ shops }: { shops: any[] }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [shopId, setShopId] = useState('');
-  const [deviceKey, setDeviceKey] = useState('');
+  const [deviceCredentials, setDeviceCredentials] = useState<{ deviceId: number; deviceKey: string } | null>(null);
   const queryClient = useQueryClient();
 
   const createDevice = useMutation({
@@ -913,7 +913,8 @@ function CreateDeviceDialog({ shops }: { shops: any[] }) {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
-      setDeviceKey(data.deviceKey);
+      queryClient.invalidateQueries({ queryKey: ['bins'] });
+      setDeviceCredentials({ deviceId: data.deviceId, deviceKey: data.deviceKey });
       setName('');
       setShopId('');
     },
@@ -922,7 +923,7 @@ function CreateDeviceDialog({ shops }: { shops: any[] }) {
   const verifiedShops = shops.filter((s: any) => s.status === 'VERIFIED');
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setDeviceKey(''); }}>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setDeviceCredentials(null); }}>
       <DialogTrigger asChild>
         <Button size="sm">Add Device</Button>
       </DialogTrigger>
@@ -930,16 +931,27 @@ function CreateDeviceDialog({ shops }: { shops: any[] }) {
         <DialogHeader>
           <DialogTitle>Add ESP32 Device</DialogTitle>
         </DialogHeader>
-        {deviceKey ? (
+        {deviceCredentials ? (
           <div className="space-y-4">
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm font-medium text-yellow-800 mb-2">Save this device key now!</p>
-              <p className="text-xs text-yellow-700 mb-3">It will not be shown again.</p>
-              <code className="block p-3 bg-black text-green-400 rounded text-xs break-all font-mono">
-                {deviceKey}
-              </code>
+              <p className="text-sm font-medium text-yellow-800 mb-2">Save these credentials now!</p>
+              <p className="text-xs text-yellow-700 mb-3">They will not be shown again. Both values are required for the API.</p>
+              
+              <div className="mb-3">
+                <p className="text-xs font-medium text-yellow-800 mb-1">Device ID (X-Device-Id):</p>
+                <code className="block p-2 bg-black text-green-400 rounded text-sm font-mono">
+                  {deviceCredentials.deviceId}
+                </code>
+              </div>
+              
+              <div>
+                <p className="text-xs font-medium text-yellow-800 mb-1">Device Key (X-Device-Key):</p>
+                <code className="block p-2 bg-black text-green-400 rounded text-xs break-all font-mono">
+                  {deviceCredentials.deviceKey}
+                </code>
+              </div>
             </div>
-            <Button onClick={() => { setOpen(false); setDeviceKey(''); }} className="w-full">Done</Button>
+            <Button onClick={() => { setOpen(false); setDeviceCredentials(null); }} className="w-full">Done</Button>
           </div>
         ) : (
           <div className="space-y-4">

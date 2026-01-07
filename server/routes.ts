@@ -313,11 +313,24 @@ export async function registerRoutes(
         status: "ACTIVE"
       });
       
-      // Return the device with the key (only time it's shown)
+      // Auto-create a bin record linked to this device
+      const bin = await storage.createBin({
+        shopId: parseInt(shopId),
+        deviceId: device.id,
+        name: name,
+        binType: "vape",
+        status: "OFFLINE",
+        fillLevel: 0,
+        vapeCount: 0,
+      });
+      
+      // Return the device with the key and ID (only time it's shown)
       res.json({ 
-        device, 
+        device,
+        bin,
+        deviceId: device.id,
         deviceKey,
-        warning: "Save this device key now. It cannot be retrieved again." 
+        warning: "Save this device ID and key now. They cannot be retrieved again." 
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to create device" });
