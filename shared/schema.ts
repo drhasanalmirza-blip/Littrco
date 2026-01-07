@@ -317,6 +317,8 @@ export const bins = pgTable("bins", {
   vapeCount: integer("vape_count").notNull().default(0),
   lastTemperature: doublePrecision("last_temperature"),
   lastAirQuality: integer("last_air_quality"),
+  lastVocAnalog: integer("last_voc_analog"),
+  lastVocDigital: boolean("last_voc_digital"),
   lastSeenAt: timestamp("last_seen_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -335,6 +337,8 @@ export const binReadings = pgTable("bin_readings", {
   binId: integer("bin_id").notNull().references(() => bins.id, { onDelete: "cascade" }),
   temperature: doublePrecision("temperature"),
   airQuality: integer("air_quality"),
+  vocAnalog: integer("voc_analog"),
+  vocDigital: boolean("voc_digital"),
   fillLevel: integer("fill_level"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
