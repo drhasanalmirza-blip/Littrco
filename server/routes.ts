@@ -1517,10 +1517,10 @@ export async function registerRoutes(
   
   // ==================== STAFF BIN MANAGEMENT ====================
   
-  // Get all bins (staff only)
+  // Get all bins (staff only) - includes device info
   app.get("/api/staff/bins", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
-      const allBins = await storage.getAllBins();
+      const allBins = await storage.getAllBinsWithDevice();
       const shops = await storage.getAllShops();
       
       // Enrich bins with shop info
@@ -1532,6 +1532,26 @@ export async function registerRoutes(
       res.json(enrichedBins);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch bins" });
+    }
+  });
+
+  // Delete a bin (staff only)
+  app.delete("/api/staff/bins/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const binId = parseInt(req.params.id);
+      if (isNaN(binId)) {
+        return res.status(400).json({ error: "Invalid bin ID" });
+      }
+      
+      const deleted = await storage.deleteBin(binId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Bin not found" });
+      }
+      
+      res.json({ success: true, message: "Bin deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting bin:", error);
+      res.status(500).json({ error: "Failed to delete bin" });
     }
   });
   

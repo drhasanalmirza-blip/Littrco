@@ -158,8 +158,10 @@ export interface IStorage {
   getBinByDeviceId(deviceId: number): Promise<Bin | undefined>;
   getBinsByShop(shopId: number): Promise<Bin[]>;
   getAllBins(): Promise<Bin[]>;
+  getAllBinsWithDevice(): Promise<(Bin & { device?: { id: number; name: string; status: string; lastSeenAt: Date | null } })[]>;
   updateBinStatus(id: number, status: string): Promise<Bin | undefined>;
   updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; lastVocAnalog?: number; lastVocDigital?: boolean; vapeCount?: number }): Promise<Bin | undefined>;
+  deleteBin(id: number): Promise<boolean>;
   
   // Bin Readings
   createBinReading(reading: InsertBinReading): Promise<BinReading>;
@@ -512,6 +514,21 @@ export class DatabaseStorage implements IStorage {
 
   async getAllBins(): Promise<Bin[]> {
     return await db.select().from(bins).orderBy(desc(bins.createdAt));
+  }
+
+  async getAllBinsWithDevice(): Promise<(Bin & { device?: { id: number; name: string; status: string; lastSeenAt: Date | null } })[]> {
+    const allBins = await db.select().from(bins).orderBy(desc(bins.createdAt));
+    const allDevices = await db.select().from(devices);
+    
+    return allBins.map(bin => ({
+      ...bin,
+      device: bin.deviceId ? allDevices.find(d => d.id === bin.deviceId) : undefined,
+    }));
+  }
+
+  async deleteBin(id: number): Promise<boolean> {
+    const result = await db.delete(bins).where(eq(bins.id, id)).returning();
+    return result.length > 0;
   }
 
   async updateBinStatus(id: number, status: string): Promise<Bin | undefined> {

@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 
 export default function StaffDashboard() {
@@ -248,14 +249,13 @@ export default function StaffDashboard() {
         </div>
 
         <Tabs defaultValue="leads" className="space-y-4">
-          <TabsList className="grid grid-cols-7 w-full max-w-3xl">
+          <TabsList className="grid grid-cols-6 w-full max-w-3xl">
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="shops">Shops</TabsTrigger>
             <TabsTrigger value="bins" className="flex items-center gap-1">
-              <Trash2 className="h-4 w-4" />
-              Bins
+              <Cpu className="h-4 w-4" />
+              Smart Bins
             </TabsTrigger>
-            <TabsTrigger value="devices">Devices</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="volunteers">Volunteers</TabsTrigger>
@@ -451,30 +451,35 @@ export default function StaffDashboard() {
               )}
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Trash2 className="h-5 w-5" />
-                    All Bins
-                  </CardTitle>
-                  <CardDescription>Smart recycling bins across all locations</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Cpu className="h-5 w-5" />
+                      Smart Bins (ESP32)
+                    </CardTitle>
+                    <CardDescription>LITTR recycling bins with integrated sensors</CardDescription>
+                  </div>
+                  <CreateDeviceDialog shops={shops} />
                 </CardHeader>
                 <CardContent>
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>ID</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Shop</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Fill Level</TableHead>
-                        <TableHead>Vape Count</TableHead>
                         <TableHead>Temperature</TableHead>
-                        <TableHead>Air Quality</TableHead>
+                        <TableHead>VOC</TableHead>
                         <TableHead>Last Seen</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {bins.map((bin: any) => (
-                        <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`}>
+                        <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`} className="cursor-pointer hover:bg-gray-800/50">
+                          <TableCell className="font-mono text-xs">{bin.deviceId || bin.id}</TableCell>
                           <TableCell className="font-medium">{bin.name}</TableCell>
                           <TableCell>{bin.shop?.name || 'Unknown'}</TableCell>
                           <TableCell>
@@ -493,7 +498,7 @@ export default function StaffDashboard() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="w-16 h-2 bg-gray-700 rounded-full overflow-hidden">
                                 <div 
                                   className={`h-full rounded-full ${
                                     bin.fillLevel >= 80 ? 'bg-red-500' :
@@ -503,26 +508,34 @@ export default function StaffDashboard() {
                                   style={{ width: `${bin.fillLevel || 0}%` }}
                                 />
                               </div>
-                              <span className="text-sm">{bin.fillLevel || 0}%</span>
+                              <span className="text-sm">{bin.fillLevel !== null && bin.fillLevel !== undefined ? `${bin.fillLevel}%` : <span className="text-orange-400 text-xs">CONTACT SUPPORT</span>}</span>
                             </div>
                           </TableCell>
-                          <TableCell>{bin.vapeCount || 0}</TableCell>
                           <TableCell>
-                            {bin.lastTemperature !== null ? (
+                            {bin.lastTemperature !== null && bin.lastTemperature !== undefined ? (
                               <span className={bin.lastTemperature >= 45 ? 'text-red-600 font-semibold' : ''}>
                                 {bin.lastTemperature?.toFixed(1)}°C
                               </span>
-                            ) : '-'}
+                            ) : <span className="text-orange-400 text-xs">CONTACT SUPPORT</span>}
                           </TableCell>
-                          <TableCell>{bin.lastAirQuality !== null ? bin.lastAirQuality : '-'}</TableCell>
                           <TableCell>
-                            {bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : 'Never'}
+                            {bin.lastVocAnalog !== null && bin.lastVocAnalog !== undefined ? (
+                              <span className={bin.lastVocDigital ? 'text-red-600 font-semibold' : ''}>
+                                {bin.lastVocAnalog}
+                              </span>
+                            ) : <span className="text-orange-400 text-xs">CONTACT SUPPORT</span>}
+                          </TableCell>
+                          <TableCell>
+                            {bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : <span className="text-orange-400 text-xs">CONTACT SUPPORT</span>}
+                          </TableCell>
+                          <TableCell>
+                            <BinDetailDialog bin={bin} shops={shops} />
                           </TableCell>
                         </TableRow>
                       ))}
                       {bins.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center text-gray-500">No bins yet</TableCell>
+                          <TableCell colSpan={9} className="text-center text-gray-500">No bins yet. Add a device to get started.</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -530,53 +543,6 @@ export default function StaffDashboard() {
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
-
-          <TabsContent value="devices">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>ESP32 Devices</CardTitle>
-                  <CardDescription>LITTR bin controllers</CardDescription>
-                </div>
-                <CreateDeviceDialog shops={shops} />
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Shop</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Seen</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {devices.map((device: any) => (
-                      <TableRow key={device.id}>
-                        <TableCell className="font-mono text-xs">{device.id}</TableCell>
-                        <TableCell className="font-medium">{device.name}</TableCell>
-                        <TableCell>{device.shopName}</TableCell>
-                        <TableCell>
-                          <Badge variant={device.status === 'ACTIVE' ? 'default' : 'secondary'}>
-                            {device.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : 'Never'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {devices.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-gray-500">No devices yet</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
           </TabsContent>
 
           <TabsContent value="activity">
@@ -755,6 +721,177 @@ function CreateShopDialog() {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function BinDetailDialog({ bin, shops }: { bin: any; shops: any[] }) {
+  const [open, setOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const deleteBin = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(`/api/staff/bins/${bin.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to delete bin');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bins'] });
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      setOpen(false);
+      setDeleteConfirmOpen(false);
+    },
+  });
+
+  const formatValue = (value: any, suffix: string = '') => {
+    if (value === null || value === undefined) {
+      return <span className="text-orange-400 flex items-center gap-1"><Phone className="h-3 w-3" /> CONTACT SUPPORT</span>;
+    }
+    return `${value}${suffix}`;
+  };
+
+  const formatNullable = (value: any) => {
+    if (value === null || value === undefined) return 'N/A';
+    return value;
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button size="sm" variant="outline" data-testid={`view-bin-${bin.id}`}>
+            <Info className="h-4 w-4" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5" />
+              {bin.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-gray-400 text-xs">Bin ID</Label>
+                <p className="font-mono">{bin.id}</p>
+              </div>
+              <div>
+                <Label className="text-gray-400 text-xs">Device ID</Label>
+                <p className="font-mono">{formatNullable(bin.deviceId)}</p>
+              </div>
+              <div>
+                <Label className="text-gray-400 text-xs">Shop</Label>
+                <p>{bin.shop?.name || 'Unknown'}</p>
+              </div>
+              <div>
+                <Label className="text-gray-400 text-xs">Bin Type</Label>
+                <p>{formatNullable(bin.binType)}</p>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-700 pt-4">
+              <h4 className="font-medium mb-3 flex items-center gap-2">
+                <Thermometer className="h-4 w-4" />
+                Sensor Data
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-400 text-xs">Status</Label>
+                  <div>
+                    <Badge 
+                      variant={
+                        bin.status === 'ONLINE' ? 'default' : 
+                        bin.status === 'FIRE_ALERT' ? 'destructive' :
+                        bin.status === 'MAINTENANCE' ? 'secondary' : 'outline'
+                      }
+                    >
+                      {bin.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">Fill Level</Label>
+                  <p>{formatValue(bin.fillLevel, '%')}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">Temperature (DS18B20)</Label>
+                  <p className={bin.lastTemperature >= 60 ? 'text-red-500 font-bold' : ''}>
+                    {formatValue(bin.lastTemperature !== null && bin.lastTemperature !== undefined ? bin.lastTemperature?.toFixed(1) : null, '°C')}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">VOC Analog (MQ135)</Label>
+                  <p>{formatValue(bin.lastVocAnalog)}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">VOC Digital Alert</Label>
+                  <p className={bin.lastVocDigital ? 'text-red-500 font-bold' : ''}>
+                    {bin.lastVocDigital === null || bin.lastVocDigital === undefined ? (
+                      <span className="text-orange-400 flex items-center gap-1"><Phone className="h-3 w-3" /> CONTACT SUPPORT</span>
+                    ) : bin.lastVocDigital ? 'ALERT' : 'Normal'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">Vape Count</Label>
+                  <p>{formatValue(bin.vapeCount)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-700 pt-4">
+              <h4 className="font-medium mb-3">Device Info</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-400 text-xs">Device Status</Label>
+                  <p>{bin.device?.status || 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">Last Seen</Label>
+                  <p>{bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : formatValue(null)}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs">Created</Label>
+                  <p>{bin.createdAt ? new Date(bin.createdAt).toLocaleDateString() : 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-700 pt-4 flex justify-between">
+              <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" data-testid={`delete-bin-${bin.id}`}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove Bin
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Bin?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently remove "{bin.name}" and all its sensor history. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={() => deleteBin.mutate()}
+                      className="bg-red-600 hover:bg-red-700"
+                      data-testid={`confirm-delete-bin-${bin.id}`}
+                    >
+                      {deleteBin.isPending ? 'Deleting...' : 'Delete'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
