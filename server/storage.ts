@@ -36,6 +36,10 @@ import {
   type InsertBinReading,
   type FireAlert,
   type InsertFireAlert,
+  type Mailbox,
+  type InsertMailbox,
+  type InternalMessage,
+  type InsertInternalMessage,
   users,
   contacts,
   volunteers,
@@ -56,6 +60,8 @@ import {
   bins,
   binReadings,
   fireAlerts,
+  mailboxes,
+  internalMessages,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gte, sql, lt, inArray } from "drizzle-orm";
@@ -181,6 +187,24 @@ export interface IStorage {
   
   // Staff check
   hasAnyStaff(): Promise<boolean>;
+  
+  // Mailboxes
+  createMailbox(mailbox: InsertMailbox): Promise<Mailbox>;
+  getMailbox(id: number): Promise<Mailbox | undefined>;
+  getMailboxByEmail(email: string): Promise<Mailbox | undefined>;
+  getMailboxByUserId(userId: string): Promise<Mailbox | undefined>;
+  getAllMailboxes(): Promise<Mailbox[]>;
+  updateMailbox(id: number, data: Partial<InsertMailbox>): Promise<Mailbox | undefined>;
+  deleteMailbox(id: number): Promise<boolean>;
+  
+  // Internal Messages
+  createInternalMessage(message: InsertInternalMessage): Promise<InternalMessage>;
+  getInternalMessage(id: number): Promise<InternalMessage | undefined>;
+  getInboxMessages(mailboxId: number): Promise<InternalMessage[]>;
+  getSentMessages(mailboxId: number): Promise<InternalMessage[]>;
+  markMessageAsRead(id: number): Promise<InternalMessage | undefined>;
+  archiveMessage(id: number): Promise<InternalMessage | undefined>;
+  getUnreadCount(mailboxId: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -599,6 +623,80 @@ export class DatabaseStorage implements IStorage {
   async hasAnyStaff(): Promise<boolean> {
     const [result] = await db.select().from(users).where(eq(users.role, 'STAFF')).limit(1);
     return !!result;
+  }
+
+  // Mailboxes
+  async createMailbox(mailbox: InsertMailbox): Promise<Mailbox> {
+    const [newMailbox] = await db.insert(mailboxes).values(mailbox).returning();
+    return newMailbox;
+  }
+
+  async getMailbox(id: number): Promise<Mailbox | undefined> {
+    const [mailbox] = await db.select().from(mailboxes).where(eq(mailboxes.id, id));
+    return mailbox;
+  }
+
+  async getMailboxByEmail(email: string): Promise<Mailbox | undefined> {
+    const [mailbox] = await db.select().from(mailboxes).where(eq(mailboxes.emailAddress, email));
+    return mailbox;
+  }
+
+  async getMailboxByUserId(userId: string): Promise<Mailbox | undefined> {
+    const [mailbox] = await db.select().from(mailboxes).where(eq(mailboxes.userId, userId));
+    return mailbox;
+  }
+
+  async getAllMailboxes(): Promise<Mailbox[]> {
+    return await db.select().from(mailboxes).orderBy(desc(mailboxes.createdAt));
+  }
+
+  async updateMailbox(id: number, data: Partial<InsertMailbox>): Promise<Mailbox | undefined> {
+    const [updated] = await db.update(mailboxes).set(data).where(eq(mailboxes.id, id)).returning();
+    return updated;
+  }
+
+  async deleteMailbox(id: number): Promise<boolean> {
+    const result = await db.delete(mailboxes).where(eq(mailboxes.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Internal Messages
+  async createInternalMessage(message: InsertInternalMessage): Promise<InternalMessage> {
+    const [newMessage] = await db.insert(internalMessages).values(message).returning();
+    return newMessage;
+  }
+
+  async getInternalMessage(id: number): Promise<InternalMessage | undefined> {
+    const [message] = await db.select().from(internalMessages).where(eq(internalMessages.id, id));
+    return message;
+  }
+
+  async getInboxMessages(mailboxId: number): Promise<InternalMessage[]> {
+    return await db.select().from(internalMessages)
+      .where(and(eq(internalMessages.toMailboxId, mailboxId), eq(internalMessages.isArchived, false)))
+      .orderBy(desc(internalMessages.sentAt));
+  }
+
+  async getSentMessages(mailboxId: number): Promise<InternalMessage[]> {
+    return await db.select().from(internalMessages)
+      .where(and(eq(internalMessages.fromMailboxId, mailboxId), eq(internalMessages.isOutbound, true)))
+      .orderBy(desc(internalMessages.sentAt));
+  }
+
+  async markMessageAsRead(id: number): Promise<InternalMessage | undefined> {
+    const [message] = await db.update(internalMessages).set({ isRead: true }).where(eq(internalMessages.id, id)).returning();
+    return message;
+  }
+
+  async archiveMessage(id: number): Promise<InternalMessage | undefined> {
+    const [message] = await db.update(internalMessages).set({ isArchived: true }).where(eq(internalMessages.id, id)).returning();
+    return message;
+  }
+
+  async getUnreadCount(mailboxId: number): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(internalMessages)
+      .where(and(eq(internalMessages.toMailboxId, mailboxId), eq(internalMessages.isRead, false), eq(internalMessages.isArchived, false)));
+    return Number(result[0]?.count || 0);
   }
 }
 
