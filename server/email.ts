@@ -265,10 +265,11 @@ export async function sendVolunteerNotification(data: {
   }
 }
 
-export async function sendCustomEmail(to: string, subject: string, html: string) {
+export async function sendCustomEmail(to: string, subject: string, html: string, fromAddress?: string) {
   try {
     const result = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: fromAddress ? `${fromAddress.split('@')[0]} <${FROM_EMAIL}>` : FROM_EMAIL,
+      replyTo: fromAddress || undefined,
       to,
       subject,
       html: emailWrapper(html),

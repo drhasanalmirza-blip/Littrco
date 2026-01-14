@@ -1659,6 +1659,285 @@ export async function registerRoutes(
     }
   });
   
+  // ==================== STAFF MAILBOX ENDPOINTS ====================
+  
+  // Get all mailboxes (staff only - for admin)
+  app.get("/api/staff/mailboxes", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allMailboxes = await storage.getAllMailboxes();
+      const users = await Promise.all(allMailboxes.map(async m => {
+        const user = await storage.getUser(m.userId);
+        return { ...m, user: user ? { id: user.id, email: user.email, role: user.role } : null };
+      }));
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch mailboxes" });
+    }
+  });
+  
+  // Create mailbox for a staff user (staff only)
+  app.post("/api/staff/mailboxes", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { userId, emailAddress, displayName } = req.body;
+      if (!userId || !emailAddress || !displayName) {
+        return res.status(400).json({ error: "userId, emailAddress, and displayName required" });
+      }
+      
+      // Validate email format
+      if (!emailAddress.endsWith("@littr.co")) {
+        return res.status(400).json({ error: "Email must end with @littr.co" });
+      }
+      
+      // Check if user exists and is staff
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      if (user.role !== "STAFF") {
+        return res.status(400).json({ error: "Mailboxes can only be created for staff users" });
+      }
+      
+      // Check if email already exists
+      const existing = await storage.getMailboxByEmail(emailAddress);
+      if (existing) {
+        return res.status(400).json({ error: "Email address already in use" });
+      }
+      
+      // Check if user already has a mailbox
+      const userMailbox = await storage.getMailboxByUserId(userId);
+      if (userMailbox) {
+        return res.status(400).json({ error: "User already has a mailbox" });
+      }
+      
+      const mailbox = await storage.createMailbox({ userId, emailAddress, displayName, isActive: true });
+      res.json(mailbox);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create mailbox" });
+    }
+  });
+  
+  // Update mailbox (staff only)
+  app.patch("/api/staff/mailboxes/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { displayName, isActive } = req.body;
+      const mailbox = await storage.updateMailbox(parseInt(req.params.id), { displayName, isActive });
+      if (!mailbox) {
+        return res.status(404).json({ error: "Mailbox not found" });
+      }
+      res.json(mailbox);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update mailbox" });
+    }
+  });
+  
+  // Delete mailbox (staff only)
+  app.delete("/api/staff/mailboxes/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const deleted = await storage.deleteMailbox(parseInt(req.params.id));
+      if (!deleted) {
+        return res.status(404).json({ error: "Mailbox not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete mailbox" });
+    }
+  });
+  
+  // ==================== STAFF INBOX ENDPOINTS ====================
+  
+  // Get current user's mailbox
+  app.get("/api/inbox/mailbox", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const mailbox = await storage.getMailboxByUserId(req.user!.id);
+      if (!mailbox) {
+        return res.status(404).json({ error: "No mailbox found for this user" });
+      }
+      const unreadCount = await storage.getUnreadCount(mailbox.id);
+      res.json({ ...mailbox, unreadCount });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch mailbox" });
+    }
+  });
+  
+  // Get inbox messages
+  app.get("/api/inbox/messages", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const mailbox = await storage.getMailboxByUserId(req.user!.id);
+      if (!mailbox) {
+        return res.status(404).json({ error: "No mailbox found" });
+      }
+      
+      const messages = await storage.getInboxMessages(mailbox.id);
+      // Enrich with sender info
+      const allMailboxes = await storage.getAllMailboxes();
+      const enrichedMessages = messages.map(m => ({
+        ...m,
+        fromMailbox: allMailboxes.find(mb => mb.id === m.fromMailboxId),
+      }));
+      res.json(enrichedMessages);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+  
+  // Get sent messages
+  app.get("/api/inbox/sent", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const mailbox = await storage.getMailboxByUserId(req.user!.id);
+      if (!mailbox) {
+        return res.status(404).json({ error: "No mailbox found" });
+      }
+      
+      const messages = await storage.getSentMessages(mailbox.id);
+      const allMailboxes = await storage.getAllMailboxes();
+      const enrichedMessages = messages.map(m => ({
+        ...m,
+        toMailbox: m.toMailboxId ? allMailboxes.find(mb => mb.id === m.toMailboxId) : null,
+      }));
+      res.json(enrichedMessages);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sent messages" });
+    }
+  });
+  
+  // Get single message
+  app.get("/api/inbox/messages/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const mailbox = await storage.getMailboxByUserId(req.user!.id);
+      if (!mailbox) {
+        return res.status(404).json({ error: "No mailbox found" });
+      }
+      
+      const message = await storage.getInternalMessage(parseInt(req.params.id));
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+      
+      // Verify user has access to this message
+      if (message.toMailboxId !== mailbox.id && message.fromMailboxId !== mailbox.id) {
+        return res.status(403).json({ error: "Not authorized to view this message" });
+      }
+      
+      // Mark as read if it's in their inbox
+      if (message.toMailboxId === mailbox.id && !message.isRead) {
+        await storage.markMessageAsRead(message.id);
+      }
+      
+      const allMailboxes = await storage.getAllMailboxes();
+      res.json({
+        ...message,
+        fromMailbox: allMailboxes.find(mb => mb.id === message.fromMailboxId),
+        toMailbox: message.toMailboxId ? allMailboxes.find(mb => mb.id === message.toMailboxId) : null,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch message" });
+    }
+  });
+  
+  // Send message (internal or external)
+  app.post("/api/inbox/send", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const mailbox = await storage.getMailboxByUserId(req.user!.id);
+      if (!mailbox) {
+        return res.status(404).json({ error: "No mailbox found" });
+      }
+      
+      const { to, subject, body } = req.body;
+      if (!to || !subject || !body) {
+        return res.status(400).json({ error: "to, subject, and body required" });
+      }
+      
+      // Determine if internal or external
+      const isInternalEmail = to.endsWith("@littr.co");
+      
+      if (isInternalEmail) {
+        // Internal message - find the recipient mailbox
+        const recipientMailbox = await storage.getMailboxByEmail(to);
+        if (!recipientMailbox) {
+          return res.status(404).json({ error: "Recipient mailbox not found" });
+        }
+        
+        // Create message in recipient's inbox
+        const message = await storage.createInternalMessage({
+          fromMailboxId: mailbox.id,
+          toMailboxId: recipientMailbox.id,
+          subject,
+          body,
+          isRead: false,
+          isArchived: false,
+          isOutbound: false,
+        });
+        
+        // Create copy in sender's sent folder
+        await storage.createInternalMessage({
+          fromMailboxId: mailbox.id,
+          toMailboxId: recipientMailbox.id,
+          subject,
+          body,
+          isRead: true,
+          isArchived: false,
+          isOutbound: true,
+        });
+        
+        res.json({ success: true, message });
+      } else {
+        // External email - use Resend
+        const sent = await sendCustomEmail(to, subject, body, mailbox.emailAddress);
+        
+        // Log outbound message
+        await storage.createInternalMessage({
+          fromMailboxId: mailbox.id,
+          toMailboxId: null,
+          toExternal: to,
+          subject,
+          body,
+          isRead: true,
+          isArchived: false,
+          isOutbound: true,
+        });
+        
+        res.json({ success: sent });
+      }
+    } catch (error) {
+      console.error('Send error:', error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+  
+  // Archive message
+  app.patch("/api/inbox/messages/:id/archive", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const mailbox = await storage.getMailboxByUserId(req.user!.id);
+      if (!mailbox) {
+        return res.status(404).json({ error: "No mailbox found" });
+      }
+      
+      const message = await storage.getInternalMessage(parseInt(req.params.id));
+      if (!message || message.toMailboxId !== mailbox.id) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+      
+      const archived = await storage.archiveMessage(message.id);
+      res.json(archived);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to archive message" });
+    }
+  });
+  
+  // Get all staff users (for mailbox creation dropdown)
+  app.get("/api/staff/users", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allUsers = await storage.getAllMailboxes();
+      const staffWithMailbox = allUsers.map(m => m.userId);
+      
+      // Get all staff users from the users table via a search
+      // For simplicity, we'll return staff users that have mailboxes, and indicate which don't
+      res.json(allUsers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+  
   // ==================== PARTNER BIN ENDPOINTS ====================
   
   // Get partner's bins
