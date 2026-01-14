@@ -373,3 +373,43 @@ export const insertFireAlertSchema = createInsertSchema(fireAlerts).omit({
 });
 export type InsertFireAlert = z.infer<typeof insertFireAlertSchema>;
 export type FireAlert = typeof fireAlerts.$inferSelect;
+
+// Mailboxes table - staff email accounts
+export const mailboxes = pgTable("mailboxes", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  emailAddress: text("email_address").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMailboxSchema = createInsertSchema(mailboxes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertMailbox = z.infer<typeof insertMailboxSchema>;
+export type Mailbox = typeof mailboxes.$inferSelect;
+
+// Internal messages table - email-like messages between staff
+export const internalMessages = pgTable("internal_messages", {
+  id: serial("id").primaryKey(),
+  fromMailboxId: integer("from_mailbox_id").notNull().references(() => mailboxes.id, { onDelete: "cascade" }),
+  toMailboxId: integer("to_mailbox_id").references(() => mailboxes.id, { onDelete: "set null" }),
+  toExternal: text("to_external"),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  isArchived: boolean("is_archived").notNull().default(false),
+  isOutbound: boolean("is_outbound").notNull().default(false),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertInternalMessageSchema = createInsertSchema(internalMessages).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+});
+export type InsertInternalMessage = z.infer<typeof insertInternalMessageSchema>;
+export type InternalMessage = typeof internalMessages.$inferSelect;
