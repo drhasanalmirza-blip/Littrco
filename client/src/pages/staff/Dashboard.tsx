@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 
 export default function StaffDashboard() {
@@ -249,7 +250,7 @@ export default function StaffDashboard() {
         </div>
 
         <Tabs defaultValue="leads" className="space-y-4">
-          <TabsList className="grid grid-cols-6 w-full max-w-3xl">
+          <TabsList className="grid grid-cols-7 w-full max-w-4xl">
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="shops">Shops</TabsTrigger>
             <TabsTrigger value="bins" className="flex items-center gap-1">
@@ -257,6 +258,10 @@ export default function StaffDashboard() {
               Smart Bins
             </TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="emails" className="flex items-center gap-1">
+              <Send className="h-4 w-4" />
+              Emails
+            </TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="volunteers">Volunteers</TabsTrigger>
           </TabsList>
@@ -577,6 +582,36 @@ export default function StaffDashboard() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="emails">
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Send className="h-5 w-5" />
+                    Compose Email
+                  </CardTitle>
+                  <CardDescription>Send emails to staff, partners, or customers</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <EmailComposer />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Email Templates
+                  </CardTitle>
+                  <CardDescription>Quick templates for common communications</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <EmailTemplates />
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="messages">
@@ -1026,5 +1061,183 @@ function ShopActionsMenu({ shop }: { shop: any }) {
     <Button size="sm" variant="outline" onClick={() => updateStatus.mutate('VERIFIED')}>
       Reactivate
     </Button>
+  );
+}
+
+function EmailComposer() {
+  const [to, setTo] = useState('');
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  const sendEmail = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('/api/admin/send-email', {
+        method: 'POST',
+        body: JSON.stringify({
+          to,
+          subject,
+          html: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6;">
+            ${message.split('\n').map(p => `<p style="margin: 0 0 16px 0; color: #333;">${p}</p>`).join('')}
+            <p style="margin: 32px 0 0 0; color: #000; font-weight: 500;">— The LITTR Team</p>
+          </div>`,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to send email');
+      return res.json();
+    },
+    onSuccess: () => {
+      setStatus('sent');
+      setTo('');
+      setSubject('');
+      setMessage('');
+      setTimeout(() => setStatus('idle'), 3000);
+    },
+    onError: () => {
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    },
+  });
+
+  const handleSend = () => {
+    if (!to || !subject || !message) return;
+    setStatus('sending');
+    sendEmail.mutate();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label htmlFor="email-to">To</Label>
+        <Input 
+          id="email-to"
+          type="email" 
+          placeholder="recipient@example.com" 
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          data-testid="email-to"
+        />
+      </div>
+      <div>
+        <Label htmlFor="email-subject">Subject</Label>
+        <Input 
+          id="email-subject"
+          placeholder="Email subject..." 
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          data-testid="email-subject"
+        />
+      </div>
+      <div>
+        <Label htmlFor="email-message">Message</Label>
+        <Textarea 
+          id="email-message"
+          placeholder="Write your message here..." 
+          rows={6}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          className="resize-none"
+          data-testid="email-message"
+        />
+      </div>
+      <Button 
+        onClick={handleSend} 
+        disabled={!to || !subject || !message || status === 'sending'}
+        className="w-full"
+        data-testid="send-email-btn"
+      >
+        {status === 'sending' ? (
+          <>Sending...</>
+        ) : status === 'sent' ? (
+          <><CheckCircle className="h-4 w-4 mr-2" /> Sent!</>
+        ) : status === 'error' ? (
+          <>Failed to send</>
+        ) : (
+          <><Send className="h-4 w-4 mr-2" /> Send Email</>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+function EmailTemplates() {
+  const templates = [
+    {
+      name: 'Welcome Partner',
+      subject: 'Welcome to the LITTR Partner Program!',
+      body: `Hi there,
+
+Welcome to the LITTR.co partner program! We're excited to have you on board.
+
+Your bin is now set up and ready to accept vape recycling. Customers can scan the QR code to earn points instantly.
+
+If you have any questions, don't hesitate to reach out.`,
+    },
+    {
+      name: 'Bin Pickup Scheduled',
+      subject: 'Your LITTR Bin Pickup is Scheduled',
+      body: `Hi there,
+
+This is a confirmation that your bin pickup has been scheduled.
+
+Our team will arrive during business hours to collect and replace your recycling bin. No action is needed on your end.
+
+Thank you for being part of the solution!`,
+    },
+    {
+      name: 'Points Reminder',
+      subject: 'Don\'t forget your LITTR points!',
+      body: `Hi there,
+
+Just a friendly reminder that you have points waiting in your LITTR wallet!
+
+Visit littr.co/app to check your balance and redeem rewards. Your points never expire, so take your time browsing our reward store.
+
+Keep recycling and earning!`,
+    },
+    {
+      name: 'Fire Alert Follow-up',
+      subject: 'LITTR Safety Alert - Follow Up',
+      body: `Hi there,
+
+Our monitoring system detected a safety alert from your LITTR bin earlier. Our team has reviewed the situation.
+
+Please ensure the bin area is clear of any obstructions and that vapes are being disposed of properly.
+
+If you have any concerns, please contact us immediately.`,
+    },
+  ];
+
+  const [selectedTemplate, setSelectedTemplate] = useState<typeof templates[0] | null>(null);
+
+  const copyToClipboard = (template: typeof templates[0]) => {
+    navigator.clipboard.writeText(`Subject: ${template.subject}\n\n${template.body}`);
+    setSelectedTemplate(template);
+    setTimeout(() => setSelectedTemplate(null), 2000);
+  };
+
+  return (
+    <div className="space-y-3">
+      {templates.map((template, i) => (
+        <div 
+          key={i}
+          className="p-4 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors cursor-pointer"
+          onClick={() => copyToClipboard(template)}
+          data-testid={`template-${i}`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-sm">{template.name}</h4>
+            {selectedTemplate === template ? (
+              <Badge variant="outline" className="text-green-400 border-green-400">
+                <CheckCircle className="h-3 w-3 mr-1" /> Copied!
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-gray-400">Click to copy</Badge>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 truncate">{template.subject}</p>
+        </div>
+      ))}
+    </div>
   );
 }
