@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox } from "lucide-react";
+import { MailboxManager } from "@/components/staff/MailboxManager";
+import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -100,6 +102,44 @@ export default function StaffDashboard() {
       if (!res.ok) throw new Error('Failed to fetch fire alerts');
       return res.json();
     },
+  });
+
+  const { data: mailboxes = [] } = useQuery({
+    queryKey: ['mailboxes'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/mailboxes');
+      if (!res.ok) throw new Error('Failed to fetch mailboxes');
+      return res.json();
+    },
+  });
+
+  const { data: myMailbox } = useQuery({
+    queryKey: ['myMailbox'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/inbox/mailbox');
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const { data: inboxMessages = [] } = useQuery({
+    queryKey: ['inboxMessages'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/inbox/messages');
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!myMailbox,
+  });
+
+  const { data: sentMessages = [] } = useQuery({
+    queryKey: ['sentMessages'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/inbox/sent');
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!myMailbox,
   });
 
   const acknowledgeAlert = useMutation({
@@ -262,7 +302,13 @@ export default function StaffDashboard() {
               <Send className="h-4 w-4" />
               Emails
             </TabsTrigger>
-            <TabsTrigger value="messages">Messages</TabsTrigger>
+            <TabsTrigger value="messages" className="flex items-center gap-1">
+              <Inbox className="h-4 w-4" />
+              Inbox
+              {myMailbox?.unreadCount > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1">{myMailbox.unreadCount}</Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="volunteers">Volunteers</TabsTrigger>
           </TabsList>
 
@@ -585,7 +631,7 @@ export default function StaffDashboard() {
           </TabsContent>
 
           <TabsContent value="emails">
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -611,42 +657,42 @@ export default function StaffDashboard() {
                   <EmailTemplates />
                 </CardContent>
               </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Staff Mailboxes
+                  </CardTitle>
+                  <CardDescription>Manage @littr.co email addresses</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <MailboxManager mailboxes={mailboxes} queryClient={queryClient} />
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
           <TabsContent value="messages">
-            <Card>
-              <CardHeader>
-                <CardTitle>Contact Messages</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Message</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {contacts.map((c: any) => (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium">{c.name}</TableCell>
-                        <TableCell>{c.email}</TableCell>
-                        <TableCell className="max-w-xs truncate">{c.message}</TableCell>
-                        <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {contacts.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-gray-500">No messages yet</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            {!myMailbox ? (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-center py-12">
+                    <Mail className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Mailbox Found</h3>
+                    <p className="text-gray-500">You don't have an @littr.co email address yet. Contact an admin to create one for you.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <InboxPortal 
+                myMailbox={myMailbox} 
+                inboxMessages={inboxMessages} 
+                sentMessages={sentMessages}
+                mailboxes={mailboxes}
+                queryClient={queryClient}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="volunteers">
