@@ -256,7 +256,7 @@ export default function Why() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             {/* LITTR One */}
-            <div className="bg-[#0a0a0a] border-2 border-green-500 rounded-2xl p-6 relative overflow-hidden shadow-[0_0_40px_rgba(34,197,94,0.15)]">
+            <div className="bg-black border-2 border-green-500 rounded-2xl p-6 relative overflow-hidden">
               <div className="absolute top-4 right-4 bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">
                 AVAILABLE
               </div>
@@ -283,7 +283,7 @@ export default function Why() {
             </div>
             
             {/* LITTR One Pro */}
-            <div className="bg-[#0d1117] border border-zinc-700 rounded-2xl p-6 relative opacity-80 shadow-[0_0_40px_rgba(59,130,246,0.1)]">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 relative opacity-80">
               <div className="absolute top-4 right-4 bg-zinc-700 text-gray-300 text-xs font-bold px-2 py-0.5 rounded">
                 COMING SOON
               </div>
@@ -306,7 +306,7 @@ export default function Why() {
             </div>
             
             {/* LITTR One Mini */}
-            <div className="bg-[#1a1308] border border-zinc-700 rounded-2xl p-6 relative opacity-80 shadow-[0_0_40px_rgba(245,158,11,0.1)]">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 relative opacity-80">
               <div className="absolute top-4 right-4 bg-zinc-700 text-gray-300 text-xs font-bold px-2 py-0.5 rounded">
                 COMING SOON
               </div>
