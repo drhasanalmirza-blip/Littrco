@@ -220,7 +220,7 @@ export default function PartnerDashboard() {
         </div>
 
         {/* LITTR One Showcase */}
-        <Card className="mb-8 bg-gradient-to-r from-zinc-900 to-zinc-800 border-green-500/30 overflow-hidden">
+        <Card className="mb-8 bg-gradient-to-r from-zinc-900 to-zinc-800 border-green-500/30 overflow-hidden" data-testid="card-littr-one-showcase">
           <CardContent className="p-0">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
               <div className="flex justify-center items-center">
@@ -229,12 +229,13 @@ export default function PartnerDashboard() {
                   alt="LITTR One Smart Bin" 
                   className="w-32 h-32 object-contain"
                   style={{ imageRendering: 'pixelated' }}
+                  data-testid="img-littr-one-partner"
                 />
               </div>
               <div className="md:col-span-2">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">NEW</span>
-                  <h3 className="text-lg font-bold text-white">LITTR One Smart Bin</h3>
+                  <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded" data-testid="badge-new-partner">NEW</span>
+                  <h3 className="text-lg font-bold text-white" data-testid="heading-littr-one-partner">LITTR One Smart Bin</h3>
                 </div>
                 <p className="text-gray-400 text-sm mb-3">
                   Upgrade your shop with our WiFi-enabled smart bin featuring temperature, VOC, and fill sensors.
@@ -258,8 +259,8 @@ export default function PartnerDashboard() {
                 </div>
                 <div className="flex items-center gap-4">
                   <div>
-                    <span className="text-gray-500 line-through text-sm">$459.95</span>
-                    <span className="text-xl font-bold text-green-500 ml-2">$169.95</span>
+                    <span className="text-gray-500 line-through text-sm" data-testid="text-price-original-partner">$459.95</span>
+                    <span className="text-xl font-bold text-green-500 ml-2" data-testid="text-price-discounted-partner">$169.95</span>
                   </div>
                   <Button size="sm" className="bg-green-500 hover:bg-green-600 text-black" data-testid="button-partner-order-bin">
                     Order for Your Shop <ArrowRight className="ml-1 h-3 w-3" />

@@ -4,11 +4,27 @@
 
 LITTR.co is a production-ready vape and battery recycling platform for upstate New York (Buffalo, Rochester, Syracuse). The platform features:
 
-- **Public Website**: Information about recycling services, drop-off locations, business bin programs
+- **Public Website**: Information about recycling services, drop-off locations, business bin programs, LITTR One smart bin showcase
 - **Staff Portal**: Lead management, shop/device administration, redemption fulfillment
 - **Partner Portal**: Shop analytics, reward configuration, pickup requests
 - **Customer App**: Points wallet, rewards store, transaction history
 - **ESP32 Device API**: Smart bin integration with QR-based rewards
+
+## LITTR One Smart Bin Product Line
+
+### Available Products
+- **LITTR One** ($169.95, subsidized from $459.95): Standard smart bin with all sensors - NOW AVAILABLE
+- **LITTR One Pro** (TBA): Enhanced capacity + premium display - COMING SOON
+- **LITTR One Mini** (TBA): Compact design for smaller spaces - COMING SOON
+
+### Smart Bin Features
+- **Temperature Sensor**: DS18B20 for fire detection (alerts at 60°C, critical at 80°C)
+- **VOC Sensor**: MQ135 for air quality monitoring
+- **Ultrasonic Fill Sensor**: Measures fill level (0-100%)
+- **LED Light Bar**: Visual fill indicator ring
+- **QR Reward Screen**: Instant points for recycling
+- **WiFi Connected**: Real-time monitoring and alerts
+- **Location Security**: Sensors provide environmental monitoring as extra security layer
 
 ## User Preferences
 

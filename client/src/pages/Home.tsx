@@ -205,11 +205,11 @@ export default function Home() {
       </section>
 
       {/* LITTR One Product Teaser */}
-      <section className="py-20 bg-black">
+      <section className="py-20 bg-black" data-testid="section-littr-one-teaser">
         <div className="container mx-auto px-4">
           <div className="max-w-5xl mx-auto">
             <div className="relative bg-gradient-to-r from-zinc-900 to-zinc-800 rounded-3xl overflow-hidden border border-zinc-700">
-              <div className="absolute top-4 right-4 bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full z-10">
+              <div className="absolute top-4 right-4 bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full z-10" data-testid="badge-now-available">
                 NOW AVAILABLE
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 md:p-12 items-center">
@@ -223,13 +223,13 @@ export default function Home() {
                 </div>
                 <div className="order-1 md:order-2 text-center md:text-left">
                   <p className="text-sm uppercase tracking-widest text-green-500 mb-2">Introducing</p>
-                  <h3 className="text-3xl md:text-4xl font-bold text-white mb-4">The LITTR One</h3>
+                  <h3 className="text-3xl md:text-4xl font-bold text-white mb-4" data-testid="heading-littr-one-home">The LITTR One</h3>
                   <p className="text-gray-400 mb-6">
                     Smart recycling bin with temperature sensors, VOC monitoring, fill detection, and instant QR rewards. WiFi-enabled for real-time alerts.
                   </p>
                   <div className="mb-6">
-                    <span className="text-gray-500 line-through">$459.95</span>
-                    <span className="text-3xl font-bold text-green-500 ml-2">$169.95</span>
+                    <span className="text-gray-500 line-through" data-testid="text-price-original-home">$459.95</span>
+                    <span className="text-3xl font-bold text-green-500 ml-2" data-testid="text-price-discounted-home">$169.95</span>
                     <span className="text-xs text-gray-500 block mt-1">Subsidized partner pricing</span>
                   </div>
                   <Link href="/why">

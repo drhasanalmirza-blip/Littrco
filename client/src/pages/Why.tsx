@@ -34,10 +34,10 @@ function WasteCounter() {
   
   return (
     <div className="text-center">
-      <div className="font-mono text-6xl md:text-8xl lg:text-9xl font-bold text-red-500 tracking-tight mb-4 tabular-nums">
+      <div className="font-mono text-6xl md:text-8xl lg:text-9xl font-bold text-red-500 tracking-tight mb-4 tabular-nums" data-testid="text-waste-counter">
         {formatNumber(count)}
       </div>
-      <p className="text-xl md:text-2xl text-gray-400 uppercase tracking-widest">
+      <p className="text-xl md:text-2xl text-gray-400 uppercase tracking-widest" data-testid="text-waste-label">
         vapes wasted this year
       </p>
     </div>
@@ -116,7 +116,7 @@ export default function Why() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <p className="text-sm uppercase tracking-widest text-green-500 mb-4">Smart Technology</p>
-            <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">Meet the LITTR One</h2>
+            <h2 className="text-3xl md:text-5xl font-bold text-white mb-4" data-testid="heading-littr-one">Meet the LITTR One</h2>
             <p className="text-gray-400 max-w-xl mx-auto">The world's first smart vape recycling bin with integrated sensors and rewards.</p>
           </div>
           
@@ -128,6 +128,7 @@ export default function Why() {
                   alt="LITTR One Smart Bin" 
                   className="w-72 h-72 md:w-96 md:h-96 object-contain"
                   style={{ imageRendering: 'pixelated' }}
+                  data-testid="img-littr-one-main"
                 />
                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-green-500 text-black text-xs font-bold px-4 py-1 rounded-full">
                   NOW AVAILABLE
@@ -202,11 +203,11 @@ export default function Why() {
                   style={{ imageRendering: 'pixelated' }}
                 />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">LITTR One</h3>
+              <h3 className="text-xl font-bold text-white mb-2" data-testid="text-product-name-one">LITTR One</h3>
               <p className="text-gray-500 text-sm mb-4">Standard smart bin with all sensors</p>
               <div className="mb-4">
-                <span className="text-gray-500 line-through text-sm">$459.95</span>
-                <span className="text-2xl font-bold text-green-500 ml-2">$169.95</span>
+                <span className="text-gray-500 line-through text-sm" data-testid="text-price-original">$459.95</span>
+                <span className="text-2xl font-bold text-green-500 ml-2" data-testid="text-price-discounted">$169.95</span>
                 <span className="text-xs text-gray-500 block mt-1">Subsidized pricing for partners</span>
               </div>
               <Link href="/business">
@@ -229,7 +230,7 @@ export default function Why() {
                   style={{ imageRendering: 'pixelated', filter: 'hue-rotate(200deg)' }}
                 />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">LITTR One Pro</h3>
+              <h3 className="text-xl font-bold text-white mb-2" data-testid="text-product-name-pro">LITTR One Pro</h3>
               <p className="text-gray-500 text-sm mb-4">Enhanced capacity + premium display</p>
               <div className="mb-4">
                 <span className="text-2xl font-bold text-gray-500">TBA</span>
@@ -252,7 +253,7 @@ export default function Why() {
                   style={{ imageRendering: 'pixelated', filter: 'hue-rotate(100deg)' }}
                 />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">LITTR One Mini</h3>
+              <h3 className="text-xl font-bold text-white mb-2" data-testid="text-product-name-mini">LITTR One Mini</h3>
               <p className="text-gray-500 text-sm mb-4">Compact design for smaller spaces</p>
               <div className="mb-4">
                 <span className="text-2xl font-bold text-gray-500">TBA</span>
