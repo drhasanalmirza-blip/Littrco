@@ -81,7 +81,7 @@ function WasteCounter() {
         ))}
       </div>
       <p className="text-xl md:text-2xl text-gray-400 uppercase tracking-widest" data-testid="text-waste-label">
-        vapes wasted this year
+        batteries wasted this year
       </p>
     </div>
   );
