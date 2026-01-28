@@ -207,17 +207,17 @@ export default function Home() {
       {/* LITTR One Product Teaser */}
       <section className="py-20 bg-black" data-testid="section-littr-one-teaser">
         <div className="container mx-auto px-4">
-          <div className="max-w-5xl mx-auto">
+          <div className="max-w-4xl mx-auto">
             <div className="relative bg-gradient-to-r from-zinc-900 to-zinc-800 rounded-3xl overflow-hidden border border-zinc-700">
               <div className="absolute top-4 right-4 bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full z-10" data-testid="badge-now-available">
                 NOW AVAILABLE
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 md:p-12 items-center">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 md:p-8 items-center">
                 <div className="flex justify-center order-2 md:order-1">
                   <img 
                     src={littrOneImage} 
                     alt="LITTR One Smart Bin" 
-                    className="w-64 h-80 md:w-[28rem] md:h-[35rem] object-contain"
+                    className="w-64 h-80 md:w-[28rem] md:h-[35rem] object-contain -my-12 md:-my-16"
                     style={{ imageRendering: 'pixelated' }}
                   />
                 </div>
