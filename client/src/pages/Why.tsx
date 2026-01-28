@@ -8,11 +8,39 @@ import pickupVanImage from "@assets/generated_images/pixel_art_pickup_van_night.
 import binInteriorImage from "@assets/generated_images/pixel_art_littr_bin_interior.png";
 import vapesImage from "@assets/generated_images/pixel_art_vapes_collection.png";
 import dystopiaImage from "@/assets/images/dystopia-bg.png";
-import vapeWasteImage from "@/assets/images/vape-waste-pixel.png";
-import littrOneImage from "@/assets/images/littr-one-pixel.png";
+import vapeIconImage from "@/assets/images/vape-icon-transparent.png";
+import littrOneImage from "@/assets/images/littr-one-detailed.png";
+
+function SlidingDigit({ digit, prevDigit }: { digit: string; prevDigit: string }) {
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  useEffect(() => {
+    if (digit !== prevDigit) {
+      setIsAnimating(true);
+      const timer = setTimeout(() => setIsAnimating(false), 150);
+      return () => clearTimeout(timer);
+    }
+  }, [digit, prevDigit]);
+  
+  return (
+    <span className="inline-block overflow-hidden relative h-[1em]" style={{ width: digit === ',' ? '0.3em' : '0.6em' }}>
+      <span 
+        className={`inline-block transition-transform duration-150 ease-out ${isAnimating ? '-translate-y-full' : 'translate-y-0'}`}
+      >
+        {prevDigit}
+      </span>
+      <span 
+        className={`absolute top-0 left-0 inline-block transition-transform duration-150 ease-out ${isAnimating ? 'translate-y-0' : 'translate-y-full'}`}
+      >
+        {digit}
+      </span>
+    </span>
+  );
+}
 
 function WasteCounter() {
   const [count, setCount] = useState(0);
+  const [prevCount, setPrevCount] = useState(0);
   
   useEffect(() => {
     const now = new Date();
@@ -20,26 +48,82 @@ function WasteCounter() {
     const secondsElapsed = Math.floor((now.getTime() - startOfYear.getTime()) / 1000);
     const initialCount = secondsElapsed * 6;
     setCount(initialCount);
+    setPrevCount(initialCount);
     
     const interval = setInterval(() => {
-      setCount(prev => prev + 1);
+      setCount(prev => {
+        setPrevCount(prev);
+        return prev + 1;
+      });
     }, 166.67);
     
     return () => clearInterval(interval);
   }, []);
   
-  const formatNumber = (num: number) => {
-    return num.toLocaleString();
-  };
+  const formatNumber = (num: number) => num.toLocaleString();
+  const currentStr = formatNumber(count);
+  const prevStr = formatNumber(prevCount);
   
   return (
     <div className="text-center">
-      <div className="font-mono text-6xl md:text-8xl lg:text-9xl font-bold text-red-500 tracking-tight mb-4 tabular-nums" data-testid="text-waste-counter">
-        {formatNumber(count)}
+      <div 
+        className="font-black text-7xl md:text-9xl lg:text-[12rem] text-white tracking-tight mb-4 tabular-nums leading-none drop-shadow-2xl"
+        style={{ textShadow: '0 0 60px rgba(255,255,255,0.3), 0 4px 20px rgba(0,0,0,0.5)' }}
+        data-testid="text-waste-counter"
+      >
+        {currentStr.split('').map((char, i) => (
+          <SlidingDigit 
+            key={i} 
+            digit={char} 
+            prevDigit={prevStr[i] || char} 
+          />
+        ))}
       </div>
       <p className="text-xl md:text-2xl text-gray-400 uppercase tracking-widest" data-testid="text-waste-label">
         vapes wasted this year
       </p>
+    </div>
+  );
+}
+
+function VapeRain() {
+  const vapes = Array.from({ length: 15 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 8,
+    duration: 8 + Math.random() * 6,
+    size: 16 + Math.random() * 24,
+    opacity: 0.1 + Math.random() * 0.15,
+  }));
+  
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <style>{`
+        @keyframes vapeRain {
+          0% { transform: translateY(-100px) rotate(0deg); opacity: 0; }
+          10% { opacity: var(--vape-opacity); }
+          90% { opacity: var(--vape-opacity); }
+          100% { transform: translateY(100vh) rotate(15deg); opacity: 0; }
+        }
+      `}</style>
+      {vapes.map((vape) => (
+        <img
+          key={vape.id}
+          src={vapeIconImage}
+          alt=""
+          className="absolute"
+          style={{
+            left: `${vape.left}%`,
+            width: `${vape.size}px`,
+            height: `${vape.size}px`,
+            opacity: 0,
+            ['--vape-opacity' as string]: vape.opacity,
+            animation: `vapeRain ${vape.duration}s linear infinite`,
+            animationDelay: `${vape.delay}s`,
+            imageRendering: 'auto',
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -59,27 +143,8 @@ export default function Why() {
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/80 to-black" />
         
-        {/* Floating pixel vape icons */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <img 
-            src={vapeWasteImage} 
-            alt="" 
-            className="absolute top-20 left-10 w-16 h-16 opacity-20 animate-pulse" 
-            style={{ imageRendering: 'pixelated', animationDelay: '0s' }}
-          />
-          <img 
-            src={vapeWasteImage} 
-            alt="" 
-            className="absolute top-40 right-20 w-12 h-12 opacity-15 animate-pulse" 
-            style={{ imageRendering: 'pixelated', animationDelay: '1s' }}
-          />
-          <img 
-            src={vapeWasteImage} 
-            alt="" 
-            className="absolute bottom-40 left-1/4 w-20 h-20 opacity-10 animate-pulse" 
-            style={{ imageRendering: 'pixelated', animationDelay: '2s' }}
-          />
-        </div>
+        {/* Vape rain effect */}
+        <VapeRain />
         
         <div className="container mx-auto px-4 relative z-10 text-center text-white py-20">
           <WasteCounter />
