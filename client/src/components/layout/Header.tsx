@@ -14,7 +14,7 @@ export function Header() {
     { href: "/", label: "Home" },
     { href: "/business", label: "For Business" },
     { href: "/dropoff", label: "Drop-off" },
-    { href: "/about", label: "About" },
+    { href: "/why", label: "Why" },
     { href: "/faq", label: "FAQ" },
   ];
 

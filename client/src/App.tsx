@@ -8,7 +8,7 @@ import Home from "@/pages/Home";
 import Business from "@/pages/Business";
 import Dropoff from "@/pages/Dropoff";
 import FAQ from "@/pages/FAQ";
-import About from "@/pages/About";
+import Why from "@/pages/Why";
 import Contact from "@/pages/Contact";
 import NotFound from "@/pages/not-found";
 import { Login } from "@/components/auth/Login";
@@ -46,12 +46,12 @@ function Router() {
              return null; 
         }} />
         <Route path="/faq" component={FAQ} />
-        <Route path="/about" component={About} />
+        <Route path="/why" component={Why} />
         <Route path="/contact" component={Contact} />
         <Route path="/locations" component={Dropoff} />
         <Route path="/safety" component={Dropoff} />
-        <Route path="/privacy" component={About} />
-        <Route path="/terms" component={About} />
+        <Route path="/privacy" component={Why} />
+        <Route path="/terms" component={Why} />
 
         {/* Auth Portals */}
         <Route path="/admin/login" component={() => <Login type="admin" />} />
