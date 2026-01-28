@@ -57,7 +57,7 @@ function WasteCounter() {
         setPrevCount(prev);
         return prev + 1;
       });
-    }, 166.67);
+    }, 166.67); // 1000ms / 6 = 166.67ms
     
     return () => clearInterval(interval);
   }, []);
@@ -69,7 +69,7 @@ function WasteCounter() {
   return (
     <div className="text-center">
       <div 
-        className="font-black text-7xl md:text-9xl lg:text-[12rem] text-white tracking-tight mb-4 tabular-nums leading-none drop-shadow-2xl"
+        className="font-black text-6xl md:text-8xl lg:text-[10rem] text-white tracking-tighter mb-4 tabular-nums leading-none drop-shadow-2xl"
         data-testid="text-waste-counter"
       >
         {currentStr.split('').map((char, i) => (
@@ -80,7 +80,7 @@ function WasteCounter() {
           />
         ))}
       </div>
-      <p className="text-xl md:text-2xl text-gray-400 uppercase tracking-widest" data-testid="text-waste-label">
+      <p className="text-lg md:text-xl text-gray-300 uppercase tracking-[0.3em] font-bold" data-testid="text-waste-label">
         batteries wasted this year
       </p>
     </div>
@@ -138,19 +138,19 @@ export default function Why() {
           <img 
             src={dystopiaImage} 
             alt="Dystopian vape waste landscape" 
-            className="w-full h-full object-cover opacity-40" 
+            className="w-full h-full object-cover opacity-60" 
             style={{ imageRendering: 'pixelated' }}
           />
         </div>
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/80 to-black" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/60 to-black" />
         
         {/* Vape rain effect */}
         <VapeRain />
         
         <div className="container mx-auto px-4 relative z-10 text-center text-white py-20">
           <WasteCounter />
-          <p className="text-gray-500 mt-8 max-w-xl mx-auto">
-            Every 10 seconds, another vape ends up in a landfill. We're here to change that.
+          <p className="text-gray-400 mt-8 max-w-xl mx-auto font-medium">
+            Every second, 6 batteries end up in US landfills. We're here to change that.
           </p>
         </div>
         
@@ -192,11 +192,11 @@ export default function Why() {
                 <img 
                   src={littrOneImage} 
                   alt="LITTR One Smart Bin" 
-                  className="w-72 h-72 md:w-96 md:h-96 object-contain"
+                  className="w-80 h-96 md:w-[32rem] md:h-[40rem] object-contain"
                   style={{ imageRendering: 'pixelated' }}
                   data-testid="img-littr-one-main"
                 />
-                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-green-500 text-black text-xs font-bold px-4 py-1 rounded-full">
+                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-green-500 text-black text-sm font-black px-6 py-2 rounded-full shadow-lg shadow-green-500/20">
                   NOW AVAILABLE
                 </div>
               </div>
