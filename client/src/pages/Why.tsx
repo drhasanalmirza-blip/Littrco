@@ -70,7 +70,6 @@ function WasteCounter() {
     <div className="text-center">
       <div 
         className="font-black text-7xl md:text-9xl lg:text-[12rem] text-white tracking-tight mb-4 tabular-nums leading-none drop-shadow-2xl"
-        style={{ textShadow: '0 0 60px rgba(255,255,255,0.3), 0 4px 20px rgba(0,0,0,0.5)' }}
         data-testid="text-waste-counter"
       >
         {currentStr.split('').map((char, i) => (
