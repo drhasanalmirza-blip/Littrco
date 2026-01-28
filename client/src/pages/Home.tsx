@@ -12,6 +12,7 @@ import eliteShopImage from "@assets/generated_images/elite_smoke_shop_pixel_art.
 import highEndShopImage from "@assets/generated_images/high_end_smoke_shop_pixel_art.png";
 import redEyeShopImage from "@assets/generated_images/red_eye_smoke_shop_pixel_art.png";
 import phoneBatteryImage from "@assets/generated_images/phone_battery_pixel_art.png";
+import littrOneImage from "@/assets/images/littr-one-pixel.png";
 
 export default function Home() {
 
@@ -198,6 +199,46 @@ export default function Home() {
               </div>
               <h3 className="font-semibold text-gray-500">EV Batteries</h3>
               <p className="text-xs text-red-500 mt-1">Not accepted</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* LITTR One Product Teaser */}
+      <section className="py-20 bg-black">
+        <div className="container mx-auto px-4">
+          <div className="max-w-5xl mx-auto">
+            <div className="relative bg-gradient-to-r from-zinc-900 to-zinc-800 rounded-3xl overflow-hidden border border-zinc-700">
+              <div className="absolute top-4 right-4 bg-green-500 text-black text-xs font-bold px-3 py-1 rounded-full z-10">
+                NOW AVAILABLE
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 md:p-12 items-center">
+                <div className="flex justify-center order-2 md:order-1">
+                  <img 
+                    src={littrOneImage} 
+                    alt="LITTR One Smart Bin" 
+                    className="w-48 h-48 md:w-64 md:h-64 object-contain"
+                    style={{ imageRendering: 'pixelated' }}
+                  />
+                </div>
+                <div className="order-1 md:order-2 text-center md:text-left">
+                  <p className="text-sm uppercase tracking-widest text-green-500 mb-2">Introducing</p>
+                  <h3 className="text-3xl md:text-4xl font-bold text-white mb-4">The LITTR One</h3>
+                  <p className="text-gray-400 mb-6">
+                    Smart recycling bin with temperature sensors, VOC monitoring, fill detection, and instant QR rewards. WiFi-enabled for real-time alerts.
+                  </p>
+                  <div className="mb-6">
+                    <span className="text-gray-500 line-through">$459.95</span>
+                    <span className="text-3xl font-bold text-green-500 ml-2">$169.95</span>
+                    <span className="text-xs text-gray-500 block mt-1">Subsidized partner pricing</span>
+                  </div>
+                  <Link href="/why">
+                    <Button className="bg-green-500 hover:bg-green-600 text-black font-semibold rounded-full px-8" data-testid="button-learn-littr-one">
+                      Learn More <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>

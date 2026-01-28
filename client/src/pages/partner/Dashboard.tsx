@@ -8,7 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut } from "lucide-react";
+import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight } from "lucide-react";
+import littrOneImage from "@/assets/images/littr-one-pixel.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
@@ -217,6 +218,57 @@ export default function PartnerDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* LITTR One Showcase */}
+        <Card className="mb-8 bg-gradient-to-r from-zinc-900 to-zinc-800 border-green-500/30 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
+              <div className="flex justify-center items-center">
+                <img 
+                  src={littrOneImage} 
+                  alt="LITTR One Smart Bin" 
+                  className="w-32 h-32 object-contain"
+                  style={{ imageRendering: 'pixelated' }}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">NEW</span>
+                  <h3 className="text-lg font-bold text-white">LITTR One Smart Bin</h3>
+                </div>
+                <p className="text-gray-400 text-sm mb-3">
+                  Upgrade your shop with our WiFi-enabled smart bin featuring temperature, VOC, and fill sensors.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                    <Thermometer className="h-3 w-3 text-red-400" /> Fire Safety
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                    <Wind className="h-3 w-3 text-blue-400" /> Air Quality
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                    <Eye className="h-3 w-3 text-purple-400" /> Fill Detection
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                    <Monitor className="h-3 w-3 text-cyan-400" /> QR Rewards
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                    <Wifi className="h-3 w-3 text-yellow-400" /> Real-time Alerts
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <span className="text-gray-500 line-through text-sm">$459.95</span>
+                    <span className="text-xl font-bold text-green-500 ml-2">$169.95</span>
+                  </div>
+                  <Button size="sm" className="bg-green-500 hover:bg-green-600 text-black" data-testid="button-partner-order-bin">
+                    Order for Your Shop <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Tabs defaultValue="activity" className="space-y-4">
           <TabsList>
