@@ -9,7 +9,9 @@ import binInteriorImage from "@assets/generated_images/pixel_art_littr_bin_inter
 import vapesImage from "@assets/generated_images/pixel_art_vapes_collection.png";
 import dystopiaImage from "@/assets/images/dystopia-bg.png";
 import vapeIconImage from "@/assets/images/vape-icon-transparent.png";
-import littrOneImage from "@/assets/images/littr-one-detailed.png";
+import littrOneImage from "@/assets/images/littr-one-official.png";
+import littrOneProImage from "@/assets/images/littr-one-pro.png";
+import littrOneMiniImage from "@/assets/images/littr-one-mini.png";
 
 function SlidingDigit({ digit, prevDigit }: { digit: string; prevDigit: string }) {
   const [isAnimating, setIsAnimating] = useState(false);
@@ -289,10 +291,10 @@ export default function Why() {
               </div>
               <div className="h-40 flex items-center justify-center mb-6">
                 <img 
-                  src={littrOneImage} 
+                  src={littrOneProImage} 
                   alt="LITTR One Pro" 
-                  className="h-full object-contain opacity-50"
-                  style={{ imageRendering: 'pixelated', filter: 'hue-rotate(200deg)' }}
+                  className="h-full object-contain opacity-70"
+                  style={{ imageRendering: 'pixelated' }}
                 />
               </div>
               <h3 className="text-xl font-bold text-white mb-2" data-testid="text-product-name-pro">LITTR One Pro</h3>
@@ -312,10 +314,10 @@ export default function Why() {
               </div>
               <div className="h-40 flex items-center justify-center mb-6">
                 <img 
-                  src={littrOneImage} 
+                  src={littrOneMiniImage} 
                   alt="LITTR One Mini" 
-                  className="h-28 object-contain opacity-50"
-                  style={{ imageRendering: 'pixelated', filter: 'hue-rotate(100deg)' }}
+                  className="h-32 object-contain opacity-70"
+                  style={{ imageRendering: 'pixelated' }}
                 />
               </div>
               <h3 className="text-xl font-bold text-white mb-2" data-testid="text-product-name-mini">LITTR One Mini</h3>

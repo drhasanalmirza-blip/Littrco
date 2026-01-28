@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight } from "lucide-react";
-import littrOneImage from "@/assets/images/littr-one-pixel.png";
+import littrOneImage from "@/assets/images/littr-one-official.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 

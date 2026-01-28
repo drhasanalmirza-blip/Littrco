@@ -12,7 +12,7 @@ import eliteShopImage from "@assets/generated_images/elite_smoke_shop_pixel_art.
 import highEndShopImage from "@assets/generated_images/high_end_smoke_shop_pixel_art.png";
 import redEyeShopImage from "@assets/generated_images/red_eye_smoke_shop_pixel_art.png";
 import phoneBatteryImage from "@assets/generated_images/phone_battery_pixel_art.png";
-import littrOneImage from "@/assets/images/littr-one-pixel.png";
+import littrOneImage from "@/assets/images/littr-one-official.png";
 
 export default function Home() {
 
