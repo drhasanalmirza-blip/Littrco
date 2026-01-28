@@ -217,7 +217,7 @@ export default function Home() {
                   <img 
                     src={littrOneImage} 
                     alt="LITTR One Smart Bin" 
-                    className="w-48 h-48 md:w-64 md:h-64 object-contain"
+                    className="w-56 h-72 md:w-[22rem] md:h-[28rem] object-contain"
                     style={{ imageRendering: 'pixelated' }}
                   />
                 </div>
