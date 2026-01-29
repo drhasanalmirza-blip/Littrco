@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
@@ -24,6 +25,16 @@ import ChangePasswordPage from "@/pages/customer/ChangePassword";
 import ScanPage from "@/pages/customer/Scan";
 import StorePage from "@/pages/customer/Store";
 
+function ScrollToTop() {
+  const [location] = useLocation();
+  
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+  
+  return null;
+}
+
 function Router() {
   const [location] = useLocation();
   
@@ -35,6 +46,7 @@ function Router() {
 
   return (
     <>
+      <ScrollToTop />
       {!isDashboard && <Header />}
       <Switch>
         <Route path="/" component={Home} />
