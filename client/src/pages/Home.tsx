@@ -227,11 +227,6 @@ export default function Home() {
                   <p className="text-gray-400 mb-6">
                     Smart recycling bin with temperature sensors, VOC monitoring, fill detection, and instant QR rewards. WiFi-enabled for real-time alerts.
                   </p>
-                  <div className="mb-6">
-                    <span className="text-gray-500 line-through" data-testid="text-price-original-home">$459.95</span>
-                    <span className="text-3xl font-bold text-green-500 ml-2" data-testid="text-price-discounted-home">$169.95</span>
-                    <span className="text-xs text-gray-500 block mt-1">Subsidized partner pricing</span>
-                  </div>
                   <Link href="/why">
                     <Button className="bg-green-500 hover:bg-green-600 text-black font-semibold rounded-full px-8" data-testid="button-learn-littr-one">
                       Learn More <ArrowRight className="ml-2 h-4 w-4" />

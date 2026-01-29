@@ -271,11 +271,6 @@ export default function Why() {
               </div>
               <h3 className="text-xl font-bold text-white mb-2" data-testid="text-product-name-one">LITTR One</h3>
               <p className="text-gray-500 text-sm mb-4">Standard smart bin with all sensors</p>
-              <div className="mb-4">
-                <span className="text-gray-500 line-through text-sm" data-testid="text-price-original">$459.95</span>
-                <span className="text-2xl font-bold text-green-500 ml-2" data-testid="text-price-discounted">$169.95</span>
-                <span className="text-xs text-gray-500 block mt-1">Subsidized pricing for partners</span>
-              </div>
               <Link href="/business">
                 <Button className="w-full bg-green-500 hover:bg-green-600 text-black font-semibold" data-testid="button-order-littr-one">
                   Order Now <ArrowRight className="ml-2 h-4 w-4" />
