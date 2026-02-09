@@ -160,7 +160,7 @@ export default function CustomerDashboard() {
 
         <div className="grid grid-cols-2 gap-3">
           <button 
-            onClick={() => setLocation('/app/claim')}
+            onClick={() => setLocation('/app/scan')}
             className="littr-card-solid p-3 flex items-center gap-3 active:scale-[0.97] transition-all"
             data-testid="button-manual-claim"
           >
