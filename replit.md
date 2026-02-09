@@ -138,9 +138,30 @@ Preferred communication style: Simple, everyday language.
 - `POST /api/device/telemetry` - Report sensor data (temperature, VOC, fill level)
 - `GET /api/device/telemetry/history` - Get historical sensor readings
 
-### Device API V1 (LITTR Screen Pro)
+### Device API V1 (LITTR Screen Pro) - Legacy
 - `POST /api/v1/device/pair` - Pair device using shop PIN (returns deviceId, deviceKey)
 - `POST /api/v1/device/spin` - Trigger spin with new weighted distribution
+- `POST /api/v1/claim` - Claim points (supports auto-registration)
+
+### Device API V2 (UID-based pairing + session stacking)
+- `POST /api/v2/device/pair-request` - ESP32 sends UID, gets 6-char pair code (15min expiry)
+- `GET /api/v2/device/pair-status?uid=X` - ESP32 polls to check if paired, gets config
+- `POST /api/v2/device/pair-claim` - Staff/partner claims device to shop via pair code (auth required)
+- `GET /api/v2/device/config?uid=X` - ESP32 fetches cloud config (session window, thresholds)
+- `POST /api/v2/device/drop` - ESP32 reports drop, creates/extends reward session (idempotent via event_id)
+- `POST /api/v2/claim` - User claims stacked session points (auto-register supported)
+- `POST /api/v2/device/telemetry` - ESP32 reports sensor data (temperature, VOC, fill)
+- `GET /api/v2/shop/:shopId/device-config` - Get shop device config (staff/partner)
+- `PATCH /api/v2/shop/:shopId/device-config` - Update shop device config (staff/partner)
+- `GET /api/v2/shop/:shopId/points-ledger` - Get partner points ledger (staff/partner)
+- `GET /api/v2/staff/pair-requests` - List all pair requests (staff only)
+
+V2 Design Principles:
+- **UID-based auth**: Devices identify by hardware UID, no key exchange needed for drops
+- **Session stacking**: Multiple drops within configurable window combine into one QR code
+- **Idempotency**: `event_id` on drops prevents duplicate processing on network retry
+- **Partner points**: Shop gets +1 per drop immediately, tracked in ledger
+- **Cloud config**: Session window, sensor thresholds, display settings per shop
 
 ### Telemetry & Fire Alerts
 The telemetry endpoint accepts sensor data from ESP32 bins:
@@ -149,8 +170,6 @@ The telemetry endpoint accepts sensor data from ESP32 bins:
 - **Fill Level**: Ultrasonic-based percentage (0-100%)
 
 Fire alerts are auto-created when thresholds are exceeded and displayed in staff/partner dashboards.
-
-- `POST /api/v1/claim` - Claim points (supports auto-registration)
 
 Point Distribution (V1):
 - 1 point: 70%

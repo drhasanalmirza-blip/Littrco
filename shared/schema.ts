@@ -13,6 +13,7 @@ export const binStatusEnum = pgEnum("bin_status", ["ONLINE", "OFFLINE", "FIRE_AL
 export const alertSeverityEnum = pgEnum("alert_severity", ["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["EARN", "REDEEM", "ADJUST"]);
 export const redemptionStatusEnum = pgEnum("redemption_status", ["PENDING", "APPROVED", "FULFILLED", "REJECTED"]);
+export const rewardSessionStatusEnum = pgEnum("reward_session_status", ["PENDING", "CLAIMED", "EXPIRED"]);
 
 // Users table - expanded with roles
 export const users = pgTable("users", {
@@ -103,13 +104,16 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
 export type InsertLead = z.infer<typeof insertLeadSchema>;
 export type Lead = typeof leads.$inferSelect;
 
-// Devices table - ESP32 devices
+// Devices table - ESP32 devices (uid-based, shopId nullable for unpaired)
 export const devices = pgTable("devices", {
   id: serial("id").primaryKey(),
-  shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
+  uid: text("uid").unique(),
+  shopId: integer("shop_id").references(() => shops.id, { onDelete: "set null" }),
   name: text("name").notNull(),
-  deviceKeyHash: text("device_key_hash").notNull(),
-  status: deviceStatusEnum("status").notNull().default("ACTIVE"),
+  deviceKeyHash: text("device_key_hash"),
+  firmwareVersion: text("firmware_version"),
+  trusted: boolean("trusted").notNull().default(false),
+  status: deviceStatusEnum("status").notNull().default("INACTIVE"),
   lastSeenAt: timestamp("last_seen_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -141,11 +145,13 @@ export const insertRewardConfigSchema = createInsertSchema(rewardConfigs).omit({
 export type InsertRewardConfig = z.infer<typeof insertRewardConfigSchema>;
 export type RewardConfig = typeof rewardConfigs.$inferSelect;
 
-// DropEvents - records each vape drop
+// DropEvents - records each vape drop (with idempotency and session linking)
 export const dropEvents = pgTable("drop_events", {
   id: serial("id").primaryKey(),
   shopId: integer("shop_id").notNull().references(() => shops.id),
   deviceId: integer("device_id").notNull().references(() => devices.id),
+  deviceEventId: text("device_event_id").unique(),
+  sessionId: integer("session_id"),
   pointsAwarded: integer("points_awarded").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -413,3 +419,96 @@ export const insertInternalMessageSchema = createInsertSchema(internalMessages).
 });
 export type InsertInternalMessage = z.infer<typeof insertInternalMessageSchema>;
 export type InternalMessage = typeof internalMessages.$inferSelect;
+
+// ==================== V2 SMART BIN API TABLES ====================
+
+// PairRequests - device pairing flow
+export const pairRequests = pgTable("pair_requests", {
+  id: serial("id").primaryKey(),
+  uid: text("uid").notNull(),
+  pairCode: text("pair_code").notNull().unique(),
+  firmwareVersion: text("firmware_version"),
+  expiresAt: timestamp("expires_at").notNull(),
+  claimed: boolean("claimed").notNull().default(false),
+  claimedByUserId: varchar("claimed_by_user_id").references(() => users.id),
+  shopId: integer("shop_id").references(() => shops.id),
+  deviceId: integer("device_id").references(() => devices.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPairRequestSchema = createInsertSchema(pairRequests).omit({
+  id: true,
+  createdAt: true,
+  claimed: true,
+  claimedByUserId: true,
+  shopId: true,
+  deviceId: true,
+});
+export type InsertPairRequest = z.infer<typeof insertPairRequestSchema>;
+export type PairRequest = typeof pairRequests.$inferSelect;
+
+// RewardSessions - stacking point sessions per device
+export const rewardSessions = pgTable("reward_sessions", {
+  id: serial("id").primaryKey(),
+  deviceId: integer("device_id").notNull().references(() => devices.id),
+  shopId: integer("shop_id").notNull().references(() => shops.id),
+  token: text("token").notNull().unique(),
+  status: rewardSessionStatusEnum("status").notNull().default("PENDING"),
+  pointsTotal: integer("points_total").notNull().default(0),
+  dropCount: integer("drop_count").notNull().default(0),
+  lastDropAt: timestamp("last_drop_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  claimedByUserId: varchar("claimed_by_user_id").references(() => users.id),
+  claimedAt: timestamp("claimed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertRewardSessionSchema = createInsertSchema(rewardSessions).omit({
+  id: true,
+  createdAt: true,
+  claimedByUserId: true,
+  claimedAt: true,
+});
+export type InsertRewardSession = z.infer<typeof insertRewardSessionSchema>;
+export type RewardSession = typeof rewardSessions.$inferSelect;
+
+// DeviceConfigs - shop-tunable cloud config for ESP32 bins
+export const deviceConfigs = pgTable("device_configs", {
+  id: serial("id").primaryKey(),
+  shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }).unique(),
+  sessionWindowSec: integer("session_window_sec").notNull().default(60),
+  acceptedHoldMs: integer("accepted_hold_ms").notNull().default(12000),
+  warnEnabled: boolean("warn_enabled").notNull().default(true),
+  warnTempC: doublePrecision("warn_temp_c").notNull().default(55.0),
+  warnVocAnalog: integer("warn_voc_analog").notNull().default(900),
+  warnUseVocDigital: boolean("warn_use_voc_digital").notNull().default(false),
+  rawSwapBytes: boolean("raw_swap_bytes").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDeviceConfigSchema = createInsertSchema(deviceConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDeviceConfig = z.infer<typeof insertDeviceConfigSchema>;
+export type DeviceConfig = typeof deviceConfigs.$inferSelect;
+
+// PartnerPointsLedger - tracks shop points earned from drops
+export const partnerPointsLedger = pgTable("partner_points_ledger", {
+  id: serial("id").primaryKey(),
+  shopId: integer("shop_id").notNull().references(() => shops.id),
+  deviceId: integer("device_id").references(() => devices.id),
+  points: integer("points").notNull(),
+  reason: text("reason").notNull(),
+  dropEventId: integer("drop_event_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPartnerPointsLedgerSchema = createInsertSchema(partnerPointsLedger).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPartnerPointsLedger = z.infer<typeof insertPartnerPointsLedgerSchema>;
+export type PartnerPointsLedger = typeof partnerPointsLedger.$inferSelect;

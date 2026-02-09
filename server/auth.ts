@@ -160,6 +160,10 @@ export async function authenticateDevice(deviceId: string, deviceKey: string): P
     return null;
   }
   
+  if (!device.shopId) {
+    return null;
+  }
+  
   const shop = await storage.getShop(device.shopId);
   if (!shop || shop.status !== "VERIFIED") {
     return null;

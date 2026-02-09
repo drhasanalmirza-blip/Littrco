@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2 } from "lucide-react";
 import { MailboxManager } from "@/components/staff/MailboxManager";
 import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -100,6 +100,25 @@ export default function StaffDashboard() {
     queryFn: async () => {
       const res = await apiRequest('/api/staff/fire-alerts');
       if (!res.ok) throw new Error('Failed to fetch fire alerts');
+      return res.json();
+    },
+  });
+
+  const { data: pairRequests = [] } = useQuery({
+    queryKey: ['pair-requests'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/v2/staff/pair-requests');
+      if (!res.ok) throw new Error('Failed to fetch pair requests');
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const { data: allPartnerPoints = [] } = useQuery({
+    queryKey: ['all-partner-points'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/partner-points');
+      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -290,12 +309,19 @@ export default function StaffDashboard() {
         </div>
 
         <Tabs defaultValue="leads" className="space-y-4">
-          <TabsList className="grid grid-cols-7 w-full max-w-4xl">
+          <TabsList className="grid grid-cols-8 w-full max-w-4xl">
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="shops">Shops</TabsTrigger>
             <TabsTrigger value="bins" className="flex items-center gap-1">
               <Cpu className="h-4 w-4" />
               Smart Bins
+            </TabsTrigger>
+            <TabsTrigger value="pairing" className="flex items-center gap-1">
+              <Link2 className="h-4 w-4" />
+              Pairing
+              {pairRequests.filter((pr: any) => !pr.claimed && new Date(pr.expiresAt) >= new Date()).length > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1">{pairRequests.filter((pr: any) => !pr.claimed && new Date(pr.expiresAt) >= new Date()).length}</Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="emails" className="flex items-center gap-1">
@@ -594,6 +620,59 @@ export default function StaffDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="pairing">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Link2 className="h-5 w-5" />
+                  Device Pair Requests
+                </CardTitle>
+                <CardDescription>ESP32 bins requesting to be paired with a shop</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table data-testid="table-pair-requests">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pair Code</TableHead>
+                      <TableHead>Device UID</TableHead>
+                      <TableHead>Firmware</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Shop</TableHead>
+                      <TableHead>Paired At</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pairRequests.map((pr: any) => (
+                      <TableRow key={pr.id} data-testid={`pair-request-row-${pr.id}`}>
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono">{pr.pairCode}</Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">...{pr.uid?.slice(-8)}</TableCell>
+                        <TableCell>{pr.firmwareVersion || 'Unknown'}</TableCell>
+                        <TableCell>
+                          {pr.claimed ? (
+                            <Badge className="bg-green-600">Claimed</Badge>
+                          ) : new Date(pr.expiresAt) < new Date() ? (
+                            <Badge className="bg-red-600">Expired</Badge>
+                          ) : (
+                            <Badge className="bg-yellow-600 text-black">Pending</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>{pr.shopId ? shops.find((s: any) => s.id === pr.shopId)?.name || 'Unknown' : '—'}</TableCell>
+                        <TableCell>{new Date(pr.createdAt).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                    {pairRequests.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-gray-500">No pair requests yet</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="activity">

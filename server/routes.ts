@@ -2049,5 +2049,591 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== V2 SMART BIN API ====================
+
+  const V2_POINT_DISTRIBUTION = [
+    { points: 1, weight: 70 },
+    { points: 2, weight: 15 },
+    { points: 5, weight: 10 },
+    { points: 10, weight: 4 },
+    { points: 25, weight: 0.9 },
+    { points: 100, weight: 0.1 },
+  ];
+
+  function rollPoints(distribution = V2_POINT_DISTRIBUTION): number {
+    const totalWeight = distribution.reduce((sum, r) => sum + r.weight, 0);
+    let random = Math.random() * totalWeight;
+    for (const reward of distribution) {
+      random -= reward.weight;
+      if (random <= 0) return reward.points;
+    }
+    return distribution[0].points;
+  }
+
+  function generatePairCode(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+  }
+
+  // V2 Pair Request — ESP32 calls with its UID to get a pair code
+  app.post("/api/v2/device/pair-request", async (req, res) => {
+    try {
+      const { uid, firmwareVersion } = req.body;
+      if (!uid) {
+        return res.status(400).json({ ok: false, error: "uid required" });
+      }
+
+      const existingDevice = await storage.getDeviceByUid(uid);
+      if (existingDevice && existingDevice.shopId && existingDevice.status === "ACTIVE") {
+        return res.status(200).json({
+          ok: true,
+          status: "already_paired",
+          deviceId: existingDevice.id,
+        });
+      }
+
+      const activePR = await storage.getActivePairRequestByUid(uid);
+      if (activePR) {
+        return res.status(200).json({
+          ok: true,
+          status: "pending",
+          pairCode: activePR.pairCode,
+          expiresAt: activePR.expiresAt.toISOString(),
+        });
+      }
+
+      const pairCode = generatePairCode();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      const pr = await storage.createPairRequest({
+        uid,
+        pairCode,
+        firmwareVersion: firmwareVersion || null,
+        expiresAt,
+      });
+
+      res.json({
+        ok: true,
+        status: "pending",
+        pairCode: pr.pairCode,
+        expiresAt: pr.expiresAt.toISOString(),
+      });
+    } catch (error) {
+      console.error("V2 pair-request error:", error);
+      res.status(500).json({ ok: false, error: "Pair request failed" });
+    }
+  });
+
+  // V2 Pair Claim — partner/staff scans QR or enters code to claim device
+  app.post("/api/v2/device/pair-claim", authMiddleware, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { pairCode, shopId } = req.body;
+
+      if (!pairCode || !shopId) {
+        return res.status(400).json({ ok: false, error: "pairCode and shopId required" });
+      }
+
+      if (user.role !== "STAFF" && user.role !== "PARTNER") {
+        return res.status(403).json({ ok: false, error: "Staff or partner role required" });
+      }
+
+      if (user.role === "PARTNER") {
+        const memberShops = await storage.getShopsByMemberId(user.id);
+        if (!memberShops.find(s => s.id === parseInt(shopId))) {
+          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
+        }
+      }
+
+      const shop = await storage.getShop(parseInt(shopId));
+      if (!shop || shop.status !== "VERIFIED") {
+        return res.status(400).json({ ok: false, error: "Shop not found or not verified" });
+      }
+
+      const pr = await storage.getPairRequestByCode(pairCode.toUpperCase());
+      if (!pr) {
+        return res.status(404).json({ ok: false, error: "Pair code not found" });
+      }
+      if (pr.claimed) {
+        return res.status(400).json({ ok: false, error: "Pair code already claimed" });
+      }
+      if (new Date(pr.expiresAt) < new Date()) {
+        return res.status(400).json({ ok: false, error: "Pair code expired" });
+      }
+
+      let device = await storage.getDeviceByUid(pr.uid);
+      if (!device) {
+        const deviceKey = generateDeviceKey();
+        const deviceKeyHash = hashDeviceKey(deviceKey);
+        device = await storage.createDevice({
+          shopId: shop.id,
+          name: `Bin ${pr.uid.slice(-4).toUpperCase()}`,
+          deviceKeyHash,
+          uid: pr.uid,
+          status: "ACTIVE",
+        });
+      } else {
+        device = (await storage.updateDevice(device.id, {
+          shopId: shop.id,
+          status: "ACTIVE",
+        }))!;
+      }
+
+      await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
+
+      let config = await storage.getDeviceConfig(shop.id);
+      if (!config) {
+        config = await storage.upsertDeviceConfig({ shopId: shop.id });
+      }
+
+      res.json({
+        ok: true,
+        deviceId: device.id,
+        shopId: shop.id,
+        shopName: shop.name,
+      });
+    } catch (error) {
+      console.error("V2 pair-claim error:", error);
+      res.status(500).json({ ok: false, error: "Pair claim failed" });
+    }
+  });
+
+  // V2 Pair Status — ESP32 polls to check if paired
+  app.get("/api/v2/device/pair-status", async (req, res) => {
+    try {
+      const uid = req.query.uid as string;
+      if (!uid) {
+        return res.status(400).json({ ok: false, error: "uid query param required" });
+      }
+
+      const device = await storage.getDeviceByUid(uid);
+      if (device && device.shopId && device.status === "ACTIVE") {
+        const config = await storage.getDeviceConfig(device.shopId);
+        return res.json({
+          ok: true,
+          paired: true,
+          deviceId: device.id,
+          shopId: device.shopId,
+          config: config ? {
+            session_window_sec: config.sessionWindowSec,
+            accepted_hold_ms: config.acceptedHoldMs,
+            warn_enabled: config.warnEnabled,
+            warn_temp_c: config.warnTempC,
+            warn_voc_analog: config.warnVocAnalog,
+            warn_use_voc_digital: config.warnUseVocDigital,
+            raw_swap_bytes: config.rawSwapBytes,
+          } : null,
+        });
+      }
+
+      res.json({ ok: true, paired: false });
+    } catch (error) {
+      console.error("V2 pair-status error:", error);
+      res.status(500).json({ ok: false, error: "Status check failed" });
+    }
+  });
+
+  // V2 Config — ESP32 fetches cloud config
+  app.get("/api/v2/device/config", async (req, res) => {
+    try {
+      const uid = req.query.uid as string;
+      if (!uid) {
+        return res.status(400).json({ ok: false, error: "uid query param required" });
+      }
+
+      const device = await storage.getDeviceByUid(uid);
+      if (!device || !device.shopId) {
+        return res.status(404).json({ ok: false, error: "Device not paired" });
+      }
+
+      await storage.updateDeviceLastSeen(device.id);
+
+      const config = await storage.getDeviceConfig(device.shopId);
+      const rewardConfig = await storage.getRewardConfig(device.shopId);
+
+      res.json({
+        ok: true,
+        deviceId: device.id,
+        shopId: device.shopId,
+        config: config ? {
+          session_window_sec: config.sessionWindowSec,
+          accepted_hold_ms: config.acceptedHoldMs,
+          warn_enabled: config.warnEnabled,
+          warn_temp_c: config.warnTempC,
+          warn_voc_analog: config.warnVocAnalog,
+          warn_use_voc_digital: config.warnUseVocDigital,
+          raw_swap_bytes: config.rawSwapBytes,
+        } : {
+          session_window_sec: 60,
+          accepted_hold_ms: 12000,
+          warn_enabled: true,
+          warn_temp_c: 55.0,
+          warn_voc_analog: 900,
+          warn_use_voc_digital: false,
+          raw_swap_bytes: false,
+        },
+        rewards_enabled: rewardConfig?.enabled ?? true,
+      });
+    } catch (error) {
+      console.error("V2 config error:", error);
+      res.status(500).json({ ok: false, error: "Config fetch failed" });
+    }
+  });
+
+  // V2 Drop — ESP32 reports a vape drop, creates/extends reward session
+  app.post("/api/v2/device/drop", async (req, res) => {
+    try {
+      const { uid, event_id } = req.body;
+      if (!uid) {
+        return res.status(400).json({ ok: false, error: "uid required" });
+      }
+
+      const device = await storage.getDeviceByUid(uid);
+      if (!device || !device.shopId || device.status !== "ACTIVE") {
+        return res.status(400).json({ ok: false, error: "Device not paired or inactive" });
+      }
+
+      await storage.updateDeviceLastSeen(device.id);
+
+      if (event_id) {
+        const existing = await storage.getDropEventByDeviceEventId(event_id);
+        if (existing) {
+          const session = existing.sessionId ? await storage.getRewardSession(existing.sessionId) : null;
+          return res.json({
+            ok: true,
+            duplicate: true,
+            dropEventId: existing.id,
+            session: session ? {
+              token: session.token,
+              pointsTotal: session.pointsTotal,
+              dropCount: session.dropCount,
+              expiresAt: session.expiresAt.toISOString(),
+              qrUrl: `https://littr.co/app/claim?session=${session.token}`,
+            } : null,
+          });
+        }
+      }
+
+      const config = await storage.getDeviceConfig(device.shopId);
+      const sessionWindowSec = config?.sessionWindowSec ?? 60;
+
+      const points = rollPoints();
+
+      let session = await storage.getActiveRewardSession(device.id);
+
+      if (session) {
+        const newTotal = session.pointsTotal + points;
+        const newCount = session.dropCount + 1;
+        const newExpiry = new Date(Date.now() + sessionWindowSec * 1000);
+        session = (await storage.updateRewardSession(session.id, {
+          pointsTotal: newTotal,
+          dropCount: newCount,
+          lastDropAt: new Date(),
+          expiresAt: newExpiry,
+        }))!;
+      } else {
+        const token = generateClaimToken();
+        const expiresAt = new Date(Date.now() + sessionWindowSec * 1000);
+        session = await storage.createRewardSession({
+          deviceId: device.id,
+          shopId: device.shopId,
+          token,
+          pointsTotal: points,
+          dropCount: 1,
+          lastDropAt: new Date(),
+          expiresAt,
+        });
+      }
+
+      const dropEvent = await storage.createDropEvent({
+        shopId: device.shopId,
+        deviceId: device.id,
+        deviceEventId: event_id || null,
+        sessionId: session.id,
+        pointsAwarded: points,
+      });
+
+      await storage.creditPartnerPoints({
+        shopId: device.shopId,
+        deviceId: device.id,
+        points: 1,
+        reason: "drop",
+        dropEventId: dropEvent.id,
+      });
+
+      res.json({
+        ok: true,
+        duplicate: false,
+        dropEventId: dropEvent.id,
+        pointsThisDrop: points,
+        session: {
+          token: session.token,
+          pointsTotal: session.pointsTotal,
+          dropCount: session.dropCount,
+          expiresAt: session.expiresAt.toISOString(),
+          qrUrl: `https://littr.co/app/claim?session=${session.token}`,
+        },
+      });
+    } catch (error) {
+      console.error("V2 drop error:", error);
+      res.status(500).json({ ok: false, error: "Drop failed" });
+    }
+  });
+
+  // V2 Session Claim — user scans QR to claim stacked session points
+  app.post("/api/v2/claim", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const { sessionToken, email, password } = req.body;
+      if (!sessionToken) {
+        return res.status(400).json({ ok: false, error: "sessionToken required" });
+      }
+
+      const session = await storage.getRewardSessionByToken(sessionToken);
+      if (!session) {
+        return res.status(404).json({ ok: false, error: "Session not found" });
+      }
+      if (session.status === "CLAIMED") {
+        return res.status(400).json({ ok: false, error: "Already claimed" });
+      }
+      if (session.status === "EXPIRED" || new Date(session.expiresAt) < new Date()) {
+        if (session.status !== "EXPIRED") {
+          await storage.updateRewardSession(session.id, { status: "EXPIRED" as any });
+        }
+        return res.status(400).json({ ok: false, error: "Session expired" });
+      }
+
+      let user = req.user;
+      let newSessionId: string | undefined;
+
+      if (!user) {
+        if (!email || !password) {
+          return res.status(400).json({
+            ok: false,
+            error: "Please log in or register to claim points",
+            requiresAuth: true,
+          });
+        }
+
+        const existing = await storage.getUserByEmail(email);
+        if (existing) {
+          const result = await login(email, password);
+          if (!result) {
+            return res.status(401).json({ ok: false, error: "Invalid credentials" });
+          }
+          user = result.user;
+          newSessionId = result.sessionId;
+        } else {
+          const result = await register(email, password, "CUSTOMER");
+          user = result.user;
+          newSessionId = result.sessionId;
+        }
+      }
+
+      let customer = await storage.getCustomerByUserId(user!.id);
+      if (!customer) {
+        customer = await storage.createCustomer({ userId: user!.id, displayName: user!.email.split("@")[0] });
+        await storage.createWallet(customer.id);
+      }
+
+      const wallet = await storage.getWallet(customer.id);
+      if (!wallet) {
+        return res.status(500).json({ ok: false, error: "Wallet error" });
+      }
+
+      await storage.updateWalletBalance(customer.id, session.pointsTotal, true);
+      await storage.createTransaction({
+        walletId: wallet.id,
+        type: "EARN",
+        amount: session.pointsTotal,
+        description: `Claimed ${session.dropCount} drop(s) from recycling bin`,
+      });
+
+      await storage.updateRewardSession(session.id, {
+        status: "CLAIMED" as any,
+        claimedByUserId: user!.id,
+        claimedAt: new Date(),
+      });
+
+      const updatedWallet = await storage.getWallet(customer.id);
+
+      res.json({
+        ok: true,
+        pointsClaimed: session.pointsTotal,
+        dropCount: session.dropCount,
+        newBalance: updatedWallet?.pointsBalance ?? session.pointsTotal,
+        ...(newSessionId ? { sessionId: newSessionId } : {}),
+      });
+    } catch (error) {
+      console.error("V2 claim error:", error);
+      res.status(500).json({ ok: false, error: "Claim failed" });
+    }
+  });
+
+  // V2 Telemetry — ESP32 reports sensor data
+  app.post("/api/v2/device/telemetry", async (req, res) => {
+    try {
+      const { uid, temperature, voc_analog, voc_digital, fill_pct } = req.body;
+      if (!uid) {
+        return res.status(400).json({ ok: false, error: "uid required" });
+      }
+
+      const device = await storage.getDeviceByUid(uid);
+      if (!device || !device.shopId) {
+        return res.status(404).json({ ok: false, error: "Device not paired" });
+      }
+
+      await storage.updateDeviceLastSeen(device.id);
+
+      const bin = await storage.getBinByDeviceId(device.id);
+      if (bin) {
+        await storage.updateBinSensorData(bin.id, {
+          lastTemperature: temperature,
+          lastVocAnalog: voc_analog,
+          lastVocDigital: voc_digital,
+          fillLevel: fill_pct,
+        });
+
+        await storage.createBinReading({
+          binId: bin.id,
+          temperature,
+          vocAnalog: voc_analog,
+          vocDigital: voc_digital,
+          fillLevel: fill_pct,
+        });
+      }
+
+      const config = await storage.getDeviceConfig(device.shopId);
+      let alert = null;
+      if (config?.warnEnabled && temperature != null) {
+        if (temperature >= (config.warnTempC ?? 55)) {
+          const severity = temperature >= 80 ? "CRITICAL" : temperature >= 60 ? "HIGH" : "MEDIUM";
+          if (bin) {
+            await storage.createFireAlert({
+              binId: bin.id,
+              shopId: device.shopId,
+              severity: severity as any,
+              temperature,
+              message: `Temperature alert: ${temperature}°C on device ${device.name}`,
+            });
+          }
+          alert = { type: "temperature", value: temperature, severity };
+        }
+      }
+
+      res.json({ ok: true, alert });
+    } catch (error) {
+      console.error("V2 telemetry error:", error);
+      res.status(500).json({ ok: false, error: "Telemetry failed" });
+    }
+  });
+
+  // V2 Staff/Partner — Update device config for a shop
+  app.patch("/api/v2/shop/:shopId/device-config", authMiddleware, async (req, res) => {
+    try {
+      const user = req.user!;
+      const shopId = parseInt(req.params.shopId);
+
+      if (user.role === "PARTNER") {
+        const memberShops = await storage.getShopsByMemberId(user.id);
+        if (!memberShops.find(s => s.id === shopId)) {
+          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
+        }
+      } else if (user.role !== "STAFF") {
+        return res.status(403).json({ ok: false, error: "Access denied" });
+      }
+
+      const { session_window_sec, accepted_hold_ms, warn_enabled, warn_temp_c, warn_voc_analog, warn_use_voc_digital, raw_swap_bytes } = req.body;
+      const updateData: any = {};
+      if (session_window_sec !== undefined) updateData.sessionWindowSec = session_window_sec;
+      if (accepted_hold_ms !== undefined) updateData.acceptedHoldMs = accepted_hold_ms;
+      if (warn_enabled !== undefined) updateData.warnEnabled = warn_enabled;
+      if (warn_temp_c !== undefined) updateData.warnTempC = warn_temp_c;
+      if (warn_voc_analog !== undefined) updateData.warnVocAnalog = warn_voc_analog;
+      if (warn_use_voc_digital !== undefined) updateData.warnUseVocDigital = warn_use_voc_digital;
+      if (raw_swap_bytes !== undefined) updateData.rawSwapBytes = raw_swap_bytes;
+
+      let config = await storage.getDeviceConfig(shopId);
+      if (!config) {
+        config = await storage.upsertDeviceConfig({ shopId, ...updateData });
+      } else {
+        config = (await storage.updateDeviceConfig(shopId, updateData))!;
+      }
+
+      res.json({ ok: true, config });
+    } catch (error) {
+      console.error("V2 device-config update error:", error);
+      res.status(500).json({ ok: false, error: "Config update failed" });
+    }
+  });
+
+  // V2 Staff/Partner — Get device config for a shop
+  app.get("/api/v2/shop/:shopId/device-config", authMiddleware, async (req, res) => {
+    try {
+      const user = req.user!;
+      const shopId = parseInt(req.params.shopId);
+
+      if (user.role === "PARTNER") {
+        const memberShops = await storage.getShopsByMemberId(user.id);
+        if (!memberShops.find(s => s.id === shopId)) {
+          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
+        }
+      } else if (user.role !== "STAFF") {
+        return res.status(403).json({ ok: false, error: "Access denied" });
+      }
+
+      let config = await storage.getDeviceConfig(shopId);
+      if (!config) {
+        config = await storage.upsertDeviceConfig({ shopId });
+      }
+
+      res.json({ ok: true, config });
+    } catch (error) {
+      console.error("V2 get device-config error:", error);
+      res.status(500).json({ ok: false, error: "Config fetch failed" });
+    }
+  });
+
+  // V2 Partner Points Ledger
+  app.get("/api/v2/shop/:shopId/points-ledger", authMiddleware, async (req, res) => {
+    try {
+      const user = req.user!;
+      const shopId = parseInt(req.params.shopId);
+
+      if (user.role === "PARTNER") {
+        const memberShops = await storage.getShopsByMemberId(user.id);
+        if (!memberShops.find(s => s.id === shopId)) {
+          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
+        }
+      } else if (user.role !== "STAFF") {
+        return res.status(403).json({ ok: false, error: "Access denied" });
+      }
+
+      const [ledger, total] = await Promise.all([
+        storage.getPartnerPointsLedger(shopId),
+        storage.getPartnerPointsTotal(shopId),
+      ]);
+
+      res.json({ ok: true, total, entries: ledger });
+    } catch (error) {
+      console.error("V2 points-ledger error:", error);
+      res.status(500).json({ ok: false, error: "Ledger fetch failed" });
+    }
+  });
+
+  // V2 Staff — list all pair requests
+  app.get("/api/v2/staff/pair-requests", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const requests = await storage.getAllPairRequests();
+      res.json(requests);
+    } catch (error) {
+      console.error("V2 staff pair-requests error:", error);
+      res.status(500).json({ error: "Failed to fetch pair requests" });
+    }
+  });
+
   return httpServer;
 }

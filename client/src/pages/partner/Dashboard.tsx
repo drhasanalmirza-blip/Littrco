@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useStore, apiRequest } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
@@ -8,7 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins } from "lucide-react";
 import littrOneImage from "@/assets/images/littr-one-official.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +19,8 @@ export default function PartnerDashboard() {
   const { user, role, clearAuth } = useStore();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const [pairCode, setPairCode] = useState("");
+  const [pairResult, setPairResult] = useState<any | null>(null);
 
   const { data: shops = [] } = useQuery({
     queryKey: ['partner-shops'],
@@ -83,6 +87,66 @@ export default function PartnerDashboard() {
     },
     enabled: !!shop,
     refetchInterval: 10000,
+  });
+
+  const { data: pointsLedger = [] } = useQuery({
+    queryKey: ['partner-points-ledger', shop?.id],
+    queryFn: async () => {
+      if (!shop) return [];
+      const res = await apiRequest(`/api/v2/shop/${shop.id}/points-ledger`);
+      if (!res.ok) throw new Error('Failed to fetch points ledger');
+      return res.json();
+    },
+    enabled: !!shop,
+  });
+
+  const { data: deviceConfig } = useQuery({
+    queryKey: ['partner-device-config', shop?.id],
+    queryFn: async () => {
+      if (!shop) return null;
+      const res = await apiRequest(`/api/v2/shop/${shop.id}/device-config`);
+      if (!res.ok) throw new Error('Failed to fetch device config');
+      return res.json();
+    },
+    enabled: !!shop,
+  });
+
+  const pairDevice = useMutation({
+    mutationKey: ['pair-device'],
+    mutationFn: async () => {
+      const res = await apiRequest('/api/v2/device/pair-claim', {
+        method: 'POST',
+        body: JSON.stringify({ pairCode, shopId: shop.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Failed to pair device' }));
+        throw new Error(err.message || 'Failed to pair device');
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setPairResult(data);
+      setPairCode("");
+      queryClient.invalidateQueries({ queryKey: ['partner-bins'] });
+    },
+    onError: (error: any) => {
+      setPairResult({ error: error.message });
+    },
+  });
+
+  const updateDeviceConfig = useMutation({
+    mutationKey: ['update-device-config'],
+    mutationFn: async (updates: any) => {
+      const res = await apiRequest(`/api/v2/shop/${shop.id}/device-config`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error('Failed to update device config');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partner-device-config'] });
+    },
   });
 
   const updateConfig = useMutation({
@@ -152,6 +216,8 @@ export default function PartnerDashboard() {
       </div>
     );
   }
+
+  const totalPointsEarned = pointsLedger.reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
 
   return (
     <div className="littr-dashboard">
@@ -282,6 +348,14 @@ export default function PartnerDashboard() {
             </TabsTrigger>
             <TabsTrigger value="rewards">Rewards Config</TabsTrigger>
             <TabsTrigger value="pickup">Request Pickup</TabsTrigger>
+            <TabsTrigger value="pair" className="flex items-center gap-1">
+              <Link2 className="h-4 w-4" />
+              Pair Device
+            </TabsTrigger>
+            <TabsTrigger value="points" className="flex items-center gap-1">
+              <Coins className="h-4 w-4" />
+              Points
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="activity">
@@ -424,6 +498,70 @@ export default function PartnerDashboard() {
                   )}
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Bin Settings (Cloud Config)</CardTitle>
+                  <CardDescription>Configure your smart bin behavior via cloud settings</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <Label>Session Window (seconds)</Label>
+                      <span className="text-sm font-medium">{deviceConfig?.session_window_sec || 60}s</span>
+                    </div>
+                    <Slider
+                      value={[deviceConfig?.session_window_sec || 60]}
+                      min={10}
+                      max={300}
+                      step={5}
+                      onValueChange={([value]) => updateDeviceConfig.mutate({ session_window_sec: value })}
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <Label>Accepted Hold Time (seconds)</Label>
+                      <span className="text-sm font-medium">{((deviceConfig?.accepted_hold_ms || 5000) / 1000).toFixed(1)}s</span>
+                    </div>
+                    <Slider
+                      value={[deviceConfig?.accepted_hold_ms || 5000]}
+                      min={3000}
+                      max={30000}
+                      step={1000}
+                      onValueChange={([value]) => updateDeviceConfig.mutate({ accepted_hold_ms: value })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-base">Warning Enabled</Label>
+                      <p className="text-sm text-gray-500">Enable temperature warning alerts</p>
+                    </div>
+                    <Switch
+                      checked={deviceConfig?.warn_enabled ?? false}
+                      onCheckedChange={(warn_enabled) => updateDeviceConfig.mutate({ warn_enabled })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Warning Temperature (°C)</Label>
+                    <Input
+                      type="number"
+                      value={deviceConfig?.warn_temp_c ?? 45}
+                      onChange={(e) => updateDeviceConfig.mutate({ warn_temp_c: Number(e.target.value) })}
+                    />
+                  </div>
+
+                  <Button
+                    onClick={() => updateDeviceConfig.mutate(deviceConfig || {})}
+                    disabled={updateDeviceConfig.isPending}
+                    data-testid="button-save-config"
+                  >
+                    {updateDeviceConfig.isPending ? 'Saving...' : 'Save Config'}
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
@@ -499,6 +637,94 @@ export default function PartnerDashboard() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="pair">
+            <Card>
+              <CardHeader>
+                <CardTitle>Pair a New Smart Bin</CardTitle>
+                <CardDescription>Enter the 6-character pair code displayed on your smart bin to connect it to your shop</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-3">
+                  <Input
+                    placeholder="e.g. ABC123"
+                    value={pairCode}
+                    onChange={(e) => setPairCode(e.target.value.toUpperCase().slice(0, 6))}
+                    maxLength={6}
+                    className="font-mono text-lg tracking-widest uppercase"
+                    data-testid="input-pair-code"
+                  />
+                  <Button
+                    onClick={() => pairDevice.mutate()}
+                    disabled={pairDevice.isPending || pairCode.length !== 6}
+                    data-testid="button-pair-device"
+                  >
+                    {pairDevice.isPending ? 'Pairing...' : 'Pair Device'}
+                  </Button>
+                </div>
+                {pairResult && !pairResult.error && (
+                  <div className="p-3 rounded-lg bg-green-900/30 border border-green-500 text-green-400">
+                    Device paired successfully!
+                  </div>
+                )}
+                {pairResult?.error && (
+                  <div className="p-3 rounded-lg bg-red-900/30 border border-red-500 text-red-400">
+                    {pairResult.error}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="points">
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <Coins className="h-8 w-8 text-yellow-500" />
+                    <div>
+                      <p className="text-2xl font-bold" data-testid="text-points-total">{totalPointsEarned}</p>
+                      <p className="text-xs text-gray-500">Total Points Earned</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Points Ledger</CardTitle>
+                  <CardDescription>History of all points earned</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Points</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pointsLedger.map((entry: any, index: number) => (
+                        <TableRow key={entry.id || index}>
+                          <TableCell className="font-medium">+{entry.points}</TableCell>
+                          <TableCell>{entry.reason}</TableCell>
+                          <TableCell>{new Date(entry.createdAt).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                      {pointsLedger.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center text-gray-500">
+                            No points earned yet.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

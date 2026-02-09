@@ -40,6 +40,14 @@ import {
   type InsertMailbox,
   type InternalMessage,
   type InsertInternalMessage,
+  type PairRequest,
+  type InsertPairRequest,
+  type RewardSession,
+  type InsertRewardSession,
+  type DeviceConfig,
+  type InsertDeviceConfig,
+  type PartnerPointsLedger,
+  type InsertPartnerPointsLedger,
   users,
   contacts,
   volunteers,
@@ -62,6 +70,10 @@ import {
   fireAlerts,
   mailboxes,
   internalMessages,
+  pairRequests,
+  rewardSessions,
+  deviceConfigs,
+  partnerPointsLedger,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gte, sql, lt, inArray } from "drizzle-orm";
@@ -205,6 +217,40 @@ export interface IStorage {
   markMessageAsRead(id: number): Promise<InternalMessage | undefined>;
   archiveMessage(id: number): Promise<InternalMessage | undefined>;
   getUnreadCount(mailboxId: number): Promise<number>;
+
+  // V2 Smart Bin API
+  getDeviceByUid(uid: string): Promise<Device | undefined>;
+  getAllDevices(): Promise<Device[]>;
+  updateDevice(id: number, data: Partial<InsertDevice>): Promise<Device | undefined>;
+  getDropEventByDeviceEventId(deviceEventId: string): Promise<DropEvent | undefined>;
+
+  // Pair Requests
+  createPairRequest(request: InsertPairRequest): Promise<PairRequest>;
+  getPairRequestByCode(code: string): Promise<PairRequest | undefined>;
+  getPairRequestByUid(uid: string): Promise<PairRequest | undefined>;
+  getActivePairRequestByUid(uid: string): Promise<PairRequest | undefined>;
+  claimPairRequest(id: number, userId: string, shopId: number, deviceId: number): Promise<PairRequest | undefined>;
+  getAllPairRequests(): Promise<PairRequest[]>;
+
+  // Reward Sessions
+  createRewardSession(session: InsertRewardSession): Promise<RewardSession>;
+  getRewardSession(id: number): Promise<RewardSession | undefined>;
+  getRewardSessionByToken(token: string): Promise<RewardSession | undefined>;
+  getActiveRewardSession(deviceId: number): Promise<RewardSession | undefined>;
+  updateRewardSession(id: number, data: Partial<RewardSession>): Promise<RewardSession | undefined>;
+  expireOldSessions(): Promise<number>;
+  getRewardSessionsByShop(shopId: number): Promise<RewardSession[]>;
+
+  // Device Configs
+  getDeviceConfig(shopId: number): Promise<DeviceConfig | undefined>;
+  upsertDeviceConfig(config: InsertDeviceConfig): Promise<DeviceConfig>;
+  updateDeviceConfig(shopId: number, data: Partial<InsertDeviceConfig>): Promise<DeviceConfig | undefined>;
+
+  // Partner Points Ledger
+  creditPartnerPoints(entry: InsertPartnerPointsLedger): Promise<PartnerPointsLedger>;
+  getPartnerPointsLedger(shopId: number): Promise<PartnerPointsLedger[]>;
+  getPartnerPointsTotal(shopId: number): Promise<number>;
+  getAllPartnerPointsLedger(): Promise<PartnerPointsLedger[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -697,6 +743,158 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select({ count: sql<number>`count(*)` }).from(internalMessages)
       .where(and(eq(internalMessages.toMailboxId, mailboxId), eq(internalMessages.isRead, false), eq(internalMessages.isArchived, false)));
     return Number(result[0]?.count || 0);
+  }
+
+  // ==================== V2 Smart Bin API ====================
+
+  async getDeviceByUid(uid: string): Promise<Device | undefined> {
+    const [device] = await db.select().from(devices).where(eq(devices.uid, uid));
+    return device;
+  }
+
+  async getAllDevices(): Promise<Device[]> {
+    return await db.select().from(devices).orderBy(desc(devices.createdAt));
+  }
+
+  async updateDevice(id: number, data: Partial<InsertDevice>): Promise<Device | undefined> {
+    const [device] = await db.update(devices).set(data).where(eq(devices.id, id)).returning();
+    return device;
+  }
+
+  async getDropEventByDeviceEventId(deviceEventId: string): Promise<DropEvent | undefined> {
+    const [event] = await db.select().from(dropEvents).where(eq(dropEvents.deviceEventId, deviceEventId));
+    return event;
+  }
+
+  // Pair Requests
+  async createPairRequest(request: InsertPairRequest): Promise<PairRequest> {
+    const [pr] = await db.insert(pairRequests).values(request).returning();
+    return pr;
+  }
+
+  async getPairRequestByCode(code: string): Promise<PairRequest | undefined> {
+    const [pr] = await db.select().from(pairRequests).where(eq(pairRequests.pairCode, code));
+    return pr;
+  }
+
+  async getPairRequestByUid(uid: string): Promise<PairRequest | undefined> {
+    const [pr] = await db.select().from(pairRequests).where(eq(pairRequests.uid, uid)).orderBy(desc(pairRequests.createdAt)).limit(1);
+    return pr;
+  }
+
+  async getActivePairRequestByUid(uid: string): Promise<PairRequest | undefined> {
+    const [pr] = await db.select().from(pairRequests).where(
+      and(
+        eq(pairRequests.uid, uid),
+        eq(pairRequests.claimed, false),
+        gte(pairRequests.expiresAt, new Date())
+      )
+    ).orderBy(desc(pairRequests.createdAt)).limit(1);
+    return pr;
+  }
+
+  async claimPairRequest(id: number, userId: string, shopId: number, deviceId: number): Promise<PairRequest | undefined> {
+    const [pr] = await db.update(pairRequests).set({
+      claimed: true,
+      claimedByUserId: userId,
+      shopId,
+      deviceId,
+    }).where(eq(pairRequests.id, id)).returning();
+    return pr;
+  }
+
+  async getAllPairRequests(): Promise<PairRequest[]> {
+    return await db.select().from(pairRequests).orderBy(desc(pairRequests.createdAt));
+  }
+
+  // Reward Sessions
+  async createRewardSession(session: InsertRewardSession): Promise<RewardSession> {
+    const [rs] = await db.insert(rewardSessions).values(session).returning();
+    return rs;
+  }
+
+  async getRewardSession(id: number): Promise<RewardSession | undefined> {
+    const [rs] = await db.select().from(rewardSessions).where(eq(rewardSessions.id, id));
+    return rs;
+  }
+
+  async getRewardSessionByToken(token: string): Promise<RewardSession | undefined> {
+    const [rs] = await db.select().from(rewardSessions).where(eq(rewardSessions.token, token));
+    return rs;
+  }
+
+  async getActiveRewardSession(deviceId: number): Promise<RewardSession | undefined> {
+    const [rs] = await db.select().from(rewardSessions).where(
+      and(
+        eq(rewardSessions.deviceId, deviceId),
+        eq(rewardSessions.status, "PENDING"),
+        gte(rewardSessions.expiresAt, new Date())
+      )
+    ).orderBy(desc(rewardSessions.createdAt)).limit(1);
+    return rs;
+  }
+
+  async updateRewardSession(id: number, data: Partial<RewardSession>): Promise<RewardSession | undefined> {
+    const [rs] = await db.update(rewardSessions).set(data as any).where(eq(rewardSessions.id, id)).returning();
+    return rs;
+  }
+
+  async expireOldSessions(): Promise<number> {
+    const result = await db.update(rewardSessions)
+      .set({ status: "EXPIRED" as any })
+      .where(
+        and(
+          eq(rewardSessions.status, "PENDING"),
+          lt(rewardSessions.expiresAt, new Date())
+        )
+      )
+      .returning();
+    return result.length;
+  }
+
+  async getRewardSessionsByShop(shopId: number): Promise<RewardSession[]> {
+    return await db.select().from(rewardSessions).where(eq(rewardSessions.shopId, shopId)).orderBy(desc(rewardSessions.createdAt));
+  }
+
+  // Device Configs
+  async getDeviceConfig(shopId: number): Promise<DeviceConfig | undefined> {
+    const [config] = await db.select().from(deviceConfigs).where(eq(deviceConfigs.shopId, shopId));
+    return config;
+  }
+
+  async upsertDeviceConfig(config: InsertDeviceConfig): Promise<DeviceConfig> {
+    const existing = await this.getDeviceConfig(config.shopId);
+    if (existing) {
+      const [updated] = await db.update(deviceConfigs).set(config).where(eq(deviceConfigs.shopId, config.shopId)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(deviceConfigs).values(config).returning();
+    return created;
+  }
+
+  async updateDeviceConfig(shopId: number, data: Partial<InsertDeviceConfig>): Promise<DeviceConfig | undefined> {
+    const [updated] = await db.update(deviceConfigs).set({ ...data, updatedAt: new Date() } as any).where(eq(deviceConfigs.shopId, shopId)).returning();
+    return updated;
+  }
+
+  // Partner Points Ledger
+  async creditPartnerPoints(entry: InsertPartnerPointsLedger): Promise<PartnerPointsLedger> {
+    const [ledgerEntry] = await db.insert(partnerPointsLedger).values(entry).returning();
+    return ledgerEntry;
+  }
+
+  async getPartnerPointsLedger(shopId: number): Promise<PartnerPointsLedger[]> {
+    return await db.select().from(partnerPointsLedger).where(eq(partnerPointsLedger.shopId, shopId)).orderBy(desc(partnerPointsLedger.createdAt));
+  }
+
+  async getPartnerPointsTotal(shopId: number): Promise<number> {
+    const result = await db.select({ total: sql<number>`COALESCE(SUM(${partnerPointsLedger.points}), 0)` })
+      .from(partnerPointsLedger).where(eq(partnerPointsLedger.shopId, shopId));
+    return Number(result[0]?.total || 0);
+  }
+
+  async getAllPartnerPointsLedger(): Promise<PartnerPointsLedger[]> {
+    return await db.select().from(partnerPointsLedger).orderBy(desc(partnerPointsLedger.createdAt));
   }
 }
 
