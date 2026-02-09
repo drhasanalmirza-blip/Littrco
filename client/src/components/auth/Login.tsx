@@ -81,42 +81,42 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
           className="w-full h-full object-cover pixel-image"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--littr-midnight)]/90 to-[var(--littr-midnight)]" />
+      <div className="absolute inset-0 bg-white/40" />
       
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-md animate-fade-in">
         {/* Back Link */}
-        <Link href="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 text-sm">
+        <Link href="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-black mb-6 text-sm font-medium transition-colors">
           <ArrowLeft className="h-4 w-4" />
           Back to home
         </Link>
 
         {/* Card */}
-        <div className="littr-card-solid rounded-2xl overflow-hidden">
+        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5">
           {/* Header */}
-          <div className="px-8 py-8 border-b border-white/10">
+          <div className="px-8 py-8 border-b border-gray-100 bg-white/50">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center shadow-lg shadow-green-500/20">
                 <Recycle className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-white">LITTR</span>
+              <span className="text-xl font-bold text-black tracking-tight">LITTR</span>
             </div>
-            <h1 className="text-2xl font-bold text-white mb-1">{title}</h1>
-            {subtitle && <p className="text-gray-400 text-sm">{subtitle}</p>}
+            <h1 className="text-3xl font-extrabold text-black mb-1 tracking-tight">{title}</h1>
+            {subtitle && <p className="text-gray-500 text-sm font-medium">{subtitle}</p>}
           </div>
 
           {/* Content */}
-          <div className="px-8 py-8">
+          <div className="px-8 py-8 bg-white">
             {error && (
-              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm flex items-start gap-3">
-                <span className="text-red-400 mt-0.5">⚠</span>
-                <span>{error}</span>
+              <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
+                <span className="text-red-500 mt-0.5">⚠</span>
+                <span className="font-medium">{error}</span>
               </div>
             )}
             
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2 text-sm">
-                  <Mail className="h-4 w-4" />
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Mail className="h-4 w-4 text-gray-400" />
                   Email Address
                 </Label>
                 <Input 
@@ -124,15 +124,15 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="littr-input w-full"
+                  className="littr-input w-full focus:ring-green-500/20"
                   data-testid="input-email"
                   required
                 />
               </div>
               
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2 text-sm">
-                  <Lock className="h-4 w-4" />
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Lock className="h-4 w-4 text-gray-400" />
                   Password
                 </Label>
                 <Input 
@@ -140,7 +140,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="littr-input w-full"
+                  className="littr-input w-full focus:ring-green-500/20"
                   data-testid="input-password"
                   required
                 />
@@ -148,21 +148,30 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
               
               <Button 
                 type="submit" 
-                className="littr-btn littr-btn-primary w-full flex items-center justify-center gap-2"
+                className="littr-btn littr-btn-primary w-full flex items-center justify-center gap-2 shadow-lg shadow-black/10 active:scale-95"
                 disabled={loading}
                 data-testid="button-login"
               >
-                <LogIn className="h-4 w-4" />
-                {loading ? 'Signing in...' : 'Sign In'}
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    Signing in...
+                  </span>
+                ) : (
+                  <>
+                    <LogIn className="h-4 w-4" />
+                    Sign In
+                  </>
+                )}
               </Button>
             </form>
 
             {/* Links */}
             {isCustomer && (
-              <div className="mt-6 space-y-3 border-t border-white/10 pt-6">
-                <p className="text-center text-sm text-gray-400">
+              <div className="mt-8 space-y-4 border-t border-gray-100 pt-6">
+                <p className="text-center text-sm text-gray-500 font-medium">
                   Don't have an account?{' '}
-                  <Link href="/app/register" className="text-green-400 font-semibold hover:underline">
+                  <Link href="/app/register" className="text-green-600 font-bold hover:text-green-700 hover:underline transition-colors">
                     Create one
                   </Link>
                 </p>
@@ -172,7 +181,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
         </div>
 
         {/* Footer */}
-        <p className="text-center text-gray-600 text-xs mt-6">
+        <p className="text-center text-gray-400 text-xs mt-8 font-medium">
           LITTR.co © 2025 — Recycling Made Simple
         </p>
       </div>
