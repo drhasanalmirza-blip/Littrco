@@ -10,8 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2 } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert } from "lucide-react";
 import { MailboxManager } from "@/components/staff/MailboxManager";
 import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -122,6 +122,46 @@ export default function StaffDashboard() {
       return res.json();
     },
   });
+
+  const { data: activityLog = [] } = useQuery({
+    queryKey: ['activity-log'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/activity-log');
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const [activitySearch, setActivitySearch] = useState("");
+  const [activityLimit, setActivityLimit] = useState(50);
+
+  const filteredActivity = useMemo(() => {
+    if (!activitySearch.trim()) return activityLog;
+    const q = activitySearch.toLowerCase();
+    return activityLog.filter((entry: any) =>
+      entry.userEmail?.toLowerCase().includes(q) ||
+      entry.shopName?.toLowerCase().includes(q) ||
+      entry.deviceName?.toLowerCase().includes(q)
+    );
+  }, [activityLog, activitySearch]);
+
+  const activityStats = useMemo(() => {
+    const totalClaims = activityLog.length;
+    const totalPoints = activityLog.reduce((sum: number, e: any) => sum + (e.pointsClaimed || 0), 0);
+    const uniqueUsers = new Set(activityLog.map((e: any) => e.userEmail)).size;
+    const userCounts: Record<string, { count: number; points: number; lastClaim: string }> = {};
+    activityLog.forEach((e: any) => {
+      if (!userCounts[e.userEmail]) userCounts[e.userEmail] = { count: 0, points: 0, lastClaim: e.claimedAt };
+      userCounts[e.userEmail].count++;
+      userCounts[e.userEmail].points += e.pointsClaimed || 0;
+      if (e.claimedAt > userCounts[e.userEmail].lastClaim) userCounts[e.userEmail].lastClaim = e.claimedAt;
+    });
+    const flaggedUsers = Object.entries(userCounts)
+      .filter(([, v]) => v.count >= 10 || v.points >= 100)
+      .map(([email, v]) => ({ email, ...v }))
+      .sort((a, b) => b.points - a.points);
+    return { totalClaims, totalPoints, uniqueUsers, flaggedUsers };
+  }, [activityLog]);
 
   const { data: mailboxes = [] } = useQuery({
     queryKey: ['mailboxes'],
@@ -676,37 +716,146 @@ export default function StaffDashboard() {
           </TabsContent>
 
           <TabsContent value="activity">
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Drop Events</CardTitle>
-                <CardDescription>Vape recycling activity across all locations</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Shop</TableHead>
-                      <TableHead>Points</TableHead>
-                      <TableHead>Time</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dropEvents.slice(0, 20).map((event: any) => (
-                      <TableRow key={event.id}>
-                        <TableCell className="font-medium">{event.shopName}</TableCell>
-                        <TableCell>+{event.pointsAwarded}</TableCell>
-                        <TableCell>{new Date(event.createdAt).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {dropEvents.length === 0 && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-black/5">
+                        <Activity className="h-5 w-5 text-black" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold" data-testid="activity-log-count">{activityStats.totalClaims}</p>
+                        <p className="text-sm text-gray-500">Total Claims</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-black/5">
+                        <TrendingUp className="h-5 w-5 text-black" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{activityStats.totalPoints.toLocaleString()}</p>
+                        <p className="text-sm text-gray-500">Points Redeemed</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-black/5">
+                        <Users className="h-5 w-5 text-black" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{activityStats.uniqueUsers}</p>
+                        <p className="text-sm text-gray-500">Unique Users</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {activityStats.flaggedUsers.length > 0 && (
+                <Card className="border-amber-200 bg-amber-50/50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-amber-800 text-base">
+                      <ShieldAlert className="h-5 w-5" />
+                      High-Activity Users
+                    </CardTitle>
+                    <CardDescription className="text-amber-600">Users with 10+ claims or 100+ total points — worth reviewing</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {activityStats.flaggedUsers.map((u: any) => (
+                        <div key={u.email} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white border border-amber-100">
+                          <span className="font-medium text-sm">{u.email}</span>
+                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                            <span>{u.count} claims</span>
+                            <span className="font-semibold text-amber-700">{u.points} pts</span>
+                            <span className="text-xs text-gray-400">last: {new Date(u.lastClaim).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Claims Log</CardTitle>
+                      <CardDescription>All points redeemed from bins — who, when, how many</CardDescription>
+                    </div>
+                    <div className="relative w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        data-testid="activity-log-search"
+                        placeholder="Search by email, shop, device..."
+                        value={activitySearch}
+                        onChange={(e) => setActivitySearch(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Table data-testid="activity-log-table">
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center text-gray-400">No activity yet</TableCell>
+                        <TableHead>User</TableHead>
+                        <TableHead>Shop</TableHead>
+                        <TableHead>Device</TableHead>
+                        <TableHead className="text-right">Points</TableHead>
+                        <TableHead className="text-right">Drops</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Claimed</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredActivity.slice(0, activityLimit).map((entry: any) => (
+                        <TableRow key={`${entry.source}-${entry.id}`}>
+                          <TableCell className="font-medium text-sm">{entry.userEmail}</TableCell>
+                          <TableCell className="text-sm">{entry.shopName}</TableCell>
+                          <TableCell className="text-sm text-gray-500">{entry.deviceName}</TableCell>
+                          <TableCell className="text-right font-semibold">+{entry.pointsClaimed}</TableCell>
+                          <TableCell className="text-right text-gray-500">{entry.dropCount}</TableCell>
+                          <TableCell>
+                            <Badge variant={entry.source === 'v2' ? 'default' : 'secondary'} className={entry.source === 'v2' ? 'bg-black text-white text-xs' : 'text-xs'}>
+                              {entry.source.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-500">{new Date(entry.claimedAt).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                      {filteredActivity.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-gray-400">
+                            {activitySearch ? "No matching claims found" : "No claims recorded yet"}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                  {filteredActivity.length > activityLimit && (
+                    <div className="mt-4 text-center">
+                      <p className="text-sm text-gray-500 mb-2">Showing {activityLimit} of {filteredActivity.length} claims</p>
+                      <Button variant="outline" size="sm" onClick={() => setActivityLimit(prev => prev + 50)}>
+                        Load More
+                      </Button>
+                    </div>
+                  )}
+                  {filteredActivity.length > 0 && filteredActivity.length <= activityLimit && (
+                    <p className="mt-3 text-center text-sm text-gray-400">Showing all {filteredActivity.length} claims</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="emails">
