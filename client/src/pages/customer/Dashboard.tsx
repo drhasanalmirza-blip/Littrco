@@ -101,7 +101,7 @@ export default function CustomerDashboard() {
         </div>
       </div>
 
-      <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+      <div className="px-4 py-5 space-y-5 max-w-lg md:max-w-2xl lg:max-w-3xl mx-auto">
         <div className="bg-black rounded-2xl p-5 text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-8 -mt-8" />
           <div className="flex items-center justify-between relative z-10">
