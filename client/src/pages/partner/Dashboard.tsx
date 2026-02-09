@@ -10,10 +10,111 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins } from "lucide-react";
+import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins, Gift } from "lucide-react";
 import littrOneImage from "@/assets/images/littr-one-official.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+
+function PartnerRewardsStore({ shopId }: { shopId: number | undefined }) {
+  const queryClient = useQueryClient();
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const { data: storeItems = [] } = useQuery({
+    queryKey: ['partner-store'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/partner/store');
+      if (!res.ok) throw new Error('Failed to fetch store');
+      return res.json();
+    },
+  });
+
+  const { data: ledger = [] } = useQuery({
+    queryKey: ['partner-rewards-points', shopId],
+    queryFn: async () => {
+      if (!shopId) return [];
+      const res = await apiRequest(`/api/v2/shop/${shopId}/points-ledger`);
+      if (!res.ok) throw new Error('Failed to fetch points');
+      return res.json();
+    },
+    enabled: !!shopId,
+  });
+
+  const totalPoints = ledger.reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
+
+  const redeem = useMutation({
+    mutationFn: async (storeItemId: number) => {
+      const res = await apiRequest('/api/partner/redeem', {
+        method: 'POST',
+        body: JSON.stringify({ storeItemId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Failed to redeem' }));
+        throw new Error(err.message || 'Failed to redeem');
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setSuccessMessage('Redeemed successfully!');
+      queryClient.invalidateQueries({ queryKey: ['partner-rewards-points'] });
+      setTimeout(() => setSuccessMessage(null), 5000);
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-3">
+            <Coins className="h-8 w-8 text-yellow-500" />
+            <div>
+              <p className="text-2xl font-bold text-black" data-testid="text-rewards-points-balance">{totalPoints}</p>
+              <p className="text-xs text-gray-400">Available Points</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {successMessage && (
+        <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-600" data-testid="text-redeem-success">
+          {successMessage}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {storeItems.map((item: any) => (
+          <Card key={item.id} className="border border-gray-200" data-testid={`card-store-item-${item.id}`}>
+            <CardHeader>
+              <CardTitle className="text-lg text-black">{item.name}</CardTitle>
+              {item.description && (
+                <CardDescription>{item.description}</CardDescription>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <span className="text-lg font-bold text-black">{item.cost} points</span>
+                <Button
+                  size="sm"
+                  className="bg-black text-white hover:bg-gray-800"
+                  onClick={() => redeem.mutate(item.id)}
+                  disabled={redeem.isPending || totalPoints < item.cost}
+                  data-testid={`button-redeem-${item.id}`}
+                >
+                  {redeem.isPending ? 'Redeeming...' : 'Redeem'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {storeItems.length === 0 && (
+          <div className="col-span-full text-center py-8 text-gray-400">
+            <Gift className="h-12 w-12 mx-auto mb-3 opacity-30" />
+            <p>No rewards available yet.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function PartnerDashboard() {
   const { user, role, clearAuth } = useStore();
@@ -187,7 +288,7 @@ export default function PartnerDashboard() {
     return (
       <div className="littr-dashboard flex items-center justify-center">
         <div className="littr-card-solid p-8 rounded-2xl text-center">
-          <p className="text-xl mb-4 text-white">Access Denied</p>
+          <p className="text-xl mb-4 text-black">Access Denied</p>
           <Button onClick={() => setLocation('/partner/login')} className="littr-btn littr-btn-primary">Partner Login</Button>
         </div>
       </div>
@@ -199,19 +300,19 @@ export default function PartnerDashboard() {
       <div className="littr-dashboard">
         <div className="littr-nav px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center">
               <Recycle className="h-5 w-5 text-white" />
             </div>
-            <h1 className="font-bold text-white">Partner Dashboard</h1>
+            <h1 className="font-bold text-black">Partner Dashboard</h1>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-400 hover:text-white hover:bg-white/10">
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 hover:text-black hover:bg-gray-100">
             <LogOut className="h-4 w-4 mr-2" />
             Logout
           </Button>
         </div>
         <div className="container mx-auto px-4 py-20 text-center">
-          <p className="text-gray-400">No shop assigned to your account.</p>
-          <p className="text-sm text-gray-500 mt-2">Contact LITTR support for assistance.</p>
+          <p className="text-gray-500">No shop assigned to your account.</p>
+          <p className="text-sm text-gray-400 mt-2">Contact LITTR support for assistance.</p>
         </div>
       </div>
     );
@@ -223,15 +324,15 @@ export default function PartnerDashboard() {
     <div className="littr-dashboard">
       <div className="littr-nav px-4 py-3 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center">
             <Recycle className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-white">{shop.name}</h1>
-            <p className="text-xs text-gray-500">{user?.email}</p>
+            <h1 className="font-bold text-black">{shop.name}</h1>
+            <p className="text-xs text-gray-400">{user?.email}</p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-400 hover:text-white hover:bg-white/10" data-testid="button-logout">
+        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 hover:text-black hover:bg-gray-100" data-testid="button-logout">
           <LogOut className="h-4 w-4 mr-2" />
           Logout
         </Button>
@@ -245,7 +346,7 @@ export default function PartnerDashboard() {
                 <TrendingUp className="h-8 w-8 text-green-500" />
                 <div>
                   <p className="text-2xl font-bold">{stats?.totalDrops || 0}</p>
-                  <p className="text-xs text-gray-500">Total Drops</p>
+                  <p className="text-xs text-gray-400">Total Drops</p>
                 </div>
               </div>
             </CardContent>
@@ -256,7 +357,7 @@ export default function PartnerDashboard() {
                 <Calendar className="h-8 w-8 text-blue-500" />
                 <div>
                   <p className="text-2xl font-bold">{stats?.todayDrops || 0}</p>
-                  <p className="text-xs text-gray-500">Today</p>
+                  <p className="text-xs text-gray-400">Today</p>
                 </div>
               </div>
             </CardContent>
@@ -267,7 +368,7 @@ export default function PartnerDashboard() {
                 <Zap className="h-8 w-8 text-yellow-500" />
                 <div>
                   <p className="text-2xl font-bold">{stats?.totalPoints || 0}</p>
-                  <p className="text-xs text-gray-500">Points Given</p>
+                  <p className="text-xs text-gray-400">Points Given</p>
                 </div>
               </div>
             </CardContent>
@@ -278,15 +379,14 @@ export default function PartnerDashboard() {
                 <Package className="h-8 w-8 text-purple-500" />
                 <div>
                   <p className="text-2xl font-bold">{stats?.activeDevices || 0}</p>
-                  <p className="text-xs text-gray-500">Active Devices</p>
+                  <p className="text-xs text-gray-400">Active Devices</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* LITTR One Showcase */}
-        <Card className="mb-8 bg-gradient-to-r from-zinc-900 to-zinc-800 border-green-500/30 overflow-hidden" data-testid="card-littr-one-showcase">
+        <Card className="mb-8 bg-gradient-to-r from-gray-50 to-white border-gray-200 overflow-hidden" data-testid="card-littr-one-showcase">
           <CardContent className="p-0">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
               <div className="flex justify-center items-center">
@@ -300,35 +400,35 @@ export default function PartnerDashboard() {
               </div>
               <div className="md:col-span-2">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded" data-testid="badge-new-partner">NEW</span>
-                  <h3 className="text-lg font-bold text-white" data-testid="heading-littr-one-partner">LITTR One Smart Bin</h3>
+                  <span className="bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded" data-testid="badge-new-partner">NEW</span>
+                  <h3 className="text-lg font-bold text-black" data-testid="heading-littr-one-partner">LITTR One Smart Bin</h3>
                 </div>
-                <p className="text-gray-400 text-sm mb-3">
+                <p className="text-gray-500 text-sm mb-3">
                   Upgrade your shop with our WiFi-enabled smart bin featuring temperature, VOC, and fill sensors.
                 </p>
                 <div className="flex flex-wrap gap-2 mb-3">
-                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                     <Thermometer className="h-3 w-3 text-red-400" /> Fire Safety
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                     <Wind className="h-3 w-3 text-blue-400" /> Air Quality
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                     <Eye className="h-3 w-3 text-purple-400" /> Fill Detection
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                     <Monitor className="h-3 w-3 text-cyan-400" /> QR Rewards
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-zinc-800 px-2 py-1 rounded">
+                  <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                     <Wifi className="h-3 w-3 text-yellow-400" /> Real-time Alerts
                   </span>
                 </div>
                 <div className="flex items-center gap-4">
                   <div>
-                    <span className="text-gray-500 line-through text-sm" data-testid="text-price-original-partner">$459.95</span>
-                    <span className="text-xl font-bold text-green-500 ml-2" data-testid="text-price-discounted-partner">$169.95</span>
+                    <span className="text-gray-400 line-through text-sm" data-testid="text-price-original-partner">$459.95</span>
+                    <span className="text-xl font-bold text-green-600 ml-2" data-testid="text-price-discounted-partner">$169.95</span>
                   </div>
-                  <Button size="sm" className="bg-green-500 hover:bg-green-600 text-black" data-testid="button-partner-order-bin">
+                  <Button size="sm" className="bg-black text-white hover:bg-gray-800" data-testid="button-partner-order-bin">
                     Order for Your Shop <ArrowRight className="ml-1 h-3 w-3" />
                   </Button>
                 </div>
@@ -338,7 +438,7 @@ export default function PartnerDashboard() {
         </Card>
 
         <Tabs defaultValue="activity" className="space-y-4">
-          <TabsList>
+          <TabsList className="grid grid-cols-4 md:grid-cols-8">
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="bins" className="flex items-center gap-1">
               {shopFireAlerts.filter((a: any) => !a.acknowledged).length > 0 && (
@@ -346,7 +446,7 @@ export default function PartnerDashboard() {
               )}
               Bins
             </TabsTrigger>
-            <TabsTrigger value="rewards">Rewards Config</TabsTrigger>
+            <TabsTrigger value="rewards-config">Rewards Config</TabsTrigger>
             <TabsTrigger value="pickup">Request Pickup</TabsTrigger>
             <TabsTrigger value="pair" className="flex items-center gap-1">
               <Link2 className="h-4 w-4" />
@@ -355,6 +455,10 @@ export default function PartnerDashboard() {
             <TabsTrigger value="points" className="flex items-center gap-1">
               <Coins className="h-4 w-4" />
               Points
+            </TabsTrigger>
+            <TabsTrigger value="rewards" className="flex items-center gap-1">
+              <Gift className="h-4 w-4" />
+              Rewards
             </TabsTrigger>
           </TabsList>
 
@@ -381,7 +485,7 @@ export default function PartnerDashboard() {
                     ))}
                     {dropEvents.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={2} className="text-center text-gray-500">
+                        <TableCell colSpan={2} className="text-center text-gray-400">
                           No drops yet. When customers recycle, activity will appear here.
                         </TableCell>
                       </TableRow>
@@ -395,9 +499,9 @@ export default function PartnerDashboard() {
           <TabsContent value="bins">
             <div className="space-y-4">
               {shopFireAlerts.filter((a: any) => !a.resolvedAt).length > 0 && (
-                <Card className="border-red-500 !bg-red-900/30">
+                <Card className="border-red-500 !bg-red-50">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-400">
+                    <CardTitle className="flex items-center gap-2 text-red-600">
                       <Flame className="h-5 w-5 animate-pulse" />
                       Fire Alerts
                     </CardTitle>
@@ -408,21 +512,21 @@ export default function PartnerDashboard() {
                         <div 
                           key={alert.id} 
                           className={`p-3 rounded-lg ${
-                            alert.severity === 'CRITICAL' ? 'bg-red-900/50 border border-red-500' :
-                            alert.severity === 'HIGH' ? 'bg-red-900/40 border border-red-400' :
-                            'bg-orange-900/40 border border-orange-400'
+                            alert.severity === 'CRITICAL' ? 'bg-red-100 border border-red-500' :
+                            alert.severity === 'HIGH' ? 'bg-red-50 border border-red-400' :
+                            'bg-orange-50 border border-orange-400'
                           }`}
                           data-testid={`partner-fire-alert-${alert.id}`}
                         >
                           <div className="flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-red-400" />
+                            <AlertTriangle className="h-5 w-5 text-red-500" />
                             <Badge variant="destructive">{alert.severity}</Badge>
-                            <span className="font-medium text-white">{alert.bin?.name || `Bin #${alert.binId}`}</span>
+                            <span className="font-medium text-black">{alert.bin?.name || `Bin #${alert.binId}`}</span>
                             {alert.temperature && (
-                              <span className="text-sm text-gray-300">🌡️ {alert.temperature.toFixed(1)}°C</span>
+                              <span className="text-sm text-gray-600">🌡️ {alert.temperature.toFixed(1)}°C</span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-400 mt-1">
+                          <p className="text-xs text-gray-500 mt-1">
                             Contact LITTR support immediately if you notice smoke or fire.
                           </p>
                         </div>
@@ -446,35 +550,35 @@ export default function PartnerDashboard() {
                         <div 
                           key={bin.id} 
                           className={`p-4 rounded-lg border ${
-                            bin.status === 'FIRE_ALERT' ? 'border-red-500 bg-red-900/30' :
-                            bin.status === 'ONLINE' ? 'border-green-500/30 bg-green-900/20' :
-                            'border-gray-600 bg-gray-800/50'
+                            bin.status === 'FIRE_ALERT' ? 'border-red-500 bg-red-50' :
+                            bin.status === 'ONLINE' ? 'border-green-200 bg-green-50' :
+                            'border-gray-200 bg-gray-50'
                           }`}
                           data-testid={`partner-bin-${bin.id}`}
                         >
                           <div className="flex justify-between items-start mb-3">
                             <div>
-                              <h4 className="font-semibold text-white">{bin.name}</h4>
+                              <h4 className="font-semibold text-black">{bin.name}</h4>
                               <Badge variant={bin.status === 'ONLINE' ? 'default' : bin.status === 'FIRE_ALERT' ? 'destructive' : 'secondary'}>
                                 {bin.status}
                               </Badge>
                             </div>
                             <div className="text-right text-sm">
-                              <div className="font-bold text-lg text-green-400">{bin.vapeCount || 0}</div>
-                              <div className="text-gray-400">vapes recycled</div>
+                              <div className="font-bold text-lg text-green-600">{bin.vapeCount || 0}</div>
+                              <div className="text-gray-500">vapes recycled</div>
                             </div>
                           </div>
                           
                           <div className="space-y-2">
                             <div>
-                              <div className="flex justify-between text-sm mb-1 text-gray-300">
+                              <div className="flex justify-between text-sm mb-1 text-gray-600">
                                 <span>Fill Level</span>
                                 <span>{bin.fillLevel || 0}%</span>
                               </div>
                               <Progress value={bin.fillLevel || 0} className="h-2" />
                             </div>
                             
-                            <div className="flex gap-4 text-sm text-gray-400">
+                            <div className="flex gap-4 text-sm text-gray-500">
                               {bin.lastTemperature && (
                                 <span>🌡️ {bin.lastTemperature.toFixed(1)}°C</span>
                               )}
@@ -490,10 +594,10 @@ export default function PartnerDashboard() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-gray-400">
+                    <div className="text-center py-8 text-gray-500">
                       <Trash2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
                       <p>No bins linked to your shop yet.</p>
-                      <p className="text-sm text-gray-500">Contact LITTR to get your smart bin installed.</p>
+                      <p className="text-sm text-gray-400">Contact LITTR to get your smart bin installed.</p>
                     </div>
                   )}
                 </CardContent>
@@ -536,7 +640,7 @@ export default function PartnerDashboard() {
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-base">Warning Enabled</Label>
-                      <p className="text-sm text-gray-500">Enable temperature warning alerts</p>
+                      <p className="text-sm text-gray-400">Enable temperature warning alerts</p>
                     </div>
                     <Switch
                       checked={deviceConfig?.warn_enabled ?? false}
@@ -556,6 +660,7 @@ export default function PartnerDashboard() {
                   <Button
                     onClick={() => updateDeviceConfig.mutate(deviceConfig || {})}
                     disabled={updateDeviceConfig.isPending}
+                    className="bg-black text-white hover:bg-gray-800"
                     data-testid="button-save-config"
                   >
                     {updateDeviceConfig.isPending ? 'Saving...' : 'Save Config'}
@@ -565,7 +670,7 @@ export default function PartnerDashboard() {
             </div>
           </TabsContent>
 
-          <TabsContent value="rewards">
+          <TabsContent value="rewards-config">
             <Card>
               <CardHeader>
                 <CardTitle>Rewards Configuration</CardTitle>
@@ -575,7 +680,7 @@ export default function PartnerDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-base">Rewards Enabled</Label>
-                    <p className="text-sm text-gray-500">Toggle rewards on/off for your location</p>
+                    <p className="text-sm text-gray-400">Toggle rewards on/off for your location</p>
                   </div>
                   <Switch 
                     checked={rewardConfig?.enabled ?? true}
@@ -595,7 +700,7 @@ export default function PartnerDashboard() {
                     step={10}
                     onValueChange={([value]) => updateConfig.mutate({ dailySpinCap: value })}
                   />
-                  <p className="text-xs text-gray-500">Maximum spins allowed per day per device</p>
+                  <p className="text-xs text-gray-400">Maximum spins allowed per day per device</p>
                 </div>
 
                 <div className="space-y-3">
@@ -610,7 +715,7 @@ export default function PartnerDashboard() {
                     step={5}
                     onValueChange={([value]) => updateConfig.mutate({ minSecondsBetweenSpins: value })}
                   />
-                  <p className="text-xs text-gray-500">Anti-abuse rate limiting</p>
+                  <p className="text-xs text-gray-400">Anti-abuse rate limiting</p>
                 </div>
               </CardContent>
             </Card>
@@ -624,13 +729,14 @@ export default function PartnerDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-center py-8">
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-gray-500 mb-4">
                     When your bin is getting full, request a pickup and we'll schedule a collection.
                   </p>
                   <Button 
                     size="lg" 
                     onClick={() => requestPickup.mutate()}
                     disabled={requestPickup.isPending}
+                    className="bg-black text-white hover:bg-gray-800"
                   >
                     {requestPickup.isPending ? 'Requesting...' : 'Request Pickup'}
                   </Button>
@@ -658,18 +764,19 @@ export default function PartnerDashboard() {
                   <Button
                     onClick={() => pairDevice.mutate()}
                     disabled={pairDevice.isPending || pairCode.length !== 6}
+                    className="bg-black text-white hover:bg-gray-800"
                     data-testid="button-pair-device"
                   >
                     {pairDevice.isPending ? 'Pairing...' : 'Pair Device'}
                   </Button>
                 </div>
                 {pairResult && !pairResult.error && (
-                  <div className="p-3 rounded-lg bg-green-900/30 border border-green-500 text-green-400">
+                  <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-600">
                     Device paired successfully!
                   </div>
                 )}
                 {pairResult?.error && (
-                  <div className="p-3 rounded-lg bg-red-900/30 border border-red-500 text-red-400">
+                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600">
                     {pairResult.error}
                   </div>
                 )}
@@ -685,7 +792,7 @@ export default function PartnerDashboard() {
                     <Coins className="h-8 w-8 text-yellow-500" />
                     <div>
                       <p className="text-2xl font-bold" data-testid="text-points-total">{totalPointsEarned}</p>
-                      <p className="text-xs text-gray-500">Total Points Earned</p>
+                      <p className="text-xs text-gray-400">Total Points Earned</p>
                     </div>
                   </div>
                 </CardContent>
@@ -715,7 +822,7 @@ export default function PartnerDashboard() {
                       ))}
                       {pointsLedger.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center text-gray-500">
+                          <TableCell colSpan={3} className="text-center text-gray-400">
                             No points earned yet.
                           </TableCell>
                         </TableRow>
@@ -725,6 +832,10 @@ export default function PartnerDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="rewards" className="space-y-4">
+            <PartnerRewardsStore shopId={shop?.id} />
           </TabsContent>
         </Tabs>
       </div>

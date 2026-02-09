@@ -1,9 +1,8 @@
 import { useStore, apiRequest } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Sparkles, ShoppingBag, CheckCircle } from "lucide-react";
+import { ArrowLeft, ShoppingBag, CheckCircle, Battery } from "lucide-react";
 import { useState } from "react";
 
 export default function StorePage() {
@@ -50,7 +49,6 @@ export default function StorePage() {
       queryClient.invalidateQueries({ queryKey: ['customer-wallet'] });
       queryClient.invalidateQueries({ queryKey: ['customer-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['customer-redemptions'] });
-      
       const item = storeItems.find((i: any) => i.id === storeItemId);
       setSuccessItem(item);
       setRedeemingId(null);
@@ -63,15 +61,10 @@ export default function StorePage() {
 
   if (!user || role !== 'customer') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
+      <div className="min-h-screen flex items-center justify-center bg-white p-4">
         <div className="text-center">
-          <p className="text-white mb-4">Please log in to view the store</p>
-          <Button 
-            onClick={() => setLocation('/app/login')}
-            className="bg-white text-black"
-          >
-            Sign In
-          </Button>
+          <p className="text-gray-500 mb-4">Please log in to view the store</p>
+          <Button onClick={() => setLocation('/app/login')} className="bg-black text-white hover:bg-gray-800">Sign In</Button>
         </div>
       </div>
     );
@@ -79,129 +72,101 @@ export default function StorePage() {
 
   const wallet = walletData?.wallet;
 
-  // Success screen after redemption
   if (successItem) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
-        <Card className="w-full max-w-md bg-gray-800 border-gray-700">
-          <CardContent className="pt-8 text-center">
-            <div className="bg-green-900/30 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="h-12 w-12 text-green-400" />
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Redemption Requested!</h2>
-            <p className="text-gray-400 mb-6">
-              You've redeemed <span className="text-white font-semibold">{successItem.name}</span> for {successItem.pointsCost} points
+      <div className="min-h-screen flex items-center justify-center bg-white p-4">
+        <div className="w-full max-w-md text-center">
+          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="h-10 w-10 text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-black mb-2">Redemption Requested!</h2>
+          <p className="text-gray-500 mb-6">
+            You've redeemed <span className="text-black font-semibold">{successItem.name}</span> for {successItem.pointsCost} batteries
+          </p>
+          <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left border border-gray-100">
+            <p className="text-gray-500 text-sm">
+              Your reward will be delivered to your email within 24-48 hours. You can track the status in your wallet.
             </p>
-            
-            <div className="bg-gray-900 rounded-lg p-4 mb-6 text-left">
-              <p className="text-gray-400 text-sm">
-                Our team will process your redemption and contact you at your registered email. 
-                You can track the status in your wallet.
-              </p>
-            </div>
-
-            <Button 
-              onClick={() => {
-                setSuccessItem(null);
-                setLocation('/app');
-              }}
-              className="w-full bg-white text-black hover:bg-gray-100"
-            >
-              Back to Wallet
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+          <Button 
+            onClick={() => { setSuccessItem(null); setLocation('/app'); }}
+            className="w-full bg-black text-white hover:bg-gray-800 h-12 rounded-xl"
+          >
+            Back to Wallet
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
-      {/* Header */}
-      <div className="bg-black text-white p-4 flex items-center justify-between border-b border-gray-800">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => setLocation('/app')}
-            className="text-white hover:bg-gray-800"
-          >
+    <div className="min-h-screen bg-white">
+      <div className="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => setLocation('/app')} className="text-gray-500 hover:text-black hover:bg-gray-100">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="font-bold text-lg">Rewards Store</h1>
+          <h1 className="font-bold text-lg text-black">Rewards Store</h1>
         </div>
-        <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-full">
-          <Sparkles className="h-4 w-4 text-yellow-400" />
+        <div className="flex items-center gap-1.5 bg-black text-white px-3 py-1.5 rounded-full text-sm">
+          <Battery className="h-3.5 w-3.5" />
           <span className="font-bold">{wallet?.pointsBalance || 0}</span>
-          <span className="text-gray-400 text-sm">pts</span>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6 max-w-2xl">
-        <p className="text-gray-400 mb-6 text-center">
-          Redeem your recycling points for eco-friendly rewards
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <p className="text-gray-400 mb-6 text-center text-sm">
+          Redeem your batteries for gift cards and rewards
         </p>
 
         {isLoading ? (
           <div className="text-center py-12">
-            <p className="text-gray-500">Loading rewards...</p>
+            <p className="text-gray-400">Loading rewards...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {storeItems.map((item: any) => (
-              <Card key={item.id} className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-white text-lg">{item.name}</CardTitle>
-                      {item.description && (
-                        <CardDescription className="text-gray-400 mt-1">
-                          {item.description}
-                        </CardDescription>
-                      )}
-                    </div>
-                    <ShoppingBag className="h-8 w-8 text-gray-600" />
+              <div key={item.id} className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="font-semibold text-black">{item.name}</h3>
+                    {item.description && <p className="text-gray-400 text-sm mt-0.5">{item.description}</p>}
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-yellow-400" />
-                      <span className="font-bold text-white text-lg">{item.pointsCost}</span>
-                      <span className="text-gray-500">pts</span>
-                    </div>
-                    <Button 
-                      size="sm"
-                      disabled={(wallet?.pointsBalance || 0) < item.pointsCost || redeemingId !== null}
-                      onClick={() => redeemItem.mutate(item.id)}
-                      className={
-                        (wallet?.pointsBalance || 0) >= item.pointsCost 
-                          ? "bg-white text-black hover:bg-gray-100" 
-                          : "bg-gray-700 text-gray-500 cursor-not-allowed"
-                      }
-                      data-testid={`button-redeem-${item.id}`}
-                    >
-                      {redeemingId === item.id ? 'Redeeming...' : 'Redeem'}
-                    </Button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Battery className="h-4 w-4 text-green-600" />
+                    <span className="font-bold text-black">{item.pointsCost}</span>
+                    <span className="text-gray-400 text-sm">batteries</span>
                   </div>
-                  {(wallet?.pointsBalance || 0) < item.pointsCost && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      Need {item.pointsCost - (wallet?.pointsBalance || 0)} more points
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+                  <Button 
+                    size="sm"
+                    disabled={(wallet?.pointsBalance || 0) < item.pointsCost || redeemingId !== null}
+                    onClick={() => redeemItem.mutate(item.id)}
+                    className={(wallet?.pointsBalance || 0) >= item.pointsCost 
+                      ? "bg-black text-white hover:bg-gray-800 rounded-lg" 
+                      : "bg-gray-100 text-gray-400 cursor-not-allowed rounded-lg"
+                    }
+                    data-testid={`button-redeem-${item.id}`}
+                  >
+                    {redeemingId === item.id ? 'Redeeming...' : 'Redeem'}
+                  </Button>
+                </div>
+                {(wallet?.pointsBalance || 0) < item.pointsCost && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    Need {item.pointsCost - (wallet?.pointsBalance || 0)} more batteries
+                  </p>
+                )}
+              </div>
             ))}
           </div>
         )}
 
         {storeItems.length === 0 && !isLoading && (
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="py-12 text-center">
-              <ShoppingBag className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-400">No rewards available yet. Check back soon!</p>
-            </CardContent>
-          </Card>
+          <div className="border border-gray-200 rounded-xl p-12 text-center">
+            <ShoppingBag className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-400 text-sm">No rewards available yet. Check back soon!</p>
+          </div>
         )}
       </div>
     </div>

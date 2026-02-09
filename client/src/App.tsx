@@ -24,6 +24,7 @@ import RegisterPage from "@/pages/customer/Register";
 import ChangePasswordPage from "@/pages/customer/ChangePassword";
 import ScanPage from "@/pages/customer/Scan";
 import StorePage from "@/pages/customer/Store";
+import BonusPage from "@/pages/customer/Bonus";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -84,6 +85,7 @@ function Router() {
         <Route path="/app/claim" component={ClaimPage} />
         <Route path="/app/scan" component={ScanPage} />
         <Route path="/app/store" component={StorePage} />
+        <Route path="/app/bonus" component={BonusPage} />
         <Route path="/app/change-password" component={ChangePasswordPage} />
         <Route path="/app/settings" component={ChangePasswordPage} />
         <Route path="/app/history" component={CustomerDashboard} />

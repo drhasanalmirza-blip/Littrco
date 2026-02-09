@@ -55,7 +55,7 @@ export default function ClaimPage() {
       
       setStatus('success');
       setPoints(data.points);
-      setMessage(`You earned ${data.points} points!`);
+      setMessage(`You earned ${data.points} batteries!`);
       
       if (data.sessionId && data.user) {
         setAuth(data.user, data.sessionId);
@@ -93,7 +93,7 @@ export default function ClaimPage() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center">
             <Loader2 className="h-12 w-12 text-black mx-auto mb-4 animate-spin" />
-            <h2 className="text-xl font-bold">Claiming your points...</h2>
+            <h2 className="text-xl font-bold">Claiming your batteries...</h2>
           </CardContent>
         </Card>
       </div>
@@ -108,7 +108,7 @@ export default function ClaimPage() {
             <div className="bg-green-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="h-12 w-12 text-green-600" />
             </div>
-            <h2 className="text-3xl font-bold mb-2">+{points} Points!</h2>
+            <h2 className="text-3xl font-bold mb-2">+{points} Batteries!</h2>
             <p className="text-gray-500 mb-6">Thanks for recycling responsibly!</p>
             <Button onClick={() => setLocation('/app')} className="w-full">
               View My Wallet
@@ -140,7 +140,7 @@ export default function ClaimPage() {
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle>Claim Your Points</CardTitle>
+            <CardTitle>Claim Your Batteries</CardTitle>
             <CardDescription>
               Sign in or create an account to claim your recycling reward
             </CardDescription>
@@ -173,7 +173,7 @@ export default function ClaimPage() {
                 </p>
               </div>
               <Button type="submit" className="w-full" data-testid="button-claim">
-                Claim Points
+                Claim Batteries
               </Button>
             </form>
           </CardContent>

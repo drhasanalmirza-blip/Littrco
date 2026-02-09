@@ -48,6 +48,10 @@ import {
   type InsertDeviceConfig,
   type PartnerPointsLedger,
   type InsertPartnerPointsLedger,
+  type PartnerRedemption,
+  type InsertPartnerRedemption,
+  type SurveyResponse,
+  type InsertSurveyResponse,
   users,
   contacts,
   volunteers,
@@ -74,6 +78,8 @@ import {
   rewardSessions,
   deviceConfigs,
   partnerPointsLedger,
+  partnerRedemptions,
+  surveyResponses,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gte, sql, lt, inArray } from "drizzle-orm";
@@ -251,6 +257,16 @@ export interface IStorage {
   getPartnerPointsLedger(shopId: number): Promise<PartnerPointsLedger[]>;
   getPartnerPointsTotal(shopId: number): Promise<number>;
   getAllPartnerPointsLedger(): Promise<PartnerPointsLedger[]>;
+
+  getStoreItemsByCategory(category: string): Promise<StoreItem[]>;
+  createPartnerRedemption(data: InsertPartnerRedemption): Promise<PartnerRedemption>;
+  getPartnerRedemptions(shopId: number): Promise<PartnerRedemption[]>;
+  getAllPartnerRedemptions(): Promise<PartnerRedemption[]>;
+  updatePartnerRedemptionStatus(id: number, status: string): Promise<PartnerRedemption>;
+  createSurveyResponse(data: InsertSurveyResponse): Promise<SurveyResponse>;
+  getSurveyResponses(customerId: number): Promise<SurveyResponse[]>;
+  getLatestSurveyByType(customerId: number, surveyType: string): Promise<SurveyResponse | undefined>;
+  deductPartnerPoints(shopId: number, amount: number, reason: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -895,6 +911,56 @@ export class DatabaseStorage implements IStorage {
 
   async getAllPartnerPointsLedger(): Promise<PartnerPointsLedger[]> {
     return await db.select().from(partnerPointsLedger).orderBy(desc(partnerPointsLedger.createdAt));
+  }
+
+  async getStoreItemsByCategory(category: string): Promise<StoreItem[]> {
+    return await db.select().from(storeItems).where(and(eq(storeItems.category, category), eq(storeItems.active, true)));
+  }
+
+  async createPartnerRedemption(data: InsertPartnerRedemption): Promise<PartnerRedemption> {
+    const [redemption] = await db.insert(partnerRedemptions).values(data).returning();
+    return redemption;
+  }
+
+  async getPartnerRedemptions(shopId: number): Promise<PartnerRedemption[]> {
+    return await db.select().from(partnerRedemptions).where(eq(partnerRedemptions.shopId, shopId)).orderBy(desc(partnerRedemptions.createdAt));
+  }
+
+  async getAllPartnerRedemptions(): Promise<PartnerRedemption[]> {
+    return await db.select().from(partnerRedemptions).orderBy(desc(partnerRedemptions.createdAt));
+  }
+
+  async updatePartnerRedemptionStatus(id: number, status: string): Promise<PartnerRedemption> {
+    const [updated] = await db.update(partnerRedemptions)
+      .set({ status: status as any, fulfilledAt: status === 'FULFILLED' ? new Date() : undefined })
+      .where(eq(partnerRedemptions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async createSurveyResponse(data: InsertSurveyResponse): Promise<SurveyResponse> {
+    const [response] = await db.insert(surveyResponses).values(data).returning();
+    return response;
+  }
+
+  async getSurveyResponses(customerId: number): Promise<SurveyResponse[]> {
+    return await db.select().from(surveyResponses).where(eq(surveyResponses.customerId, customerId)).orderBy(desc(surveyResponses.createdAt));
+  }
+
+  async getLatestSurveyByType(customerId: number, surveyType: string): Promise<SurveyResponse | undefined> {
+    const [response] = await db.select().from(surveyResponses)
+      .where(and(eq(surveyResponses.customerId, customerId), eq(surveyResponses.surveyType, surveyType)))
+      .orderBy(desc(surveyResponses.createdAt))
+      .limit(1);
+    return response;
+  }
+
+  async deductPartnerPoints(shopId: number, amount: number, reason: string): Promise<void> {
+    await db.insert(partnerPointsLedger).values({
+      shopId,
+      points: -amount,
+      reason,
+    });
   }
 }
 

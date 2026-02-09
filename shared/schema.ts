@@ -226,6 +226,7 @@ export const storeItems = pgTable("store_items", {
   description: text("description"),
   pointsCost: integer("points_cost").notNull(),
   imageUrl: text("image_url"),
+  category: text("category").notNull().default("customer"),
   active: boolean("active").notNull().default(true),
   stock: integer("stock"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -512,3 +513,40 @@ export const insertPartnerPointsLedgerSchema = createInsertSchema(partnerPointsL
 });
 export type InsertPartnerPointsLedger = z.infer<typeof insertPartnerPointsLedgerSchema>;
 export type PartnerPointsLedger = typeof partnerPointsLedger.$inferSelect;
+
+// Partner Redemptions - partner store item redemptions (separate from customer)
+export const partnerRedemptions = pgTable("partner_redemptions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  shopId: integer("shop_id").notNull().references(() => shops.id),
+  storeItemId: integer("store_item_id").notNull().references(() => storeItems.id),
+  pointsSpent: integer("points_spent").notNull(),
+  status: redemptionStatusEnum("status").notNull().default("PENDING"),
+  fulfilledAt: timestamp("fulfilled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPartnerRedemptionSchema = createInsertSchema(partnerRedemptions).omit({
+  id: true,
+  createdAt: true,
+  fulfilledAt: true,
+});
+export type InsertPartnerRedemption = z.infer<typeof insertPartnerRedemptionSchema>;
+export type PartnerRedemption = typeof partnerRedemptions.$inferSelect;
+
+// Survey Responses - customer surveys for bonus batteries
+export const surveyResponses = pgTable("survey_responses", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  surveyType: text("survey_type").notNull(),
+  answers: jsonb("answers").notNull(),
+  pointsAwarded: integer("points_awarded").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSurveyResponseSchema = createInsertSchema(surveyResponses).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSurveyResponse = z.infer<typeof insertSurveyResponseSchema>;
+export type SurveyResponse = typeof surveyResponses.$inferSelect;

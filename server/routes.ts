@@ -410,6 +410,25 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update redemption" });
     }
   });
+
+  app.get("/api/staff/partner-redemptions", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const redemptions = await storage.getAllPartnerRedemptions();
+      res.json(redemptions);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch partner redemptions" });
+    }
+  });
+
+  app.patch("/api/staff/partner-redemptions/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { status } = req.body;
+      const redemption = await storage.updatePartnerRedemptionStatus(parseInt(req.params.id), status);
+      res.json(redemption);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update partner redemption" });
+    }
+  });
   
   app.get("/api/staff/pickup-requests", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
@@ -522,6 +541,66 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/partner/store", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const items = await storage.getStoreItemsByCategory('partner');
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch partner store items" });
+    }
+  });
+
+  app.post("/api/partner/redeem", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const { storeItemId } = req.body;
+      const user = req.user!;
+      
+      const shops = await storage.getShopsByMemberId(user.id);
+      const shop = shops[0];
+      if (!shop) {
+        return res.status(404).json({ error: "No shop found for your account" });
+      }
+      
+      const item = await storage.getStoreItem(storeItemId);
+      if (!item || !item.active || item.category !== 'partner') {
+        return res.status(404).json({ error: "Store item not found" });
+      }
+      
+      const totalPoints = await storage.getPartnerPointsTotal(shop.id);
+      if (totalPoints < item.pointsCost) {
+        return res.status(400).json({ error: "Insufficient points" });
+      }
+      
+      await storage.deductPartnerPoints(shop.id, item.pointsCost, `Redeemed: ${item.name}`);
+      
+      const redemption = await storage.createPartnerRedemption({
+        userId: user.id,
+        shopId: shop.id,
+        storeItemId: item.id,
+        pointsSpent: item.pointsCost,
+        status: "PENDING",
+      });
+      
+      sendRedemptionEmail(user.email, item.name).catch(err => console.error('Email error:', err));
+      
+      res.json(redemption);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to redeem item" });
+    }
+  });
+
+  app.get("/api/partner/redemptions", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const shops = await storage.getShopsByMemberId(req.user!.id);
+      const shop = shops[0];
+      if (!shop) return res.json([]);
+      const redemptions = await storage.getPartnerRedemptions(shop.id);
+      res.json(redemptions);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch redemptions" });
+    }
+  });
+
   // ==================== CUSTOMER ROUTES ====================
   
   app.get("/api/customer/wallet", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
@@ -559,7 +638,7 @@ export async function registerRoutes(
   
   app.get("/api/customer/store", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
     try {
-      const items = await storage.getAllStoreItems();
+      const items = await storage.getStoreItemsByCategory('customer');
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch store items" });
@@ -628,6 +707,89 @@ export async function registerRoutes(
       res.json(redemptions);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch redemptions" });
+    }
+  });
+
+  app.post("/api/customer/survey", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    try {
+      const { surveyType, answers } = req.body;
+      
+      const customer = await storage.getCustomerByUserId(req.user!.id);
+      if (!customer) {
+        return res.status(404).json({ error: "Customer profile not found" });
+      }
+      
+      if (surveyType === 'signup') {
+        const existing = await storage.getLatestSurveyByType(customer.id, 'signup');
+        if (existing) {
+          return res.status(400).json({ error: "You've already completed the sign-up survey" });
+        }
+      }
+      
+      if (surveyType === 'weekly') {
+        const latest = await storage.getLatestSurveyByType(customer.id, 'weekly');
+        if (latest) {
+          const daysSince = (Date.now() - new Date(latest.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+          if (daysSince < 7) {
+            return res.status(400).json({ error: "You can take the weekly survey once per week", nextAvailable: new Date(new Date(latest.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000) });
+          }
+        }
+      }
+      
+      const pointsAwarded = surveyType === 'signup' ? 20 : 3;
+      
+      const response = await storage.createSurveyResponse({
+        customerId: customer.id,
+        surveyType,
+        answers,
+        pointsAwarded,
+      });
+      
+      const wallet = await storage.getWallet(customer.id);
+      if (wallet) {
+        await storage.updateWalletBalance(customer.id, pointsAwarded, true);
+        await storage.createTransaction({
+          walletId: wallet.id,
+          amount: pointsAwarded,
+          type: "EARN",
+          description: surveyType === 'signup' ? 'Welcome survey bonus' : 'Weekly survey bonus',
+        });
+      }
+      
+      res.json({ ok: true, pointsAwarded, response });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to submit survey" });
+    }
+  });
+
+  app.get("/api/customer/survey/status", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByUserId(req.user!.id);
+      if (!customer) {
+        return res.status(404).json({ error: "Customer profile not found" });
+      }
+      
+      const signupSurvey = await storage.getLatestSurveyByType(customer.id, 'signup');
+      const weeklySurvey = await storage.getLatestSurveyByType(customer.id, 'weekly');
+      
+      let weeklyAvailable = true;
+      let nextWeeklyDate = null;
+      
+      if (weeklySurvey) {
+        const daysSince = (Date.now() - new Date(weeklySurvey.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince < 7) {
+          weeklyAvailable = false;
+          nextWeeklyDate = new Date(new Date(weeklySurvey.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000);
+        }
+      }
+      
+      res.json({
+        signupCompleted: !!signupSurvey,
+        weeklyAvailable,
+        nextWeeklyDate,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch survey status" });
     }
   });
 
@@ -2435,7 +2597,7 @@ export async function registerRoutes(
 
       let customer = await storage.getCustomerByUserId(user!.id);
       if (!customer) {
-        customer = await storage.createCustomer({ userId: user!.id, displayName: user!.email.split("@")[0] });
+        customer = await storage.createCustomer({ userId: user!.id, publicId: `LITTR-${Date.now().toString(36).toUpperCase()}` });
         await storage.createWallet(customer.id);
       }
 
@@ -2517,7 +2679,7 @@ export async function registerRoutes(
               shopId: device.shopId,
               severity: severity as any,
               temperature,
-              message: `Temperature alert: ${temperature}°C on device ${device.name}`,
+              temperatureRise: temperature > 60 ? temperature - 60 : 0,
             });
           }
           alert = { type: "temperature", value: temperature, severity };

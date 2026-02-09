@@ -329,9 +329,9 @@ export async function sendRedemptionEmail(email: string, itemName: string) {
           <p style="margin: 0 0 24px 0; color: #666; font-size: 16px;">You've redeemed: <strong style="color: #000;">${itemName}</strong></p>
           
           <div style="background-color: #f9f9f9; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: left;">
-            <p style="margin: 0 0 12px 0; color: #000; font-weight: 600;">What's next?</p>
+            <p style="margin: 0 0 12px 0; color: #000; font-weight: 600;">Delivery Info</p>
             <p style="margin: 0; color: #666; font-size: 14px; line-height: 1.6;">
-              We're processing your redemption and will notify you when it's ready for pickup. This usually takes 2-3 business days.
+              We're on it! Your reward will be delivered to your email within 24-48 hours.
             </p>
           </div>
           
