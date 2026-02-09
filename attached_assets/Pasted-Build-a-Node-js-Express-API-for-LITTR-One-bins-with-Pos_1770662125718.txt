@@ -1,0 +1,206 @@
+Build a Node.js (Express) API for LITTR One bins with PostgreSQL (Prisma preferred).
+ The ESP32 devices do NOT have pre-shared keys typed manually.
+ Each device has a unique immutable UID (ESP32 efuse MAC).
+ Devices are paired to a shop/partner by showing a pairing QR code on-screen.
+Auth + Pairing Flow
+Device UID = string uid (hex MAC).
+
+
+Device boots, connects to WiFi, and if not paired it calls:
+
+
+POST /api/device/pair/start
+Body: { "uid": "A1B2C3D4E5F6", "fw": "esp32-x.y.z" }
+ Response: { ok:true, pair_url:"https://littr.co/pair/<pair_code>", expires_in_sec:300 }
+Server creates a PairRequest row:
+
+
+uid
+
+
+pair_code (random 6–12 chars)
+
+
+expires_at
+
+
+claimed=false
+
+
+GET /api/device/pair/status?uid=...
+Response if not yet claimed: { paired:false }
+ Response if claimed: { paired:true, device_id:12345, device_key:"<secret>" }
+On claim, server creates or assigns a Device row:
+
+
+device_id numeric
+
+
+device_key secret random (stored server-side)
+
+
+linked partner_id/shop_id
+
+
+Website pairing page:
+User scans pair_url, logs in, selects shop, clicks “Add bin”
+
+
+That marks PairRequest claimed and associates uid -> partner/shop
+
+
+Cloud Config (shop editable)
+GET /api/device/config
+Auth headers: X-Device-Id, X-Device-Key
+ Returns:
+{
+  "ok": true,
+  "session_window_sec": 60,
+  "accepted_hold_ms": 12000,
+  "warn_enabled": true,
+  "warn_temp_c": 55.0,
+  "warn_voc_analog": 900,
+  "warn_use_voc_digital": false,
+  "raw_swap_bytes": false
+}
+
+Values come from shop settings (dashboard editable), fallback defaults if unset.
+Drops + Stacking Points Sessions
+Every drop always gives the partner/shop +1 point immediately.
+
+
+User points are only awarded if QR is redeemed before session expires.
+
+
+All drops within session_window_sec stack into one session token.
+
+
+Each drop extends expires_at = now + session_window_sec.
+
+
+If session expires unredeemed -> user gets 0.
+
+
+POST /api/device/spin (rename internally to “drop register”)
+Auth headers required.
+ Body includes idempotency:
+ { "event":"drop", "device_event_id":"UID-SEQ-000123", "count":124 }
+Server behavior:
+If device_event_id already processed, return the same response.
+
+
+Immediately credit partner/shop +1 point in partner ledger.
+
+
+Find active user session (PENDING, expires_at > now) for this device.
+
+
+If none, create new session with token.
+
+
+Compute user points per drop: random 1–3 (or config min/max)
+
+
+Add to session.points_total
+
+
+Extend session.expires_at = now + session_window_sec
+
+
+Return:
+
+
+{
+  "claim_url": "https://littr.co/claim/<token>",
+  "points_added": 2,
+  "points_total": 7,
+  "expires_at": "ISO",
+  "expires_in_sec": 60
+}
+
+Claim / Redeem
+GET /claim/<token> shows points + redeem button
+
+
+POST /api/claim/redeem (user auth required)
+
+
+If expired -> mark EXPIRED and award 0
+
+
+If valid -> mark CLAIMED and award points_total to user ledger
+
+
+Tables
+Device(uid, device_id, device_key, partner_id, shop_id)
+
+
+PairRequest(uid, pair_code, expires_at, claimed, partner_id, shop_id)
+
+
+DropEvent(device_id, device_event_id, session_id, points_added, created_at)
+
+
+RewardSession(device_id, token, status, points_total, created_at, last_drop_at, expires_at, claimed_by_user_id)
+
+
+PartnerPointsLedger(shop_id/partner_id, points, reason, device_id, created_at)
+
+
+Also generate OpenAPI docs and include basic rate limiting per device.
+Output full code + Prisma schema + migrations + example env vars.
+
+✅ Feature list (everything we’re tracking right now)
+Portrait UI rotation (480×800 logical).
+
+
+SD RAW wallpapers (*_p.raw) and fast cached draw.
+
+
+Fix green tint via byte-swap toggle (cloud + portal).
+
+
+Huge count number (auto-fit), moved higher.
+
+
+THANK YOU lowered ~30–40px.
+
+
+Black outline text everywhere that remains.
+
+
+WiFi bars icon + X (remove WiFi status text).
+
+
+Move “LITTR ONE” to bottom corner (not top).
+
+
+Setup screen overlays removed except SSID + IP.
+
+
+Touchscreen pausable reboot countdown.
+
+
+accepted_p.raw info screen on any touch/hold (timer since last touch, no overlays).
+
+
+warning_p.raw triggered automatically from VOC/temp thresholds (cloud-configurable).
+
+
+Stacking reward sessions (drops within window stack, resets timer each drop).
+
+
+Session expires unredeemed → user gets 0.
+
+
+Partner/shop always gets +1 per drop (independent of redemption).
+
+
+Pairing-based onboarding (scan setup QR to claim device to shop; no typed key).
+
+
+Cloud config endpoint for shop-tunable variables.
+
+
+Future: OTA firmware push with/without config (not implemented yet).
+
