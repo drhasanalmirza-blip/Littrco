@@ -182,7 +182,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
 
         {/* Footer */}
         <p className="text-center text-gray-400 text-xs mt-8 font-medium">
-          LITTR.co © 2025 — Recycling Made Simple
+          LITTR.co © 2026 — Recycling Made Simple
         </p>
       </div>
     </div>
