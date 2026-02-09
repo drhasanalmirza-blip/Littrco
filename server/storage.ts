@@ -267,6 +267,22 @@ export interface IStorage {
   getSurveyResponses(customerId: number): Promise<SurveyResponse[]>;
   getLatestSurveyByType(customerId: number, surveyType: string): Promise<SurveyResponse | undefined>;
   deductPartnerPoints(shopId: number, amount: number, reason: string): Promise<void>;
+
+  // Activity Log
+  getActivityLog(): Promise<ActivityLogEntry[]>;
+}
+
+export interface ActivityLogEntry {
+  id: number;
+  source: 'v1' | 'v2';
+  userEmail: string;
+  userId: string;
+  shopName: string;
+  deviceName: string;
+  pointsClaimed: number;
+  dropCount: number;
+  claimedAt: string;
+  sessionToken?: string;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -961,6 +977,72 @@ export class DatabaseStorage implements IStorage {
       points: -amount,
       reason,
     });
+  }
+
+  async getActivityLog(): Promise<ActivityLogEntry[]> {
+    const v2Results = await db
+      .select({
+        id: rewardSessions.id,
+        userEmail: users.email,
+        userId: rewardSessions.claimedByUserId,
+        shopName: shops.name,
+        deviceName: devices.name,
+        pointsClaimed: rewardSessions.pointsTotal,
+        dropCount: rewardSessions.dropCount,
+        claimedAt: rewardSessions.claimedAt,
+        sessionToken: rewardSessions.token,
+      })
+      .from(rewardSessions)
+      .innerJoin(users, eq(rewardSessions.claimedByUserId, users.id))
+      .innerJoin(shops, eq(rewardSessions.shopId, shops.id))
+      .innerJoin(devices, eq(rewardSessions.deviceId, devices.id))
+      .where(eq(rewardSessions.status, 'CLAIMED'));
+
+    const v1Results = await db
+      .select({
+        id: claimTokens.id,
+        userEmail: users.email,
+        userId: claimTokens.claimedByUserId,
+        shopName: shops.name,
+        deviceName: devices.name,
+        pointsClaimed: dropEvents.pointsAwarded,
+        claimedAt: claimTokens.claimedAt,
+      })
+      .from(claimTokens)
+      .innerJoin(dropEvents, eq(claimTokens.dropEventId, dropEvents.id))
+      .innerJoin(users, eq(claimTokens.claimedByUserId, users.id))
+      .innerJoin(shops, eq(dropEvents.shopId, shops.id))
+      .innerJoin(devices, eq(dropEvents.deviceId, devices.id))
+      .where(sql`${claimTokens.claimedAt} IS NOT NULL`);
+
+    const combined: ActivityLogEntry[] = [
+      ...v2Results.map(r => ({
+        id: r.id,
+        source: 'v2' as const,
+        userEmail: r.userEmail,
+        userId: r.userId!,
+        shopName: r.shopName,
+        deviceName: r.deviceName,
+        pointsClaimed: r.pointsClaimed,
+        dropCount: r.dropCount,
+        claimedAt: r.claimedAt!.toISOString(),
+        sessionToken: r.sessionToken,
+      })),
+      ...v1Results.map(r => ({
+        id: r.id,
+        source: 'v1' as const,
+        userEmail: r.userEmail,
+        userId: r.userId!,
+        shopName: r.shopName,
+        deviceName: r.deviceName,
+        pointsClaimed: r.pointsClaimed,
+        dropCount: 1,
+        claimedAt: r.claimedAt!.toISOString(),
+      })),
+    ];
+
+    combined.sort((a, b) => new Date(b.claimedAt).getTime() - new Date(a.claimedAt).getTime());
+    return combined;
   }
 }
 

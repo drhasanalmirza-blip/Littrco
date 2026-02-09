@@ -337,6 +337,15 @@ export async function registerRoutes(
     }
   });
   
+  app.get("/api/staff/activity-log", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const log = await storage.getActivityLog();
+      res.json(log);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activity log" });
+    }
+  });
+
   app.get("/api/staff/drop-events", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
       const shops = await storage.getAllShops();
