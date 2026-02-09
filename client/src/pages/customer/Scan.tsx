@@ -31,7 +31,6 @@ export default function ScanPage() {
           handleQrScan(decodedText);
         },
         (error) => {
-          // Ignore scanning errors (common during scanning)
         }
       );
     }
@@ -45,13 +44,11 @@ export default function ScanPage() {
   }, [mode]);
 
   const extractToken = (input: string): string => {
-    // Check if it's a URL with token param
     try {
       const url = new URL(input);
       const token = url.searchParams.get('token');
       if (token) return token;
     } catch {
-      // Not a URL, treat as raw token
     }
     return input;
   };
@@ -73,7 +70,7 @@ export default function ScanPage() {
 
   const claimToken = async (token: string) => {
     setStatus('loading');
-    setMessage('Claiming points...');
+    setMessage('Claiming batteries...');
 
     try {
       const res = await apiRequest('/api/v1/claim', {
@@ -89,50 +86,48 @@ export default function ScanPage() {
         return;
       }
 
-      // Update auth if new session provided
       if (data.sessionId && data.user) {
         setAuth(data.user, data.sessionId);
       }
 
       setStatus('success');
       setReceipt(data.receipt);
-      setMessage(`+${data.receipt.points} points claimed!`);
+      setMessage(`+${data.receipt.points} batteries claimed!`);
     } catch (error) {
       setStatus('error');
       setMessage('Connection error. Please try again.');
     }
   };
 
-  // Success screen
   if (status === 'success' && receipt) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
-        <Card className="w-full max-w-md bg-gray-800 border-gray-700">
+      <div className="littr-dashboard flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl ring-1 ring-black/5">
           <CardContent className="pt-8 text-center">
-            <div className="bg-green-900/30 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-6">
+            <div className="bg-green-50 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-6">
               <span className="text-5xl">🎉</span>
             </div>
-            <h2 className="text-4xl font-bold text-white mb-2">+{receipt.points}</h2>
-            <p className="text-gray-400 mb-6">Points claimed successfully!</p>
+            <h2 className="text-4xl font-extrabold text-black mb-2">+{receipt.points}</h2>
+            <p className="text-gray-500 mb-6 font-medium">Batteries claimed!</p>
             
-            <div className="bg-gray-900 rounded-lg p-4 mb-6 text-left">
+            <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left border border-gray-100">
               <div className="flex justify-between mb-2">
-                <span className="text-gray-500">Location</span>
-                <span className="text-white">{receipt.shopName}</span>
+                <span className="text-gray-400 text-sm">Location</span>
+                <span className="text-black font-medium text-sm">{receipt.shopName}</span>
               </div>
               <div className="flex justify-between mb-2">
-                <span className="text-gray-500">Time</span>
-                <span className="text-white">{new Date(receipt.timestamp).toLocaleString()}</span>
+                <span className="text-gray-400 text-sm">Time</span>
+                <span className="text-black font-medium text-sm">{new Date(receipt.timestamp).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">New Balance</span>
-                <span className="text-white font-bold">{receipt.newBalance} pts</span>
+                <span className="text-gray-400 text-sm">New Balance</span>
+                <span className="text-black font-bold text-sm">{receipt.newBalance} batteries</span>
               </div>
             </div>
 
             <Button 
               onClick={() => setLocation('/app')}
-              className="w-full bg-white text-black hover:bg-gray-100"
+              className="littr-btn littr-btn-primary w-full"
             >
               Back to Wallet
             </Button>
@@ -142,17 +137,16 @@ export default function ScanPage() {
     );
   }
 
-  // Error screen
   if (status === 'error') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
-        <Card className="w-full max-w-md bg-gray-800 border-gray-700">
+      <div className="littr-dashboard flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl ring-1 ring-black/5">
           <CardContent className="pt-8 text-center">
-            <div className="bg-red-900/30 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-6">
+            <div className="bg-red-50 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-6">
               <span className="text-5xl">❌</span>
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Claim Failed</h2>
-            <p className="text-gray-400 mb-6">{message}</p>
+            <h2 className="text-2xl font-bold text-black mb-2">Claim Failed</h2>
+            <p className="text-gray-500 mb-6">{message}</p>
             
             <div className="flex gap-3">
               <Button 
@@ -162,13 +156,13 @@ export default function ScanPage() {
                   setMessage('');
                   setManualCode('');
                 }}
-                className="flex-1 border-gray-600 text-white"
+                className="flex-1 border-gray-200 text-black hover:bg-gray-50"
               >
                 Try Again
               </Button>
               <Button 
                 onClick={() => setLocation('/app')}
-                className="flex-1 bg-white text-black hover:bg-gray-100"
+                className="flex-1 littr-btn-primary"
               >
                 Back to Wallet
               </Button>
@@ -179,14 +173,13 @@ export default function ScanPage() {
     );
   }
 
-  // Loading screen
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
-        <Card className="w-full max-w-md bg-gray-800 border-gray-700">
+      <div className="littr-dashboard flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl ring-1 ring-black/5">
           <CardContent className="pt-8 text-center">
-            <Loader2 className="h-16 w-16 text-white mx-auto mb-6 animate-spin" />
-            <h2 className="text-xl font-bold text-white">{message}</h2>
+            <Loader2 className="h-16 w-16 text-black mx-auto mb-6 animate-spin" />
+            <h2 className="text-xl font-bold text-black">{message}</h2>
           </CardContent>
         </Card>
       </div>
@@ -194,27 +187,25 @@ export default function ScanPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
-      {/* Header */}
-      <div className="bg-black text-white p-4 flex items-center gap-4 border-b border-gray-800">
+    <div className="littr-dashboard">
+      <div className="littr-nav p-4 flex items-center gap-4">
         <Button 
           variant="ghost" 
           size="sm"
           onClick={() => setLocation('/app')}
-          className="text-white hover:bg-gray-800"
+          className="text-black hover:bg-gray-100"
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="font-bold text-lg">Claim Points</h1>
+        <h1 className="font-bold text-lg text-black">Claim Batteries</h1>
       </div>
 
       <div className="container mx-auto px-4 py-6 max-w-lg">
-        {/* Mode Toggle */}
         <div className="flex gap-2 mb-6">
           <Button
             variant={mode === 'scan' ? 'default' : 'outline'}
             onClick={() => setMode('scan')}
-            className={mode === 'scan' ? 'bg-white text-black flex-1' : 'flex-1 border-gray-600 text-white'}
+            className={mode === 'scan' ? 'littr-btn-primary flex-1' : 'flex-1 border-gray-200 text-black hover:bg-gray-50'}
           >
             <Camera className="h-4 w-4 mr-2" />
             Scan QR
@@ -222,7 +213,7 @@ export default function ScanPage() {
           <Button
             variant={mode === 'manual' ? 'default' : 'outline'}
             onClick={() => setMode('manual')}
-            className={mode === 'manual' ? 'bg-white text-black flex-1' : 'flex-1 border-gray-600 text-white'}
+            className={mode === 'manual' ? 'littr-btn-primary flex-1' : 'flex-1 border-gray-200 text-black hover:bg-gray-50'}
           >
             <Keyboard className="h-4 w-4 mr-2" />
             Enter Code
@@ -230,21 +221,21 @@ export default function ScanPage() {
         </div>
 
         {mode === 'scan' ? (
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="shadow-lg ring-1 ring-black/5">
             <CardHeader>
-              <CardTitle className="text-white text-center">Point Camera at QR Code</CardTitle>
+              <CardTitle className="text-black text-center">Point Camera at QR Code</CardTitle>
             </CardHeader>
             <CardContent>
               <div id="qr-reader" ref={containerRef} className="rounded-lg overflow-hidden" />
-              <p className="text-gray-400 text-sm text-center mt-4">
-                Scan the QR code displayed on the LITTR Screen Pro
+              <p className="text-gray-500 text-sm text-center mt-4">
+                Scan the QR code displayed on the LITTR bin
               </p>
             </CardContent>
           </Card>
         ) : (
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="shadow-lg ring-1 ring-black/5">
             <CardHeader>
-              <CardTitle className="text-white text-center">Enter Claim Code</CardTitle>
+              <CardTitle className="text-black text-center">Enter Claim Code</CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleManualSubmit} className="space-y-4">
@@ -252,29 +243,28 @@ export default function ScanPage() {
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
                   placeholder="Paste your claim code or URL"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-500"
+                  className="littr-input w-full"
                   data-testid="input-manual-code"
                 />
                 <Button 
                   type="submit" 
-                  className="w-full bg-white text-black hover:bg-gray-100"
+                  className="w-full littr-btn littr-btn-primary"
                   disabled={!manualCode.trim()}
                   data-testid="button-claim-manual"
                 >
-                  Claim Points
+                  Claim Batteries
                 </Button>
               </form>
-              <p className="text-gray-400 text-sm text-center mt-4">
+              <p className="text-gray-500 text-sm text-center mt-4">
                 Enter the code shown on your receipt or paste the full URL
               </p>
             </CardContent>
           </Card>
         )}
 
-        {/* Help Text */}
         <div className="mt-8 text-center">
-          <p className="text-gray-500 text-sm">
-            Need help? <a href="/faq" className="text-white underline">Visit FAQ</a>
+          <p className="text-gray-400 text-sm">
+            Need help? <a href="/faq" className="text-black font-semibold underline">Visit FAQ</a>
           </p>
         </div>
       </div>

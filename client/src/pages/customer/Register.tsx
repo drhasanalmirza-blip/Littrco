@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { Mail, Lock, UserPlus, ArrowLeft } from "lucide-react";
+import { Mail, Lock, UserPlus, ArrowLeft, Recycle } from "lucide-react";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -72,35 +72,43 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
-      <div className="w-full max-w-md">
-        {/* Card */}
-        <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 py-8 border-b border-gray-700">
-            <h1 className="text-3xl font-bold text-white mb-2">Create Account</h1>
-            <p className="text-gray-400 text-sm">Start earning points today</p>
+    <div className="littr-dashboard flex items-center justify-center p-4 safe-top safe-bottom">
+      <div className="w-full max-w-md animate-fade-in">
+        <Link href="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-black mb-6 text-sm font-medium transition-colors">
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
+        </Link>
+
+        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5">
+          <div className="px-8 py-8 border-b border-gray-100 bg-white/50">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center shadow-lg shadow-green-500/20">
+                <Recycle className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-black tracking-tight">LITTR</span>
+            </div>
+            <h1 className="text-3xl font-extrabold text-black mb-1 tracking-tight">Create Account</h1>
+            <p className="text-gray-500 text-sm font-medium">Start earning batteries today</p>
           </div>
 
-          {/* Content */}
-          <div className="px-8 py-8">
+          <div className="px-8 py-8 bg-white">
             {error && (
-              <div className="mb-6 p-4 bg-red-900/20 border border-red-700/30 text-red-400 rounded-lg text-sm flex items-start gap-3">
+              <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
                 <span className="text-red-500 mt-0.5">⚠</span>
-                <span>{error}</span>
+                <span className="font-medium">{error}</span>
               </div>
             )}
 
             {success && (
-              <div className="mb-6 p-4 bg-green-900/20 border border-green-700/30 text-green-400 rounded-lg text-sm">
+              <div className="mb-6 p-4 bg-green-50 border border-green-100 text-green-700 rounded-xl text-sm font-medium animate-slide-up">
                 Account created! Redirecting to your wallet...
               </div>
             )}
 
-            <form onSubmit={handleRegister} className="space-y-5">
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
+            <form onSubmit={handleRegister} className="space-y-6">
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Mail className="h-4 w-4 text-gray-400" />
                   Email Address
                 </Label>
                 <Input
@@ -108,15 +116,15 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500"
+                  className="littr-input w-full"
                   data-testid="input-register-email"
                   required
                 />
               </div>
 
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2">
-                  <Lock className="h-4 w-4" />
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Lock className="h-4 w-4 text-gray-400" />
                   Password
                 </Label>
                 <Input
@@ -124,16 +132,16 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 6 characters"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500"
+                  className="littr-input w-full"
                   data-testid="input-register-password"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters</p>
+                <p className="text-xs text-gray-400 mt-1">Must be at least 6 characters</p>
               </div>
 
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2">
-                  <Lock className="h-4 w-4" />
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Lock className="h-4 w-4 text-gray-400" />
                   Confirm Password
                 </Label>
                 <Input
@@ -141,7 +149,7 @@ export default function RegisterPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Repeat password"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-500 focus:border-gray-500 focus:ring-gray-500"
+                  className="littr-input w-full"
                   data-testid="input-register-confirm"
                   required
                 />
@@ -149,36 +157,38 @@ export default function RegisterPage() {
 
               <Button
                 type="submit"
-                className="w-full bg-white text-black hover:bg-gray-100 font-semibold py-2 h-10 flex items-center justify-center gap-2"
+                className="littr-btn littr-btn-primary w-full flex items-center justify-center gap-2 shadow-lg shadow-black/10"
                 disabled={loading || success}
                 data-testid="button-register"
               >
-                <UserPlus className="h-4 w-4" />
-                {loading ? 'Creating account...' : success ? 'Account Created!' : 'Create Account'}
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    Creating account...
+                  </span>
+                ) : success ? (
+                  'Account Created!'
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4" />
+                    Create Account
+                  </>
+                )}
               </Button>
             </form>
 
-            {/* Links */}
-            <div className="mt-6 space-y-3 border-t border-gray-700 pt-6">
-              <p className="text-center text-sm text-gray-400">
+            <div className="mt-8 space-y-4 border-t border-gray-100 pt-6">
+              <p className="text-center text-sm text-gray-500 font-medium">
                 Already have an account?{' '}
-                <a href="/app/login" className="text-white font-semibold hover:underline">
+                <Link href="/app/login" className="text-green-600 font-bold hover:text-green-700 hover:underline transition-colors">
                   Sign in
-                </a>
+                </Link>
               </p>
-              <a
-                href="/"
-                className="text-sm text-gray-400 hover:text-gray-300 flex items-center justify-center gap-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to home
-              </a>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-gray-500 text-xs mt-6">
+        <p className="text-center text-gray-400 text-xs mt-8 font-medium">
           LITTR.co © 2025 — Recycling Made Simple
         </p>
       </div>

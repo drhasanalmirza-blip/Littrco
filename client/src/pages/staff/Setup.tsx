@@ -7,8 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Recycle, Shield, CheckCircle, AlertCircle, Mail, Lock } from "lucide-react";
 
-import pixelCityImage from "@assets/generated_images/pixel_art_rochester_cityscape.png";
-
 export default function StaffSetup() {
   const [, setLocation] = useLocation();
   const { setAuth } = useStore();
@@ -83,11 +81,11 @@ export default function StaffSetup() {
   if (checking || step === "check") {
     return (
       <div className="littr-dashboard flex items-center justify-center">
-        <div className="text-center text-white">
-          <div className="w-16 h-16 littr-gradient-green rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
+        <div className="text-center">
+          <div className="w-16 h-16 littr-gradient-green rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse shadow-lg shadow-green-500/20">
             <Recycle className="h-8 w-8 text-white" />
           </div>
-          <p className="text-gray-400">Checking setup status...</p>
+          <p className="text-gray-500 font-medium">Checking setup status...</p>
         </div>
       </div>
     );
@@ -96,12 +94,12 @@ export default function StaffSetup() {
   if (step === "success") {
     return (
       <div className="littr-dashboard flex items-center justify-center">
-        <div className="littr-card-solid rounded-2xl p-8 text-center max-w-md mx-4">
-          <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="h-8 w-8 text-green-400" />
+        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5 rounded-2xl p-8 text-center max-w-md mx-4">
+          <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Setup Complete!</h2>
-          <p className="text-gray-400">Redirecting to your dashboard...</p>
+          <h2 className="text-2xl font-bold text-black mb-2">Setup Complete!</h2>
+          <p className="text-gray-500 font-medium">Redirecting to your dashboard...</p>
         </div>
       </div>
     );
@@ -109,42 +107,30 @@ export default function StaffSetup() {
 
   return (
     <div className="littr-dashboard flex items-center justify-center p-4 safe-top safe-bottom">
-      {/* Background */}
-      <div className="absolute inset-0 opacity-15">
-        <img 
-          src={pixelCityImage} 
-          alt="" 
-          className="w-full h-full object-cover pixel-image"
-        />
-      </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--littr-midnight)]/90 to-[var(--littr-midnight)]" />
-
-      <div className="relative z-10 w-full max-w-md">
-        <div className="littr-card-solid rounded-2xl overflow-hidden">
-          {/* Header */}
-          <div className="px-8 py-8 border-b border-white/10 text-center">
-            <div className="w-16 h-16 bg-green-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Shield className="h-8 w-8 text-green-400" />
+      <div className="w-full max-w-md animate-fade-in">
+        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5">
+          <div className="px-8 py-8 border-b border-gray-100 bg-white/50 text-center">
+            <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Shield className="h-8 w-8 text-green-600" />
             </div>
-            <h1 className="text-2xl font-bold text-white mb-1">LITTR Setup</h1>
-            <p className="text-gray-400 text-sm">
+            <h1 className="text-2xl font-bold text-black mb-1">LITTR Setup</h1>
+            <p className="text-gray-500 text-sm font-medium">
               Create your first staff account to get started
             </p>
           </div>
 
-          {/* Content */}
-          <div className="px-8 py-8">
-            <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="px-8 py-8 bg-white">
+            <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
-                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-sm">
+                <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700 text-sm animate-slide-up">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  {error}
+                  <span className="font-medium">{error}</span>
                 </div>
               )}
 
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2 text-sm">
-                  <Mail className="h-4 w-4" />
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Mail className="h-4 w-4 text-gray-400" />
                   Email Address
                 </Label>
                 <Input
@@ -158,9 +144,9 @@ export default function StaffSetup() {
                 />
               </div>
 
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2 text-sm">
-                  <Lock className="h-4 w-4" />
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Lock className="h-4 w-4 text-gray-400" />
                   Password
                 </Label>
                 <Input
@@ -174,9 +160,9 @@ export default function StaffSetup() {
                 />
               </div>
 
-              <div>
-                <Label className="text-gray-300 mb-2 flex items-center gap-2 text-sm">
-                  <Lock className="h-4 w-4" />
+              <div className="space-y-2">
+                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                  <Lock className="h-4 w-4 text-gray-400" />
                   Confirm Password
                 </Label>
                 <Input
@@ -192,14 +178,21 @@ export default function StaffSetup() {
 
               <Button
                 type="submit"
-                className="littr-btn littr-btn-primary w-full"
+                className="littr-btn littr-btn-primary w-full shadow-lg shadow-black/10"
                 disabled={createStaff.isPending}
                 data-testid="button-create-staff"
               >
-                {createStaff.isPending ? "Creating Account..." : "Create Staff Account"}
+                {createStaff.isPending ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    Creating Account...
+                  </span>
+                ) : (
+                  "Create Staff Account"
+                )}
               </Button>
 
-              <p className="text-xs text-center text-gray-500 mt-4">
+              <p className="text-xs text-center text-gray-400 mt-4">
                 This account will have full administrative access to LITTR.
               </p>
             </form>
