@@ -420,6 +420,18 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/staff/shops/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const success = await storage.deleteShop(parseInt(req.params.id));
+      if (!success) {
+        return res.status(404).json({ error: "Shop not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete shop" });
+    }
+  });
+
   app.get("/api/staff/partner-redemptions", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
       const redemptions = await storage.getAllPartnerRedemptions();

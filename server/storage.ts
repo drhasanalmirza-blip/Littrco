@@ -270,6 +270,9 @@ export interface IStorage {
 
   // Activity Log
   getActivityLog(): Promise<ActivityLogEntry[]>;
+
+  // Shops deletion
+  deleteShop(id: number): Promise<boolean>;
 }
 
 export interface ActivityLogEntry {
@@ -1043,6 +1046,11 @@ export class DatabaseStorage implements IStorage {
 
     combined.sort((a, b) => new Date(b.claimedAt).getTime() - new Date(a.claimedAt).getTime());
     return combined;
+  }
+
+  async deleteShop(id: number): Promise<boolean> {
+    const result = await db.delete(shops).where(eq(shops.id, id)).returning();
+    return result.length > 0;
   }
 }
 

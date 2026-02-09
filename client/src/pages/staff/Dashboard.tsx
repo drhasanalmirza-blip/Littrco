@@ -10,13 +10,63 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useMemo } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash } from "lucide-react";
 import { MailboxManager } from "@/components/staff/MailboxManager";
 import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+
+function DeleteShopButton({ shopId }: { shopId: number }) {
+  const [countdown, setCountdown] = useState(0);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(`/api/staff/shops/${shopId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete shop');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shops'] });
+    }
+  });
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (countdown > 0) {
+      timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  const handleClick = () => {
+    if (countdown === 0) {
+      setCountdown(5);
+    } else {
+      deleteMutation.mutate();
+      setCountdown(0);
+    }
+  };
+
+  return (
+    <Button
+      variant="destructive"
+      size="icon"
+      className="h-8 w-8 bg-red-600 hover:bg-red-700 text-white relative"
+      onClick={handleClick}
+      disabled={deleteMutation.isPending}
+      data-testid={`button-delete-shop-${shopId}`}
+    >
+      {countdown > 0 ? (
+        <span className="text-[10px] font-bold">{countdown}</span>
+      ) : (
+        <Trash className="h-4 w-4" />
+      )}
+    </Button>
+  );
+}
 
 export default function StaffDashboard() {
   const { user, role, clearAuth } = useStore();
@@ -454,8 +504,9 @@ export default function StaffDashboard() {
                             {shop.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="flex items-center gap-2">
                           <ShopActionsMenu shop={shop} />
+                          <DeleteShopButton shopId={shop.id} />
                         </TableCell>
                       </TableRow>
                     ))}
