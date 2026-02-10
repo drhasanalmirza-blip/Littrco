@@ -2234,23 +2234,8 @@ export async function registerRoutes(
 
   // ==================== V2 SMART BIN API ====================
 
-  const V2_POINT_DISTRIBUTION = [
-    { points: 1, weight: 70 },
-    { points: 2, weight: 15 },
-    { points: 5, weight: 10 },
-    { points: 10, weight: 4 },
-    { points: 25, weight: 0.9 },
-    { points: 100, weight: 0.1 },
-  ];
-
-  function rollPoints(distribution = V2_POINT_DISTRIBUTION): number {
-    const totalWeight = distribution.reduce((sum, r) => sum + r.weight, 0);
-    let random = Math.random() * totalWeight;
-    for (const reward of distribution) {
-      random -= reward.weight;
-      if (random <= 0) return reward.points;
-    }
-    return distribution[0].points;
+  function rollPointsV2(): number {
+    return Math.floor(Math.random() * 3) + 1;
   }
 
   function generatePairCode(): string {
@@ -2290,7 +2275,7 @@ export async function registerRoutes(
       }
 
       const pairCode = generatePairCode();
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
       const pr = await storage.createPairRequest({
         uid,
@@ -2396,20 +2381,21 @@ export async function registerRoutes(
       const device = await storage.getDeviceByUid(uid);
       if (device && device.shopId && device.status === "ACTIVE") {
         const config = await storage.getDeviceConfig(device.shopId);
+        const shop = await storage.getShop(device.shopId);
         return res.json({
           ok: true,
           paired: true,
           deviceId: device.id,
           shopId: device.shopId,
-          config: config ? {
-            session_window_sec: config.sessionWindowSec,
-            accepted_hold_ms: config.acceptedHoldMs,
-            warn_enabled: config.warnEnabled,
-            warn_temp_c: config.warnTempC,
-            warn_voc_analog: config.warnVocAnalog,
-            warn_use_voc_digital: config.warnUseVocDigital,
-            raw_swap_bytes: config.rawSwapBytes,
-          } : null,
+          shopName: shop?.name ?? null,
+          config: {
+            sessionWindowSec: config?.sessionWindowSec ?? 60,
+            acceptedHoldMs: config?.acceptedHoldMs ?? 6000,
+            telemetryPeriodSec: 60,
+            warnTempC: config?.warnTempC ?? 55,
+            warnVocAnalog: config?.warnVocAnalog ?? 850,
+            warnVocDigital: config?.warnUseVocDigital ? 1 : -1,
+          },
         });
       }
 
@@ -2442,22 +2428,13 @@ export async function registerRoutes(
         ok: true,
         deviceId: device.id,
         shopId: device.shopId,
-        config: config ? {
-          session_window_sec: config.sessionWindowSec,
-          accepted_hold_ms: config.acceptedHoldMs,
-          warn_enabled: config.warnEnabled,
-          warn_temp_c: config.warnTempC,
-          warn_voc_analog: config.warnVocAnalog,
-          warn_use_voc_digital: config.warnUseVocDigital,
-          raw_swap_bytes: config.rawSwapBytes,
-        } : {
-          session_window_sec: 60,
-          accepted_hold_ms: 12000,
-          warn_enabled: true,
-          warn_temp_c: 55.0,
-          warn_voc_analog: 900,
-          warn_use_voc_digital: false,
-          raw_swap_bytes: false,
+        config: {
+          sessionWindowSec: config?.sessionWindowSec ?? 60,
+          acceptedHoldMs: config?.acceptedHoldMs ?? 6000,
+          telemetryPeriodSec: 60,
+          warnTempC: config?.warnTempC ?? 55,
+          warnVocAnalog: config?.warnVocAnalog ?? 850,
+          warnVocDigital: config?.warnUseVocDigital ? 1 : -1,
         },
         rewards_enabled: rewardConfig?.enabled ?? true,
       });
@@ -2489,14 +2466,10 @@ export async function registerRoutes(
           return res.json({
             ok: true,
             duplicate: true,
-            dropEventId: existing.id,
-            session: session ? {
-              token: session.token,
-              pointsTotal: session.pointsTotal,
-              dropCount: session.dropCount,
-              expiresAt: session.expiresAt.toISOString(),
-              qrUrl: `https://littr.co/app/claim?session=${session.token}`,
-            } : null,
+            sessionId: session?.id ?? null,
+            points: session?.pointsTotal ?? 0,
+            qr_url: session ? `https://littr.co/app/claim?token=${session.token}` : null,
+            stackCount: session?.dropCount ?? 0,
           });
         }
       }
@@ -2504,7 +2477,7 @@ export async function registerRoutes(
       const config = await storage.getDeviceConfig(device.shopId);
       const sessionWindowSec = config?.sessionWindowSec ?? 60;
 
-      const points = rollPoints();
+      const points = rollPointsV2();
 
       let session = await storage.getActiveRewardSession(device.id);
 
@@ -2550,16 +2523,10 @@ export async function registerRoutes(
 
       res.json({
         ok: true,
-        duplicate: false,
-        dropEventId: dropEvent.id,
-        pointsThisDrop: points,
-        session: {
-          token: session.token,
-          pointsTotal: session.pointsTotal,
-          dropCount: session.dropCount,
-          expiresAt: session.expiresAt.toISOString(),
-          qrUrl: `https://littr.co/app/claim?session=${session.token}`,
-        },
+        sessionId: session.id,
+        points: session.pointsTotal,
+        qr_url: `https://littr.co/app/claim?token=${session.token}`,
+        stackCount: session.dropCount,
       });
     } catch (error) {
       console.error("V2 drop error:", error);
@@ -2570,9 +2537,10 @@ export async function registerRoutes(
   // V2 Session Claim — user scans QR to claim stacked session points
   app.post("/api/v2/claim", optionalAuthMiddleware, async (req, res) => {
     try {
-      const { sessionToken, email, password } = req.body;
+      const sessionToken = req.body.token || req.body.sessionToken;
+      const { email, password } = req.body;
       if (!sessionToken) {
-        return res.status(400).json({ ok: false, error: "sessionToken required" });
+        return res.status(400).json({ ok: false, error: "token required" });
       }
 
       const session = await storage.getRewardSessionByToken(sessionToken);
@@ -2584,7 +2552,7 @@ export async function registerRoutes(
       }
       if (session.status === "EXPIRED" || new Date(session.expiresAt) < new Date()) {
         if (session.status !== "EXPIRED") {
-          await storage.updateRewardSession(session.id, { status: "EXPIRED" as any });
+          await storage.updateRewardSession(session.id, { status: "EXPIRED" as any, voided: true });
         }
         return res.status(400).json({ ok: false, error: "Session expired" });
       }
@@ -2659,7 +2627,12 @@ export async function registerRoutes(
   // V2 Telemetry — ESP32 reports sensor data
   app.post("/api/v2/device/telemetry", async (req, res) => {
     try {
-      const { uid, temperature, voc_analog, voc_digital, fill_pct } = req.body;
+      const { uid } = req.body;
+      const temperatureC = req.body.temperatureC ?? req.body.temperature;
+      const vocAnalog = req.body.vocAnalog ?? req.body.voc_analog;
+      const vocDigital = req.body.vocDigital ?? req.body.voc_digital;
+      const fillPercent = req.body.fillPercent ?? req.body.fill_pct;
+
       if (!uid) {
         return res.status(400).json({ ok: false, error: "uid required" });
       }
@@ -2674,40 +2647,69 @@ export async function registerRoutes(
       const bin = await storage.getBinByDeviceId(device.id);
       if (bin) {
         await storage.updateBinSensorData(bin.id, {
-          lastTemperature: temperature,
-          lastVocAnalog: voc_analog,
-          lastVocDigital: voc_digital,
-          fillLevel: fill_pct,
+          lastTemperature: temperatureC,
+          lastVocAnalog: vocAnalog,
+          lastVocDigital: vocDigital,
+          fillLevel: fillPercent,
         });
 
         await storage.createBinReading({
           binId: bin.id,
-          temperature,
-          vocAnalog: voc_analog,
-          vocDigital: voc_digital,
-          fillLevel: fill_pct,
+          temperature: temperatureC,
+          vocAnalog: vocAnalog,
+          vocDigital: vocDigital,
+          fillLevel: fillPercent,
         });
       }
 
       const config = await storage.getDeviceConfig(device.shopId);
-      let alert = null;
-      if (config?.warnEnabled && temperature != null) {
-        if (temperature >= (config.warnTempC ?? 55)) {
-          const severity = temperature >= 80 ? "CRITICAL" : temperature >= 60 ? "HIGH" : "MEDIUM";
-          if (bin) {
-            await storage.createFireAlert({
-              binId: bin.id,
-              shopId: device.shopId,
-              severity: severity as any,
-              temperature,
-              temperatureRise: temperature > 60 ? temperature - 60 : 0,
-            });
-          }
-          alert = { type: "temperature", value: temperature, severity };
+      const warnTempC = config?.warnTempC ?? 55;
+      const warnVocAnalog = config?.warnVocAnalog ?? 850;
+      const warnVocDigitalEnabled = config?.warnUseVocDigital ?? false;
+
+      let fireAlertTriggered = false;
+
+      if (temperatureC != null && temperatureC >= warnTempC) {
+        fireAlertTriggered = true;
+        const severity = temperatureC >= 80 ? "CRITICAL" : temperatureC >= 60 ? "HIGH" : "MEDIUM";
+        if (bin) {
+          await storage.createFireAlert({
+            binId: bin.id,
+            shopId: device.shopId,
+            severity: severity as any,
+            temperature: temperatureC,
+            temperatureRise: temperatureC > 60 ? temperatureC - 60 : 0,
+          });
         }
       }
 
-      res.json({ ok: true, alert });
+      if (vocAnalog != null && vocAnalog >= warnVocAnalog) {
+        fireAlertTriggered = true;
+        if (bin) {
+          await storage.createFireAlert({
+            binId: bin.id,
+            shopId: device.shopId,
+            severity: "HIGH" as any,
+            temperature: temperatureC ?? 0,
+            temperatureRise: 0,
+          });
+        }
+      }
+
+      if (warnVocDigitalEnabled && vocDigital === true) {
+        fireAlertTriggered = true;
+        if (bin) {
+          await storage.createFireAlert({
+            binId: bin.id,
+            shopId: device.shopId,
+            severity: "HIGH" as any,
+            temperature: temperatureC ?? 0,
+            temperatureRise: 0,
+          });
+        }
+      }
+
+      res.json({ status: "ok", fireAlertTriggered });
     } catch (error) {
       console.error("V2 telemetry error:", error);
       res.status(500).json({ ok: false, error: "Telemetry failed" });
@@ -2817,6 +2819,18 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to fetch pair requests" });
     }
   });
+
+  // Background job: void expired unclaimed sessions every 30 seconds
+  setInterval(async () => {
+    try {
+      const count = await storage.expireOldSessions();
+      if (count > 0) {
+        console.log(`[cleanup] Voided ${count} expired unclaimed session(s)`);
+      }
+    } catch (error) {
+      console.error("[cleanup] Session expiry error:", error);
+    }
+  }, 30_000);
 
   return httpServer;
 }

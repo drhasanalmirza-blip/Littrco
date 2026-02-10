@@ -863,6 +863,7 @@ export class DatabaseStorage implements IStorage {
       and(
         eq(rewardSessions.deviceId, deviceId),
         eq(rewardSessions.status, "PENDING"),
+        eq(rewardSessions.voided, false),
         gte(rewardSessions.expiresAt, new Date())
       )
     ).orderBy(desc(rewardSessions.createdAt)).limit(1);
@@ -876,10 +877,11 @@ export class DatabaseStorage implements IStorage {
 
   async expireOldSessions(): Promise<number> {
     const result = await db.update(rewardSessions)
-      .set({ status: "EXPIRED" as any })
+      .set({ status: "EXPIRED" as any, voided: true })
       .where(
         and(
           eq(rewardSessions.status, "PENDING"),
+          eq(rewardSessions.voided, false),
           lt(rewardSessions.expiresAt, new Date())
         )
       )

@@ -457,6 +457,7 @@ export const rewardSessions = pgTable("reward_sessions", {
   status: rewardSessionStatusEnum("status").notNull().default("PENDING"),
   pointsTotal: integer("points_total").notNull().default(0),
   dropCount: integer("drop_count").notNull().default(0),
+  voided: boolean("voided").notNull().default(false),
   lastDropAt: timestamp("last_drop_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   claimedByUserId: varchar("claimed_by_user_id").references(() => users.id),
