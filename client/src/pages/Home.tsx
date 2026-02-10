@@ -267,33 +267,33 @@ export default function Home() {
             <h2 className="text-4xl font-bold dark:text-gray-100">Find a Partner Shop</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300 border border-transparent dark:border-gray-800">
               <div className="relative h-48 rounded-t-xl overflow-hidden">
                 <img src={eliteShopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
               <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
-                <h3 className="font-semibold text-lg">Elite Smoke Shop</h3>
-                <p className="text-gray-400 text-sm">Rochester, NY</p>
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Elite Smoke Shop</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
               </div>
             </div>
-            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300 border border-transparent dark:border-gray-800">
               <div className="relative h-48 rounded-t-xl overflow-hidden">
                 <img src={highEndShopImage} alt="High End Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
               <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
-                <h3 className="font-semibold text-lg">High End Smoke Shop</h3>
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">High End Smoke Shop</h3>
                 <p className="text-gray-400 text-sm">Rochester, NY</p>
               </div>
             </div>
-            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300 border border-transparent dark:border-gray-800">
               <div className="relative h-48 rounded-t-xl overflow-hidden">
                 <img src={redEyeShopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
               <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
-                <h3 className="font-semibold text-lg">Red Eye Smoke Shop</h3>
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Red Eye Smoke Shop</h3>
                 <p className="text-gray-400 text-sm">Rochester, NY</p>
               </div>
             </div>

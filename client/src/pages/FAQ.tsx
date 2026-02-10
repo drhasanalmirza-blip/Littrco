@@ -9,7 +9,7 @@ export default function FAQ() {
         <div className="space-y-12">
           {/* Consumer Section */}
           <div>
-            <h2 className="text-xl font-bold mb-6 border-b pb-2">For Consumers</h2>
+            <h2 className="text-xl font-bold mb-6 border-b pb-2 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-800">For Consumers</h2>
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="item-1">
                 <AccordionTrigger>Is this service really free?</AccordionTrigger>
@@ -40,7 +40,7 @@ export default function FAQ() {
 
           {/* Business Section */}
           <div>
-            <h2 className="text-xl font-bold mb-6 border-b pb-2">For Businesses</h2>
+            <h2 className="text-xl font-bold mb-6 border-b pb-2 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-800">For Businesses</h2>
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="item-b-1">
                 <AccordionTrigger>How often do you pick up?</AccordionTrigger>
@@ -65,7 +65,7 @@ export default function FAQ() {
 
           {/* Legal Section */}
           <div>
-            <h2 className="text-xl font-bold mb-6 border-b pb-2">Legal & Compliance</h2>
+            <h2 className="text-xl font-bold mb-6 border-b pb-2 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-800">Legal & Compliance</h2>
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="item-l-1">
                 <AccordionTrigger>Are you EPA certified?</AccordionTrigger>
