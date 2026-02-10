@@ -79,13 +79,13 @@ export default function RegisterPage() {
           Back to home
         </Link>
 
-        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5">
+        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
           <div className="px-8 py-8 border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center shadow-lg shadow-green-500/20">
                 <Recycle className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-black tracking-tight">LITTR</span>
+              <span className="text-xl font-bold text-black dark:text-white tracking-tight">LITTR</span>
             </div>
             <h1 className="text-3xl font-extrabold text-black dark:text-gray-100 mb-1 tracking-tight">Create Account</h1>
             <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Start earning batteries today</p>
@@ -93,14 +93,14 @@ export default function RegisterPage() {
 
           <div className="px-8 py-8 bg-white dark:bg-gray-900">
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-950 border border-red-100 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
                 <span className="text-red-500 mt-0.5">⚠</span>
                 <span className="font-medium">{error}</span>
               </div>
             )}
 
             {success && (
-              <div className="mb-6 p-4 bg-green-50 border border-green-100 text-green-700 rounded-xl text-sm font-medium animate-slide-up">
+              <div className="mb-6 p-4 bg-green-50 dark:bg-green-950 border border-green-100 dark:border-green-800 text-green-700 dark:text-green-300 rounded-xl text-sm font-medium animate-slide-up">
                 Account created! Redirecting to your wallet...
               </div>
             )}
@@ -163,7 +163,7 @@ export default function RegisterPage() {
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <span className="h-4 w-4 border-2 border-current/20 border-t-current rounded-full animate-spin" />
                     Creating account...
                   </span>
                 ) : success ? (

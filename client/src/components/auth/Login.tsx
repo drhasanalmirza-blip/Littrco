@@ -101,7 +101,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
               <span className="text-xl font-bold text-black dark:text-white tracking-tight">LITTR</span>
             </div>
             <h1 className="text-3xl font-extrabold text-black dark:text-white mb-1 tracking-tight">{title}</h1>
-            {subtitle && <p className="text-gray-500 text-sm font-medium">{subtitle}</p>}
+            {subtitle && <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">{subtitle}</p>}
           </div>
 
           {/* Content */}
