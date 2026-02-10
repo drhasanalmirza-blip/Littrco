@@ -52,8 +52,9 @@ export default function Dropoff() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="group" data-testid="card-location-elite">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800">
+              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
                 <img src={eliteShopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
@@ -64,7 +65,7 @@ export default function Dropoff() {
               <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
             </div>
             <div className="group" data-testid="card-location-highend">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800">
+              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
                 <img src={highEndShopImage} alt="High End Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
@@ -75,7 +76,7 @@ export default function Dropoff() {
               <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
             </div>
             <div className="group" data-testid="card-location-redeye">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800">
+              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
                 <img src={redEyeShopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
@@ -85,6 +86,7 @@ export default function Dropoff() {
               <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Red Eye Smoke Shop</h3>
               <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
             </div>
+          </div>
           </div>
         </div>
       </section>
