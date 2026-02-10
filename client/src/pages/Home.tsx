@@ -71,7 +71,7 @@ export default function Home() {
       </section>
 
       {/* Trust Belt */}
-      <section className="py-4 bg-white border-b border-gray-100">
+      <section className="py-4 bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800">
         <div className="container mx-auto px-4">
           <div className="flex flex-wrap justify-center items-center gap-6 md:gap-8 text-sm text-gray-600">
             <span className="flex items-center gap-2">
@@ -112,11 +112,11 @@ export default function Home() {
       </section>
 
       {/* How it works - Visual steps */}
-      <section className="py-24 bg-white">
+      <section className="py-24 bg-white dark:bg-gray-950">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">How it works</p>
-            <h2 className="text-4xl md:text-5xl font-bold">Three Easy Steps</h2>
+            <h2 className="text-4xl md:text-5xl font-bold dark:text-gray-100">Three Easy Steps</h2>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -164,37 +164,37 @@ export default function Home() {
       </section>
 
       {/* What we accept - Visual grid */}
-      <section className="py-24 bg-gray-50">
+      <section className="py-24 bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">What we accept</p>
-            <h2 className="text-4xl font-bold">Drop These Off</h2>
+            <h2 className="text-4xl font-bold dark:text-gray-100">Drop These Off</h2>
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={vapesImage} alt="Disposable vapes" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
               </div>
               <h3 className="font-semibold">Disposable Vapes</h3>
               <p className="text-xs text-green-600 mt-1">Accepted</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={batteriesImage} alt="Small batteries" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
               </div>
               <h3 className="font-semibold">Small Batteries</h3>
               <p className="text-xs text-green-600 mt-1">Accepted</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={phoneBatteryImage} alt="Phone batteries" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
               </div>
               <h3 className="font-semibold">Phone Batteries</h3>
               <p className="text-xs text-green-600 mt-1">Accepted</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 text-center shadow-lg opacity-60">
-              <div className="h-32 mb-4 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg opacity-60">
+              <div className="h-32 mb-4 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                 <span className="text-4xl">🚗</span>
               </div>
               <h3 className="font-semibold text-gray-500">EV Batteries</h3>
@@ -260,11 +260,11 @@ export default function Home() {
       </section>
 
       {/* Partner Locations with images */}
-      <section className="py-24 bg-white">
+      <section className="py-24 bg-white dark:bg-gray-950">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">Drop-off locations</p>
-            <h2 className="text-4xl font-bold">Find a Partner Shop</h2>
+            <h2 className="text-4xl font-bold dark:text-gray-100">Find a Partner Shop</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300">
@@ -272,7 +272,7 @@ export default function Home() {
                 <img src={eliteShopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
-              <div className="p-4 bg-white rounded-b-xl">
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
                 <h3 className="font-semibold text-lg">Elite Smoke Shop</h3>
                 <p className="text-gray-400 text-sm">Rochester, NY</p>
               </div>
@@ -282,7 +282,7 @@ export default function Home() {
                 <img src={highEndShopImage} alt="High End Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
-              <div className="p-4 bg-white rounded-b-xl">
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
                 <h3 className="font-semibold text-lg">High End Smoke Shop</h3>
                 <p className="text-gray-400 text-sm">Rochester, NY</p>
               </div>
@@ -292,7 +292,7 @@ export default function Home() {
                 <img src={redEyeShopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               </div>
-              <div className="p-4 bg-white rounded-b-xl">
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
                 <h3 className="font-semibold text-lg">Red Eye Smoke Shop</h3>
                 <p className="text-gray-400 text-sm">Rochester, NY</p>
               </div>
@@ -307,28 +307,28 @@ export default function Home() {
       </section>
 
       {/* Value props strip */}
-      <section className="py-16 bg-gray-50 border-y border-gray-200">
+      <section className="py-16 bg-gray-50 dark:bg-gray-900 border-y border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto text-center">
             <div className="flex flex-col items-center">
               <div className="h-12 w-12 rounded-full bg-black text-white flex items-center justify-center mb-4">
                 <Shield className="h-5 w-5" />
               </div>
-              <h3 className="font-semibold mb-1">Safe Handling</h3>
+              <h3 className="font-semibold mb-1 dark:text-gray-100">Safe Handling</h3>
               <p className="text-sm text-gray-500">Fire-safe containers and trained pickup crews keep everyone safe.</p>
             </div>
             <div className="flex flex-col items-center">
               <div className="h-12 w-12 rounded-full bg-black text-white flex items-center justify-center mb-4">
                 <Recycle className="h-5 w-5" />
               </div>
-              <h3 className="font-semibold mb-1">Certified Recycling</h3>
+              <h3 className="font-semibold mb-1 dark:text-gray-100">Certified Recycling</h3>
               <p className="text-sm text-gray-500">All materials go to EPA-compliant processing facilities.</p>
             </div>
             <div className="flex flex-col items-center">
               <div className="h-12 w-12 rounded-full bg-black text-white flex items-center justify-center mb-4">
                 <Truck className="h-5 w-5" />
               </div>
-              <h3 className="font-semibold mb-1">Free Pickup</h3>
+              <h3 className="font-semibold mb-1 dark:text-gray-100">Free Pickup</h3>
               <p className="text-sm text-gray-500">Partners never pay a dime for bin collection or service.</p>
             </div>
           </div>

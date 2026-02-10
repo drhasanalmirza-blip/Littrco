@@ -20,7 +20,7 @@ export default function ChangePasswordPage() {
     return (
       <div className="littr-dashboard flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-gray-600 mb-4 font-medium">Please log in to change your password</p>
+          <p className="text-gray-600 dark:text-gray-400 mb-4 font-medium">Please log in to change your password</p>
           <Button onClick={() => setLocation('/app/login')} className="littr-btn littr-btn-primary">
             Go to Login
           </Button>
@@ -86,24 +86,24 @@ export default function ChangePasswordPage() {
   return (
     <div className="littr-dashboard flex items-center justify-center p-4 safe-top safe-bottom">
       <div className="w-full max-w-md animate-fade-in">
-        <Link href="/app" className="inline-flex items-center gap-2 text-gray-600 hover:text-black mb-6 text-sm font-medium transition-colors">
+        <Link href="/app" className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white mb-6 text-sm font-medium transition-colors">
           <ArrowLeft className="h-4 w-4" />
           Back to wallet
         </Link>
 
         <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5">
-          <div className="px-8 py-8 border-b border-gray-100 bg-white/50">
+          <div className="px-8 py-8 border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center shadow-lg shadow-green-500/20">
                 <Recycle className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-black tracking-tight">LITTR</span>
+              <span className="text-xl font-bold text-black dark:text-gray-100 tracking-tight">LITTR</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-black mb-1 tracking-tight">Change Password</h1>
-            <p className="text-gray-500 text-sm font-medium">Secure your account</p>
+            <h1 className="text-3xl font-extrabold text-black dark:text-gray-100 mb-1 tracking-tight">Change Password</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Secure your account</p>
           </div>
 
-          <div className="px-8 py-8 bg-white">
+          <div className="px-8 py-8 bg-white dark:bg-gray-900">
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
                 <span className="text-red-500 mt-0.5">⚠</span>
@@ -120,7 +120,7 @@ export default function ChangePasswordPage() {
 
             <form onSubmit={handleChangePassword} className="space-y-6">
               <div className="space-y-2">
-                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                <Label className="text-gray-900 dark:text-gray-100 font-semibold flex items-center gap-2 text-sm">
                   <Lock className="h-4 w-4 text-gray-400" />
                   Current Password
                 </Label>
@@ -136,7 +136,7 @@ export default function ChangePasswordPage() {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                <Label className="text-gray-900 dark:text-gray-100 font-semibold flex items-center gap-2 text-sm">
                   <Lock className="h-4 w-4 text-gray-400" />
                   New Password
                 </Label>
@@ -152,7 +152,7 @@ export default function ChangePasswordPage() {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                <Label className="text-gray-900 dark:text-gray-100 font-semibold flex items-center gap-2 text-sm">
                   <Lock className="h-4 w-4 text-gray-400" />
                   Confirm New Password
                 </Label>

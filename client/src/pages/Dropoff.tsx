@@ -43,12 +43,12 @@ export default function Dropoff() {
       </section>
 
       {/* Partner Locations Visual Grid */}
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-white dark:bg-gray-950">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <p className="text-sm uppercase tracking-widest text-gray-400 mb-2">Buffalo • Rochester • Syracuse</p>
-            <h2 className="text-3xl font-bold">Convenient Drop-off Locations</h2>
-            <p className="text-gray-500 mt-2">Stop by any of our partner shops near you</p>
+            <h2 className="text-3xl font-bold dark:text-gray-100">Convenient Drop-off Locations</h2>
+            <p className="text-gray-500 dark:text-gray-400 mt-2">Stop by any of our partner shops near you</p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
@@ -60,8 +60,8 @@ export default function Dropoff() {
                   <MapPin className="h-5 w-5" />
                 </div>
               </div>
-              <h3 className="font-semibold text-lg">Elite Smoke Shop</h3>
-              <p className="text-gray-500 text-sm">Rochester, NY</p>
+              <h3 className="font-semibold text-lg dark:text-gray-100">Elite Smoke Shop</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
             </div>
             <div className="group" data-testid="card-location-highend">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
@@ -71,8 +71,8 @@ export default function Dropoff() {
                   <MapPin className="h-5 w-5" />
                 </div>
               </div>
-              <h3 className="font-semibold text-lg">High End Smoke Shop</h3>
-              <p className="text-gray-500 text-sm">Rochester, NY</p>
+              <h3 className="font-semibold text-lg dark:text-gray-100">High End Smoke Shop</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
             </div>
             <div className="group" data-testid="card-location-redeye">
               <div className="relative h-48 rounded-xl overflow-hidden mb-4">
@@ -82,19 +82,19 @@ export default function Dropoff() {
                   <MapPin className="h-5 w-5" />
                 </div>
               </div>
-              <h3 className="font-semibold text-lg">Red Eye Smoke Shop</h3>
-              <p className="text-gray-500 text-sm">Rochester, NY</p>
+              <h3 className="font-semibold text-lg dark:text-gray-100">Red Eye Smoke Shop</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* Interactive Map */}
-      <section className="py-16 bg-gray-100">
+      <section className="py-16 bg-gray-100 dark:bg-gray-800">
         <div className="container mx-auto px-4">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold mb-2">Find a Bin Near You</h2>
-            <p className="text-gray-500">Tap on a pin to see shop details</p>
+            <h2 className="text-3xl font-bold mb-2 dark:text-gray-100">Find a Bin Near You</h2>
+            <p className="text-gray-500 dark:text-gray-400">Tap on a pin to see shop details</p>
           </div>
           <div className="max-w-4xl mx-auto">
             <ShopMap height="400px" />
@@ -103,53 +103,53 @@ export default function Dropoff() {
       </section>
 
       {/* What to bring - Visual cards */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-20 bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-2">What You Can Bring</h2>
-            <p className="text-gray-500">We accept these items at all locations—no appointment needed</p>
+            <h2 className="text-3xl font-bold mb-2 dark:text-gray-100">What You Can Bring</h2>
+            <p className="text-gray-500 dark:text-gray-400">We accept these items at all locations—no appointment needed</p>
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-vapes">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-vapes">
               <div className="h-40 bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
                 <span className="text-5xl">💨</span>
               </div>
               <div className="p-4 text-center">
-                <h3 className="font-semibold">Disposable Vapes</h3>
+                <h3 className="font-semibold dark:text-gray-100">Disposable Vapes</h3>
                 <p className="text-xs text-green-600 mt-1 flex items-center justify-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Accepted
                 </p>
               </div>
             </div>
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-batteries">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-batteries">
               <div className="h-40 bg-gradient-to-br from-green-100 to-teal-100 flex items-center justify-center">
                 <span className="text-5xl">🔋</span>
               </div>
               <div className="p-4 text-center">
-                <h3 className="font-semibold">Li-ion Batteries</h3>
+                <h3 className="font-semibold dark:text-gray-100">Li-ion Batteries</h3>
                 <p className="text-xs text-green-600 mt-1 flex items-center justify-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Accepted
                 </p>
               </div>
             </div>
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-electronics">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-electronics">
               <div className="h-40 bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center">
                 <span className="text-5xl">🎧</span>
               </div>
               <div className="p-4 text-center">
-                <h3 className="font-semibold">Small Electronics</h3>
+                <h3 className="font-semibold dark:text-gray-100">Small Electronics</h3>
                 <p className="text-xs text-green-600 mt-1 flex items-center justify-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Accepted
                 </p>
               </div>
             </div>
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm opacity-60" data-testid="card-item-ev">
-              <div className="h-40 bg-gray-100 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm opacity-60" data-testid="card-item-ev">
+              <div className="h-40 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                 <span className="text-5xl">🚗</span>
               </div>
               <div className="p-4 text-center">
-                <h3 className="font-semibold text-gray-500">EV Batteries</h3>
+                <h3 className="font-semibold text-gray-500 dark:text-gray-400">EV Batteries</h3>
                 <p className="text-xs text-red-500 mt-1 flex items-center justify-center gap-1">
                   <AlertTriangle className="h-3 w-3" /> Not accepted
                 </p>

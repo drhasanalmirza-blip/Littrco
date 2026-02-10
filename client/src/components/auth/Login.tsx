@@ -81,31 +81,31 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
           className="w-full h-full object-cover pixel-image"
         />
       </div>
-      <div className="absolute inset-0 bg-white/40" />
+      <div className="absolute inset-0 bg-white/40 dark:bg-gray-950/70" />
       
       <div className="relative z-10 w-full max-w-md animate-fade-in">
         {/* Back Link */}
-        <Link href="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-black mb-6 text-sm font-medium transition-colors">
+        <Link href="/" className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white mb-6 text-sm font-medium transition-colors">
           <ArrowLeft className="h-4 w-4" />
           Back to home
         </Link>
 
         {/* Card */}
-        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5">
+        <div className="littr-card overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
           {/* Header */}
-          <div className="px-8 py-8 border-b border-gray-100 bg-white/50">
+          <div className="px-8 py-8 border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 littr-gradient-green rounded-xl flex items-center justify-center shadow-lg shadow-green-500/20">
                 <Recycle className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-black tracking-tight">LITTR</span>
+              <span className="text-xl font-bold text-black dark:text-white tracking-tight">LITTR</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-black mb-1 tracking-tight">{title}</h1>
+            <h1 className="text-3xl font-extrabold text-black dark:text-white mb-1 tracking-tight">{title}</h1>
             {subtitle && <p className="text-gray-500 text-sm font-medium">{subtitle}</p>}
           </div>
 
           {/* Content */}
-          <div className="px-8 py-8 bg-white">
+          <div className="px-8 py-8 bg-white dark:bg-gray-900">
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
                 <span className="text-red-500 mt-0.5">⚠</span>
@@ -115,7 +115,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
             
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
-                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                <Label className="text-gray-900 dark:text-gray-100 font-semibold flex items-center gap-2 text-sm">
                   <Mail className="h-4 w-4 text-gray-400" />
                   Email Address
                 </Label>
@@ -131,7 +131,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
               </div>
               
               <div className="space-y-2">
-                <Label className="text-gray-900 font-semibold flex items-center gap-2 text-sm">
+                <Label className="text-gray-900 dark:text-gray-100 font-semibold flex items-center gap-2 text-sm">
                   <Lock className="h-4 w-4 text-gray-400" />
                   Password
                 </Label>
@@ -168,7 +168,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
 
             {/* Links */}
             {isCustomer && (
-              <div className="mt-8 space-y-4 border-t border-gray-100 pt-6">
+              <div className="mt-8 space-y-4 border-t border-gray-100 dark:border-gray-800 pt-6">
                 <p className="text-center text-sm text-gray-500 font-medium">
                   Don't have an account?{' '}
                   <Link href="/app/register" className="text-green-600 font-bold hover:text-green-700 hover:underline transition-colors">

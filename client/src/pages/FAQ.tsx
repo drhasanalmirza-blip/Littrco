@@ -2,9 +2,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 export default function FAQ() {
   return (
-    <div className="min-h-screen bg-white py-20">
+    <div className="min-h-screen bg-white dark:bg-gray-950 py-20">
       <div className="container mx-auto px-4 max-w-3xl">
-        <h1 className="text-4xl font-bold mb-12 text-center">Frequently Asked Questions</h1>
+        <h1 className="text-4xl font-bold mb-12 text-center dark:text-gray-100">Frequently Asked Questions</h1>
 
         <div className="space-y-12">
           {/* Consumer Section */}

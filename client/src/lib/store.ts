@@ -37,17 +37,21 @@ export interface Volunteer {
 }
 
 type Role = 'admin' | 'staff' | 'partner' | 'customer' | null;
+type Theme = 'light' | 'dark';
 
 interface StoreState {
   user: User | null;
   sessionId: string | null;
   role: Role;
+  theme: Theme;
   
   setAuth: (user: User, sessionId: string) => void;
   clearAuth: () => void;
   
   login: (role: Role) => void;
   logout: () => void;
+  toggleTheme: () => void;
+  setTheme: (theme: Theme) => void;
 
   contacts: Contact[];
   binRequests: BinRequest[];
@@ -64,6 +68,7 @@ export const useStore = create<StoreState>()(
       user: null,
       sessionId: null,
       role: null,
+      theme: 'light' as Theme,
       
       setAuth: (user, sessionId) => {
         const role = user.role === 'STAFF' ? 'staff' : 
@@ -76,6 +81,16 @@ export const useStore = create<StoreState>()(
       
       login: (role) => set({ role }),
       logout: () => set({ user: null, sessionId: null, role: null }),
+      
+      toggleTheme: () => set((state) => {
+        const next = state.theme === 'light' ? 'dark' : 'light';
+        document.documentElement.classList.toggle('dark', next === 'dark');
+        return { theme: next };
+      }),
+      setTheme: (theme) => {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        return set({ theme });
+      },
 
       contacts: [],
       binRequests: [],

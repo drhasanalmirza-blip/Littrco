@@ -5,6 +5,7 @@ import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { useStore } from "@/lib/store";
 import Home from "@/pages/Home";
 import Business from "@/pages/Business";
 import Dropoff from "@/pages/Dropoff";
@@ -98,9 +99,18 @@ function Router() {
   );
 }
 
+function ThemeInitializer() {
+  const { theme } = useStore();
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <ThemeInitializer />
       <Router />
       <Toaster />
     </QueryClientProvider>

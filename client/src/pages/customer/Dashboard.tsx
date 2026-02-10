@@ -46,7 +46,7 @@ export default function CustomerDashboard() {
 
   if (!user || role !== 'customer') {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col items-center justify-center p-6">
         <div className="text-center max-w-sm">
           <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Recycle className="h-8 w-8 text-white" />
@@ -63,7 +63,7 @@ export default function CustomerDashboard() {
           <Button 
             variant="ghost"
             onClick={() => setLocation('/app/register')}
-            className="w-full mt-3 text-gray-500 hover:text-black hover:bg-gray-50"
+            className="w-full mt-3 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
             data-testid="button-register"
           >
             Create Account
@@ -93,7 +93,7 @@ export default function CustomerDashboard() {
             variant="ghost" 
             size="icon"
             onClick={() => setLocation('/app/change-password')}
-            className="text-gray-400 hover:text-black hover:bg-gray-100"
+            className="text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
             data-testid="button-settings"
           >
             <Settings className="h-5 w-5" />
@@ -164,8 +164,8 @@ export default function CustomerDashboard() {
             className="littr-card-solid p-3 flex items-center gap-3 active:scale-[0.97] transition-all"
             data-testid="button-manual-claim"
           >
-            <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center">
-              <Gift className="h-4 w-4 text-gray-600" />
+            <div className="w-9 h-9 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+              <Gift className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             </div>
             <div className="text-left">
               <p className="font-semibold text-xs text-black">Enter Code</p>
@@ -177,8 +177,8 @@ export default function CustomerDashboard() {
             className="littr-card-solid p-3 flex items-center gap-3 active:scale-[0.97] transition-all"
             data-testid="button-find-bin"
           >
-            <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center">
-              <MapPin className="h-4 w-4 text-gray-600" />
+            <div className="w-9 h-9 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+              <MapPin className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             </div>
             <div className="text-left">
               <p className="font-semibold text-xs text-black">Find Bin</p>

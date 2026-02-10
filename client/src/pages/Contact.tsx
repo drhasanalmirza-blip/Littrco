@@ -80,11 +80,11 @@ export default function Contact() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-20">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-20">
       <div className="container mx-auto px-4 max-w-2xl">
-        <h1 className="text-4xl font-bold mb-8 text-center">Get in Touch</h1>
+        <h1 className="text-4xl font-bold mb-8 text-center dark:text-gray-100">Get in Touch</h1>
         
-        <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+        <div className="bg-white dark:bg-gray-900 p-8 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
           <Tabs defaultValue="general">
             <TabsList className="grid w-full grid-cols-2 mb-8">
               <TabsTrigger value="general">General Inquiry</TabsTrigger>
