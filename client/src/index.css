@@ -235,12 +235,21 @@
 }
 
 .littr-btn-primary {
-  background: var(--littr-black);
-  color: var(--littr-white);
+  background: #000000;
+  color: #ffffff;
+}
+
+.dark .littr-btn-primary {
+  background: #ffffff;
+  color: #000000;
 }
 
 .littr-btn-primary:hover {
-  background: var(--littr-gray-800);
+  background: #262626;
+}
+
+.dark .littr-btn-primary:hover {
+  background: #e5e5e5;
 }
 
 .littr-btn-green {
@@ -273,6 +282,12 @@
   padding: 0 1rem;
   color: var(--littr-black);
   transition: all 0.2s;
+}
+
+.dark .littr-input {
+  background: #1a1a1a;
+  border-color: #333333;
+  color: #f0f0f0;
 }
 
 .littr-input::placeholder {

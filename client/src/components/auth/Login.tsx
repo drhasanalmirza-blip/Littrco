@@ -107,7 +107,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
           {/* Content */}
           <div className="px-8 py-8 bg-white dark:bg-gray-900">
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-950 border border-red-100 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-sm flex items-start gap-3 animate-slide-up">
                 <span className="text-red-500 mt-0.5">⚠</span>
                 <span className="font-medium">{error}</span>
               </div>
@@ -154,7 +154,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <span className="h-4 w-4 border-2 border-current/20 border-t-current rounded-full animate-spin" />
                     Signing in...
                   </span>
                 ) : (

@@ -51,7 +51,7 @@ export default function CustomerDashboard() {
           <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Recycle className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-black mb-1 tracking-tight">LITTR</h1>
+          <h1 className="text-3xl font-bold text-black dark:text-white mb-1 tracking-tight">LITTR</h1>
           <p className="text-gray-400 mb-8 text-sm">Recycling Made Rewarding</p>
           <Button 
             onClick={() => setLocation('/app/login')}
@@ -85,7 +85,7 @@ export default function CustomerDashboard() {
               <Recycle className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-black text-sm tracking-tight">LITTR</h1>
+              <h1 className="font-bold text-black dark:text-white text-sm tracking-tight">LITTR</h1>
               <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{user?.email}</p>
             </div>
           </div>
@@ -131,30 +131,30 @@ export default function CustomerDashboard() {
             className="littr-card-solid p-4 text-center active:scale-[0.97] transition-all"
             data-testid="button-scan-qr"
           >
-            <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 bg-green-50 dark:bg-green-950 rounded-xl flex items-center justify-center mx-auto mb-2">
               <QrCode className="h-5 w-5 text-green-600" />
             </div>
-            <p className="font-semibold text-xs text-black">Scan</p>
+            <p className="font-semibold text-xs text-black dark:text-white">Scan</p>
           </button>
           <button 
             onClick={() => setLocation('/app/store')}
             className="littr-card-solid p-4 text-center active:scale-[0.97] transition-all"
             data-testid="button-store"
           >
-            <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 bg-green-50 dark:bg-green-950 rounded-xl flex items-center justify-center mx-auto mb-2">
               <ShoppingBag className="h-5 w-5 text-green-600" />
             </div>
-            <p className="font-semibold text-xs text-black">Store</p>
+            <p className="font-semibold text-xs text-black dark:text-white">Store</p>
           </button>
           <button 
             onClick={() => setLocation('/app/bonus')}
             className="littr-card-solid p-4 text-center active:scale-[0.97] transition-all"
             data-testid="button-bonus"
           >
-            <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 bg-green-50 dark:bg-green-950 rounded-xl flex items-center justify-center mx-auto mb-2">
               <Star className="h-5 w-5 text-green-600" />
             </div>
-            <p className="font-semibold text-xs text-black">Bonus</p>
+            <p className="font-semibold text-xs text-black dark:text-white">Bonus</p>
           </button>
         </div>
 
@@ -168,7 +168,7 @@ export default function CustomerDashboard() {
               <Gift className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             </div>
             <div className="text-left">
-              <p className="font-semibold text-xs text-black">Enter Code</p>
+              <p className="font-semibold text-xs text-black dark:text-white">Enter Code</p>
               <p className="text-[10px] text-gray-400">Manual claim</p>
             </div>
           </button>
@@ -181,14 +181,14 @@ export default function CustomerDashboard() {
               <MapPin className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             </div>
             <div className="text-left">
-              <p className="font-semibold text-xs text-black">Find Bin</p>
+              <p className="font-semibold text-xs text-black dark:text-white">Find Bin</p>
               <p className="text-[10px] text-gray-400">Near you</p>
             </div>
           </button>
         </div>
 
         <div>
-          <h2 className="text-black font-semibold text-sm mb-3">Recent Activity</h2>
+          <h2 className="text-black dark:text-white font-semibold text-sm mb-3">Recent Activity</h2>
           <div className="littr-list">
             {transactions.slice(0, 5).map((tx: any) => (
               <div 
@@ -196,7 +196,7 @@ export default function CustomerDashboard() {
                 className="littr-list-item"
                 data-testid={`transaction-${tx.id}`}
               >
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${tx.amount > 0 ? 'bg-green-50' : 'bg-gray-100'}`}>
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${tx.amount > 0 ? 'bg-green-50 dark:bg-green-950' : 'bg-gray-100 dark:bg-gray-800'}`}>
                   {tx.amount > 0 ? (
                     <Battery className="h-4 w-4 text-green-600" />
                   ) : (
@@ -204,7 +204,7 @@ export default function CustomerDashboard() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-black truncate">{tx.description || tx.type}</p>
+                  <p className="text-sm font-medium text-black dark:text-white truncate">{tx.description || tx.type}</p>
                   <p className="text-xs text-gray-400">
                     {new Date(tx.createdAt).toLocaleDateString()}
                   </p>
@@ -216,7 +216,7 @@ export default function CustomerDashboard() {
             ))}
             {transactions.length === 0 && (
               <div className="p-8 text-center">
-                <Battery className="h-10 w-10 mx-auto text-gray-300 mb-3" />
+                <Battery className="h-10 w-10 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
                 <p className="text-gray-500 text-sm">No activity yet</p>
                 <p className="text-gray-400 text-xs mt-1">Recycle to earn batteries!</p>
               </div>
@@ -226,7 +226,7 @@ export default function CustomerDashboard() {
 
         {redemptions.length > 0 && (
           <div>
-            <h2 className="text-black font-semibold text-sm mb-3">My Rewards</h2>
+            <h2 className="text-black dark:text-white font-semibold text-sm mb-3">My Rewards</h2>
             <div className="littr-list">
               {redemptions.slice(0, 3).map((r: any) => (
                 <div 
@@ -234,11 +234,11 @@ export default function CustomerDashboard() {
                   className="littr-list-item"
                   data-testid={`redemption-${r.id}`}
                 >
-                  <div className="w-9 h-9 rounded-full bg-green-50 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-full bg-green-50 dark:bg-green-950 flex items-center justify-center">
                     <Gift className="h-4 w-4 text-green-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-black">Redemption #{r.id}</p>
+                    <p className="text-sm font-medium text-black dark:text-white">Redemption #{r.id}</p>
                     <p className="text-xs text-gray-400">{r.pointsSpent} batteries</p>
                   </div>
                   <span className={`littr-badge ${

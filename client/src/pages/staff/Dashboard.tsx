@@ -289,7 +289,7 @@ export default function StaffDashboard() {
     return (
       <div className="littr-dashboard flex items-center justify-center">
         <div className="littr-card-solid p-8 rounded-2xl text-center">
-          <p className="text-xl mb-4 text-black">Access Denied</p>
+          <p className="text-xl mb-4 text-black dark:text-white">Access Denied</p>
           <Button onClick={() => setLocation('/staff/login')} className="littr-btn littr-btn-primary">Staff Login</Button>
         </div>
       </div>
@@ -318,11 +318,11 @@ export default function StaffDashboard() {
             <Recycle className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-black">Staff Dashboard</h1>
+            <h1 className="font-bold text-black dark:text-white">Staff Dashboard</h1>
             <p className="text-xs text-gray-400">{user?.email}</p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-400 hover:text-black hover:bg-gray-50" data-testid="button-logout">
+        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800" data-testid="button-logout">
           <LogOut className="h-4 w-4 mr-2" />
           Logout
         </Button>
@@ -363,7 +363,7 @@ export default function StaffDashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className={stats.activeFireAlerts > 0 ? "border-red-500 !bg-red-50" : ""}>
+          <Card className={stats.activeFireAlerts > 0 ? "border-red-500 !bg-red-50 dark:!bg-red-950" : ""}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
                 <Flame className={`h-8 w-8 ${stats.activeFireAlerts > 0 ? "text-red-500 animate-pulse" : "text-gray-500"}`} />
@@ -524,7 +524,7 @@ export default function StaffDashboard() {
           <TabsContent value="bins">
             <div className="space-y-4">
               {fireAlerts.length > 0 && (
-                <Card className="border-red-500 !bg-red-50">
+                <Card className="border-red-500 !bg-red-50 dark:!bg-red-950">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-red-500">
                       <Flame className="h-5 w-5 animate-pulse" />
@@ -540,10 +540,10 @@ export default function StaffDashboard() {
                         <div 
                           key={alert.id} 
                           className={`p-4 rounded-lg border ${
-                            alert.severity === 'CRITICAL' ? 'bg-red-50 border-red-500 animate-pulse' :
-                            alert.severity === 'HIGH' ? 'bg-red-50 border-red-400' :
-                            alert.severity === 'MEDIUM' ? 'bg-orange-50 border-orange-400' :
-                            'bg-yellow-50 border-yellow-400'
+                            alert.severity === 'CRITICAL' ? 'bg-red-50 dark:bg-red-950 border-red-500 animate-pulse' :
+                            alert.severity === 'HIGH' ? 'bg-red-50 dark:bg-red-950 border-red-400' :
+                            alert.severity === 'MEDIUM' ? 'bg-orange-50 dark:bg-orange-950 border-orange-400' :
+                            'bg-yellow-50 dark:bg-yellow-950 border-yellow-400'
                           }`}
                           data-testid={`fire-alert-${alert.id}`}
                         >
@@ -572,8 +572,8 @@ export default function StaffDashboard() {
                                   >
                                     {alert.severity}
                                   </Badge>
-                                  <span className="font-semibold text-black">{alert.bin?.name || `Bin #${alert.binId}`}</span>
-                                  <span className="text-sm text-gray-500">at {alert.shop?.name || 'Unknown Shop'}</span>
+                                  <span className="font-semibold text-black dark:text-white">{alert.bin?.name || `Bin #${alert.binId}`}</span>
+                                  <span className="text-sm text-gray-500 dark:text-gray-400">at {alert.shop?.name || 'Unknown Shop'}</span>
                                 </div>
                                 <div className="text-sm text-gray-400 mt-1">
                                   {alert.temperature !== null && (
@@ -646,7 +646,7 @@ export default function StaffDashboard() {
                     </TableHeader>
                     <TableBody>
                       {bins.map((bin: any) => (
-                        <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`} className="cursor-pointer hover:bg-gray-50">
+                        <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
                           <TableCell className="font-mono text-xs">{bin.deviceId || bin.id}</TableCell>
                           <TableCell className="font-medium">{bin.name}</TableCell>
                           <TableCell>{bin.shop?.name || 'Unknown'}</TableCell>
@@ -666,7 +666,7 @@ export default function StaffDashboard() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                                 <div 
                                   className={`h-full rounded-full ${
                                     bin.fillLevel >= 80 ? 'bg-red-500' :
@@ -772,12 +772,12 @@ export default function StaffDashboard() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-black/5">
-                        <Activity className="h-5 w-5 text-black" />
+                      <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
+                        <Activity className="h-5 w-5 text-black dark:text-white" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold" data-testid="activity-log-count">{activityStats.totalClaims}</p>
-                        <p className="text-sm text-gray-500">Total Claims</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Total Claims</p>
                       </div>
                     </div>
                   </CardContent>
@@ -785,12 +785,12 @@ export default function StaffDashboard() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-black/5">
-                        <TrendingUp className="h-5 w-5 text-black" />
+                      <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
+                        <TrendingUp className="h-5 w-5 text-black dark:text-white" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{activityStats.totalPoints.toLocaleString()}</p>
-                        <p className="text-sm text-gray-500">Points Redeemed</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Points Redeemed</p>
                       </div>
                     </div>
                   </CardContent>
@@ -798,12 +798,12 @@ export default function StaffDashboard() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-black/5">
-                        <Users className="h-5 w-5 text-black" />
+                      <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
+                        <Users className="h-5 w-5 text-black dark:text-white" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{activityStats.uniqueUsers}</p>
-                        <p className="text-sm text-gray-500">Unique Users</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Unique Users</p>
                       </div>
                     </div>
                   </CardContent>
@@ -811,22 +811,22 @@ export default function StaffDashboard() {
               </div>
 
               {activityStats.flaggedUsers.length > 0 && (
-                <Card className="border-amber-200 bg-amber-50/50">
+                <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/50">
                   <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-amber-800 text-base">
+                    <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200 text-base">
                       <ShieldAlert className="h-5 w-5" />
                       High-Activity Users
                     </CardTitle>
-                    <CardDescription className="text-amber-600">Users with 10+ claims or 100+ total points — worth reviewing</CardDescription>
+                    <CardDescription className="text-amber-600 dark:text-amber-400">Users with 10+ claims or 100+ total points — worth reviewing</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
                       {activityStats.flaggedUsers.map((u: any) => (
-                        <div key={u.email} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white border border-amber-100">
+                        <div key={u.email} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white dark:bg-gray-900 border border-amber-100 dark:border-amber-800">
                           <span className="font-medium text-sm">{u.email}</span>
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
                             <span>{u.count} claims</span>
-                            <span className="font-semibold text-amber-700">{u.points} pts</span>
+                            <span className="font-semibold text-amber-700 dark:text-amber-300">{u.points} pts</span>
                             <span className="text-xs text-gray-400">last: {new Date(u.lastClaim).toLocaleDateString()}</span>
                           </div>
                         </div>
@@ -873,15 +873,15 @@ export default function StaffDashboard() {
                         <TableRow key={`${entry.source}-${entry.id}`}>
                           <TableCell className="font-medium text-sm">{entry.userEmail}</TableCell>
                           <TableCell className="text-sm">{entry.shopName}</TableCell>
-                          <TableCell className="text-sm text-gray-500">{entry.deviceName}</TableCell>
+                          <TableCell className="text-sm text-gray-500 dark:text-gray-400">{entry.deviceName}</TableCell>
                           <TableCell className="text-right font-semibold">+{entry.pointsClaimed}</TableCell>
-                          <TableCell className="text-right text-gray-500">{entry.dropCount}</TableCell>
+                          <TableCell className="text-right text-gray-500 dark:text-gray-400">{entry.dropCount}</TableCell>
                           <TableCell>
                             <Badge variant={entry.source === 'v2' ? 'default' : 'secondary'} className={entry.source === 'v2' ? 'bg-black text-white text-xs' : 'text-xs'}>
                               {entry.source.toUpperCase()}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm text-gray-500">{new Date(entry.claimedAt).toLocaleString()}</TableCell>
+                          <TableCell className="text-sm text-gray-500 dark:text-gray-400">{new Date(entry.claimedAt).toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                       {filteredActivity.length === 0 && (
@@ -895,7 +895,7 @@ export default function StaffDashboard() {
                   </Table>
                   {filteredActivity.length > activityLimit && (
                     <div className="mt-4 text-center">
-                      <p className="text-sm text-gray-500 mb-2">Showing {activityLimit} of {filteredActivity.length} claims</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Showing {activityLimit} of {filteredActivity.length} claims</p>
                       <Button variant="outline" size="sm" onClick={() => setActivityLimit(prev => prev + 50)}>
                         Load More
                       </Button>
@@ -957,7 +957,7 @@ export default function StaffDashboard() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center py-12">
-                    <Mail className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+                    <Mail className="h-12 w-12 text-gray-500 dark:text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">No Mailbox Found</h3>
                     <p className="text-gray-400">You don't have an @littr.co email address yet. Contact an admin to create one for you.</p>
                   </div>
@@ -1135,31 +1135,31 @@ function BinDetailDialog({ bin, shops }: { bin: any; shops: any[] }) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-gray-500 text-xs">Bin ID</Label>
+                <Label className="text-gray-500 dark:text-gray-400 text-xs">Bin ID</Label>
                 <p className="font-mono">{bin.id}</p>
               </div>
               <div>
-                <Label className="text-gray-500 text-xs">Device ID</Label>
+                <Label className="text-gray-500 dark:text-gray-400 text-xs">Device ID</Label>
                 <p className="font-mono">{formatNullable(bin.deviceId)}</p>
               </div>
               <div>
-                <Label className="text-gray-500 text-xs">Shop</Label>
+                <Label className="text-gray-500 dark:text-gray-400 text-xs">Shop</Label>
                 <p>{bin.shop?.name || 'Unknown'}</p>
               </div>
               <div>
-                <Label className="text-gray-500 text-xs">Bin Type</Label>
+                <Label className="text-gray-500 dark:text-gray-400 text-xs">Bin Type</Label>
                 <p>{formatNullable(bin.binType)}</p>
               </div>
             </div>
 
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
               <h4 className="font-medium mb-3 flex items-center gap-2">
                 <Thermometer className="h-4 w-4" />
                 Sensor Data
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-gray-500 text-xs">Status</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">Status</Label>
                   <div>
                     <Badge 
                       variant={
@@ -1173,21 +1173,21 @@ function BinDetailDialog({ bin, shops }: { bin: any; shops: any[] }) {
                   </div>
                 </div>
                 <div>
-                  <Label className="text-gray-500 text-xs">Fill Level</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">Fill Level</Label>
                   <p>{formatValue(bin.fillLevel, '%')}</p>
                 </div>
                 <div>
-                  <Label className="text-gray-500 text-xs">Temperature (DS18B20)</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">Temperature (DS18B20)</Label>
                   <p className={bin.lastTemperature >= 60 ? 'text-red-500 font-bold' : ''}>
                     {formatValue(bin.lastTemperature !== null && bin.lastTemperature !== undefined ? bin.lastTemperature?.toFixed(1) : null, '°C')}
                   </p>
                 </div>
                 <div>
-                  <Label className="text-gray-500 text-xs">VOC Analog (MQ135)</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">VOC Analog (MQ135)</Label>
                   <p>{formatValue(bin.lastVocAnalog)}</p>
                 </div>
                 <div>
-                  <Label className="text-gray-500 text-xs">VOC Digital Alert</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">VOC Digital Alert</Label>
                   <p className={bin.lastVocDigital ? 'text-red-500 font-bold' : ''}>
                     {bin.lastVocDigital === null || bin.lastVocDigital === undefined ? (
                       <span className="text-orange-600 flex items-center gap-1"><Phone className="h-3 w-3" /> CONTACT SUPPORT</span>
@@ -1195,31 +1195,31 @@ function BinDetailDialog({ bin, shops }: { bin: any; shops: any[] }) {
                   </p>
                 </div>
                 <div>
-                  <Label className="text-gray-500 text-xs">Vape Count</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">Vape Count</Label>
                   <p>{formatValue(bin.vapeCount)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
               <h4 className="font-medium mb-3">Device Info</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-gray-500 text-xs">Device Status</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">Device Status</Label>
                   <p>{bin.device?.status || 'N/A'}</p>
                 </div>
                 <div>
-                  <Label className="text-gray-500 text-xs">Last Seen</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">Last Seen</Label>
                   <p>{bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : formatValue(null)}</p>
                 </div>
                 <div>
-                  <Label className="text-gray-500 text-xs">Created</Label>
+                  <Label className="text-gray-500 dark:text-gray-400 text-xs">Created</Label>
                   <p>{bin.createdAt ? new Date(bin.createdAt).toLocaleDateString() : 'N/A'}</p>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-gray-200 pt-4 flex justify-between">
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-between">
               <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm" data-testid={`delete-bin-${bin.id}`}>
@@ -1293,19 +1293,19 @@ function CreateDeviceDialog({ shops }: { shops: any[] }) {
         </DialogHeader>
         {deviceCredentials ? (
           <div className="space-y-4">
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm font-medium text-yellow-800 mb-2">Save these credentials now!</p>
-              <p className="text-xs text-yellow-700 mb-3">They will not be shown again. Both values are required for the API.</p>
+            <div className="p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Save these credentials now!</p>
+              <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-3">They will not be shown again. Both values are required for the API.</p>
               
               <div className="mb-3">
-                <p className="text-xs font-medium text-yellow-800 mb-1">Device ID (X-Device-Id):</p>
+                <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200 mb-1">Device ID (X-Device-Id):</p>
                 <code className="block p-2 bg-black text-green-600 rounded text-sm font-mono">
                   {deviceCredentials.deviceId}
                 </code>
               </div>
               
               <div>
-                <p className="text-xs font-medium text-yellow-800 mb-1">Device Key (X-Device-Key):</p>
+                <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200 mb-1">Device Key (X-Device-Key):</p>
                 <code className="block p-2 bg-black text-green-600 rounded text-xs break-all font-mono">
                   {deviceCredentials.deviceKey}
                 </code>
@@ -1546,7 +1546,7 @@ If you have any concerns, please contact us immediately.`,
       {templates.map((template, i) => (
         <div 
           key={i}
-          className="p-4 rounded-lg border border-gray-200 hover:border-gray-500 transition-colors cursor-pointer"
+          className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-500 dark:hover:border-gray-400 transition-colors cursor-pointer"
           onClick={() => copyToClipboard(template)}
           data-testid={`template-${i}`}
         >
@@ -1557,10 +1557,10 @@ If you have any concerns, please contact us immediately.`,
                 <CheckCircle className="h-3 w-3 mr-1" /> Copied!
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-gray-500">Click to copy</Badge>
+              <Badge variant="outline" className="text-gray-500 dark:text-gray-400">Click to copy</Badge>
             )}
           </div>
-          <p className="text-xs text-gray-500 truncate">{template.subject}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{template.subject}</p>
         </div>
       ))}
     </div>
