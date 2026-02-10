@@ -111,46 +111,46 @@ export default function Dropoff() {
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-vapes">
-              <div className="h-40 bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700" data-testid="card-item-vapes">
+              <div className="h-40 bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-900 dark:to-blue-900 flex items-center justify-center">
                 <span className="text-5xl">💨</span>
               </div>
               <div className="p-4 text-center">
-                <h3 className="font-semibold dark:text-gray-100">Disposable Vapes</h3>
-                <p className="text-xs text-green-600 mt-1 flex items-center justify-center gap-1">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">Disposable Vapes</h3>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center justify-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Accepted
                 </p>
               </div>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-batteries">
-              <div className="h-40 bg-gradient-to-br from-green-100 to-teal-100 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700" data-testid="card-item-batteries">
+              <div className="h-40 bg-gradient-to-br from-green-100 to-teal-100 dark:from-green-900 dark:to-teal-900 flex items-center justify-center">
                 <span className="text-5xl">🔋</span>
               </div>
               <div className="p-4 text-center">
-                <h3 className="font-semibold dark:text-gray-100">Li-ion Batteries</h3>
-                <p className="text-xs text-green-600 mt-1 flex items-center justify-center gap-1">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">Li-ion Batteries</h3>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center justify-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Accepted
                 </p>
               </div>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm" data-testid="card-item-electronics">
-              <div className="h-40 bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700" data-testid="card-item-electronics">
+              <div className="h-40 bg-gradient-to-br from-orange-100 to-yellow-100 dark:from-orange-900 dark:to-yellow-900 flex items-center justify-center">
                 <span className="text-5xl">🎧</span>
               </div>
               <div className="p-4 text-center">
-                <h3 className="font-semibold dark:text-gray-100">Small Electronics</h3>
-                <p className="text-xs text-green-600 mt-1 flex items-center justify-center gap-1">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">Small Electronics</h3>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center justify-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Accepted
                 </p>
               </div>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm opacity-60" data-testid="card-item-ev">
-              <div className="h-40 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm opacity-60 border border-gray-100 dark:border-gray-700" data-testid="card-item-ev">
+              <div className="h-40 bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                 <span className="text-5xl">🚗</span>
               </div>
               <div className="p-4 text-center">
                 <h3 className="font-semibold text-gray-500 dark:text-gray-400">EV Batteries</h3>
-                <p className="text-xs text-red-500 mt-1 flex items-center justify-center gap-1">
+                <p className="text-xs text-red-500 dark:text-red-400 mt-1 flex items-center justify-center gap-1">
                   <AlertTriangle className="h-3 w-3" /> Not accepted
                 </p>
               </div>

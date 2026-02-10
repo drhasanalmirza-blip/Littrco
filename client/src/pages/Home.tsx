@@ -116,7 +116,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">How it works</p>
-            <h2 className="text-4xl md:text-5xl font-bold dark:text-gray-100">Three Easy Steps</h2>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-gray-100">Three Easy Steps</h2>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -124,25 +124,25 @@ export default function Home() {
               <div className="relative h-64 mb-6 rounded-2xl overflow-hidden">
                 <img src={vapesImage} alt="Collect your dead vapes" className="w-full h-full object-cover" loading="lazy" style={{ imageRendering: 'pixelated' }} />
               </div>
-              <div className="text-5xl font-bold text-gray-200 mb-2">01</div>
-              <h3 className="text-xl font-semibold mb-2">Collect</h3>
-              <p className="text-gray-500">Gather your dead disposable vapes and small lithium batteries.</p>
+              <div className="text-5xl font-bold text-gray-200 dark:text-gray-800 mb-2">01</div>
+              <h3 className="text-xl font-semibold mb-2 dark:text-gray-100">Collect</h3>
+              <p className="text-gray-500 dark:text-gray-400">Gather your dead disposable vapes and small lithium batteries.</p>
             </div>
             <div className="text-center">
               <div className="relative h-64 mb-6 rounded-2xl overflow-hidden">
                 <img src={eliteShopImage} alt="Visit a partner location" className="w-full h-full object-cover" loading="lazy" style={{ imageRendering: 'pixelated' }} />
               </div>
-              <div className="text-5xl font-bold text-gray-200 mb-2">02</div>
-              <h3 className="text-xl font-semibold mb-2">Drop</h3>
-              <p className="text-gray-500">Stop by any partner shop and drop them in the LITTR bin.</p>
+              <div className="text-5xl font-bold text-gray-200 dark:text-gray-800 mb-2">02</div>
+              <h3 className="text-xl font-semibold mb-2 dark:text-gray-100">Drop</h3>
+              <p className="text-gray-500 dark:text-gray-400">Stop by any partner shop and drop them in the LITTR bin.</p>
             </div>
             <div className="text-center">
               <div className="relative h-64 mb-6 rounded-2xl overflow-hidden">
                 <img src={pickupVanImage} alt="We handle the rest" className="w-full h-full object-cover" loading="lazy" style={{ imageRendering: 'pixelated' }} />
               </div>
-              <div className="text-5xl font-bold text-gray-200 mb-2">03</div>
-              <h3 className="text-xl font-semibold mb-2">Done</h3>
-              <p className="text-gray-500">We pick up and recycle everything safely. That's it.</p>
+              <div className="text-5xl font-bold text-gray-200 dark:text-gray-800 mb-2">03</div>
+              <h3 className="text-xl font-semibold mb-2 dark:text-gray-100">Done</h3>
+              <p className="text-gray-500 dark:text-gray-400">We pick up and recycle everything safely. That's it.</p>
             </div>
           </div>
         </div>
@@ -154,7 +154,7 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/70" />
         <div className="container mx-auto px-4 relative z-10 text-center text-white">
           <p className="text-sm uppercase tracking-widest text-gray-400 mb-6">The problem we're solving</p>
-          <h2 className="text-4xl md:text-6xl font-bold mb-6 max-w-3xl mx-auto leading-tight">
+          <h2 className="text-4xl md:text-6xl font-bold mb-6 max-w-3xl mx-auto leading-tight text-white">
             Vape batteries cause <span className="text-red-400">300+ landfill fires</span> every year.
           </h2>
           <p className="text-xl text-gray-400 max-w-xl mx-auto">
@@ -168,37 +168,37 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">What we accept</p>
-            <h2 className="text-4xl font-bold dark:text-gray-100">Drop These Off</h2>
+            <h2 className="text-4xl font-bold text-gray-900 dark:text-gray-100">Drop These Off</h2>
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer border border-gray-100 dark:border-gray-700">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={vapesImage} alt="Disposable vapes" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
               </div>
-              <h3 className="font-semibold">Disposable Vapes</h3>
-              <p className="text-xs text-green-600 mt-1">Accepted</p>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">Disposable Vapes</h3>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-1">Accepted</p>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer border border-gray-100 dark:border-gray-700">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={batteriesImage} alt="Small batteries" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
               </div>
-              <h3 className="font-semibold">Small Batteries</h3>
-              <p className="text-xs text-green-600 mt-1">Accepted</p>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">Small Batteries</h3>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-1">Accepted</p>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer border border-gray-100 dark:border-gray-700">
               <div className="h-32 mb-4 rounded-xl overflow-hidden">
                 <img src={phoneBatteryImage} alt="Phone batteries" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
               </div>
-              <h3 className="font-semibold">Phone Batteries</h3>
-              <p className="text-xs text-green-600 mt-1">Accepted</p>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">Phone Batteries</h3>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-1">Accepted</p>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center shadow-lg opacity-60">
-              <div className="h-32 mb-4 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center shadow-lg opacity-60 border border-gray-100 dark:border-gray-700">
+              <div className="h-32 mb-4 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                 <span className="text-4xl">🚗</span>
               </div>
-              <h3 className="font-semibold text-gray-500">EV Batteries</h3>
-              <p className="text-xs text-red-500 mt-1">Not accepted</p>
+              <h3 className="font-semibold text-gray-500 dark:text-gray-400">EV Batteries</h3>
+              <p className="text-xs text-red-500 dark:text-red-400 mt-1">Not accepted</p>
             </div>
           </div>
         </div>

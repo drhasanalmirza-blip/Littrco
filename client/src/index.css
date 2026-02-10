@@ -137,6 +137,10 @@
   color: transparent;
 }
 
+.dark .text-stroke {
+  -webkit-text-stroke: 1px white;
+}
+
 .littr-dashboard {
   background: var(--littr-white);
   min-height: 100vh;
