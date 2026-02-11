@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin, Loader2 } from "lucide-react";
 
@@ -29,9 +28,10 @@ const shopIcon = L.divIcon({
 });
 
 export function ShopMap({ height = "400px" }: ShopMapProps) {
-  const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerGroup = useRef<L.LayerGroup | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
   const { data: shops = [], isLoading } = useQuery<ShopLocation[]>({
@@ -43,31 +43,41 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
     },
   });
 
-  useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
+  const initMap = useCallback((node: HTMLDivElement | null) => {
+    if (!node || mapRef.current) return;
+    containerRef.current = node;
+    console.log("[ShopMap] Initializing map on node", node.offsetWidth, "x", node.offsetHeight);
 
     try {
-      mapRef.current = L.map(mapContainer.current, {
+      const map = L.map(node, {
         center: [43.0, -77.6],
         zoom: 10,
         scrollWheelZoom: true,
       });
 
-      markerGroup.current = L.layerGroup().addTo(mapRef.current);
+      markerGroup.current = L.layerGroup().addTo(map);
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
-      }).addTo(mapRef.current);
+      }).addTo(map);
+
+      mapRef.current = map;
+      console.log("[ShopMap] Map created successfully, tile layer added");
 
       setTimeout(() => {
-        mapRef.current?.invalidateSize();
-      }, 100);
+        map.invalidateSize();
+        console.log("[ShopMap] invalidateSize called, container:", node.offsetWidth, "x", node.offsetHeight);
+      }, 200);
+
+      setMapReady(true);
     } catch (err) {
       setMapError("Failed to initialize map");
       console.error("Map init error:", err);
     }
+  }, []);
 
+  useEffect(() => {
     return () => {
       if (mapRef.current) {
         mapRef.current.remove();
@@ -78,7 +88,7 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || !markerGroup.current) return;
+    if (!mapRef.current || !markerGroup.current || !mapReady) return;
 
     markerGroup.current.clearLayers();
 
@@ -109,17 +119,7 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
       );
       mapRef.current.fitBounds(group.getBounds().pad(0.3));
     }
-  }, [shops]);
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center" style={{ height }}>
-          <Loader2 className="h-8 w-8 animate-spin text-green-500" />
-        </CardContent>
-      </Card>
-    );
-  }
+  }, [shops, mapReady]);
 
   if (mapError) {
     return (
@@ -153,8 +153,13 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
 
   return (
     <Card>
-      <CardContent className="p-0 overflow-hidden rounded-lg">
-        <div ref={mapContainer} style={{ height }} data-testid="shop-map" />
+      <CardContent className="p-0 overflow-hidden rounded-lg relative" style={{ height }}>
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-900/80 z-10">
+            <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+          </div>
+        )}
+        <div ref={initMap} style={{ width: "100%", height: "100%" }} data-testid="shop-map" />
       </CardContent>
     </Card>
   );
