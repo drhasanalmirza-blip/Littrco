@@ -2196,6 +2196,44 @@ export async function registerRoutes(
     }
   });
   
+  app.get("/api/staff/users/:id/shops", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const memberships = await storage.getShopMembersByUserId(req.params.id);
+      const allShops = await storage.getAllShops();
+      const assignedShops = memberships.map(m => {
+        const shop = allShops.find(s => s.id === m.shopId);
+        return { ...m, shopName: shop?.name || 'Unknown' };
+      });
+      res.json(assignedShops);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch user shops" });
+    }
+  });
+
+  app.post("/api/staff/users/:id/shops", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { shopId } = req.body;
+      if (!shopId) return res.status(400).json({ error: "Shop ID is required" });
+      const member = await storage.createShopMember({ userId: req.params.id, shopId, role: "MANAGER" });
+      res.status(201).json(member);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: "User is already assigned to this shop" });
+      }
+      res.status(500).json({ error: "Failed to assign shop" });
+    }
+  });
+
+  app.delete("/api/staff/users/:id/shops/:shopId", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const deleted = await storage.deleteShopMember(req.params.id, parseInt(req.params.shopId));
+      if (!deleted) return res.status(404).json({ error: "Membership not found" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to remove shop assignment" });
+    }
+  });
+
   app.delete("/api/staff/users/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
       const targetId = req.params.id;

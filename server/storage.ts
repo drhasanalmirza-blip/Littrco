@@ -122,6 +122,8 @@ export interface IStorage {
   // Shop Members
   createShopMember(member: InsertShopMember): Promise<ShopMember>;
   getShopMembers(shopId: number): Promise<ShopMember[]>;
+  getShopMembersByUserId(userId: string): Promise<ShopMember[]>;
+  deleteShopMember(userId: string, shopId: number): Promise<boolean>;
   
   // Devices
   createDevice(device: InsertDevice): Promise<Device>;
@@ -426,6 +428,15 @@ export class DatabaseStorage implements IStorage {
   
   async getShopMembers(shopId: number): Promise<ShopMember[]> {
     return await db.select().from(shopMembers).where(eq(shopMembers.shopId, shopId));
+  }
+
+  async getShopMembersByUserId(userId: string): Promise<ShopMember[]> {
+    return await db.select().from(shopMembers).where(eq(shopMembers.userId, userId));
+  }
+
+  async deleteShopMember(userId: string, shopId: number): Promise<boolean> {
+    const result = await db.delete(shopMembers).where(and(eq(shopMembers.userId, userId), eq(shopMembers.shopId, shopId))).returning();
+    return result.length > 0;
   }
   
   // Devices

@@ -1062,6 +1062,8 @@ function UsersManagement() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [deleteCountdown, setDeleteCountdown] = useState(5);
+  const [shopAssignUserId, setShopAssignUserId] = useState<string | null>(null);
+  const [selectedShopId, setSelectedShopId] = useState<string>("");
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['all-users'],
@@ -1164,6 +1166,60 @@ function UsersManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-users'] });
       setDeleteUserId(null);
+    },
+  });
+
+  const { data: allShops = [] } = useQuery({
+    queryKey: ['shops'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/shops');
+      if (!res.ok) throw new Error('Failed to fetch shops');
+      return res.json();
+    },
+  });
+
+  const { data: userShops = [], refetch: refetchUserShops } = useQuery({
+    queryKey: ['user-shops', shopAssignUserId],
+    queryFn: async () => {
+      if (!shopAssignUserId) return [];
+      const res = await apiRequest(`/api/staff/users/${shopAssignUserId}/shops`);
+      if (!res.ok) throw new Error('Failed to fetch user shops');
+      return res.json();
+    },
+    enabled: !!shopAssignUserId,
+  });
+
+  const assignShop = useMutation({
+    mutationFn: async ({ userId, shopId }: { userId: string; shopId: number }) => {
+      const res = await apiRequest(`/api/staff/users/${userId}/shops`, {
+        method: 'POST',
+        body: JSON.stringify({ shopId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(err.error || 'Failed to assign shop');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchUserShops();
+      setSelectedShopId("");
+    },
+  });
+
+  const removeShopAssignment = useMutation({
+    mutationFn: async ({ userId, shopId }: { userId: string; shopId: number }) => {
+      const res = await apiRequest(`/api/staff/users/${userId}/shops/${shopId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(err.error || 'Failed to remove shop');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchUserShops();
     },
   });
 
@@ -1361,6 +1417,17 @@ function UsersManagement() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {u.role === 'PARTNER' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setShopAssignUserId(u.id); setSelectedShopId(""); }}
+                          data-testid={`button-assign-shops-${u.id}`}
+                        >
+                          <Building className="h-4 w-4 mr-1" />
+                          Shops
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1461,6 +1528,76 @@ function UsersManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!shopAssignUserId} onOpenChange={(open) => { if (!open) setShopAssignUserId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage Shop Assignments</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Assign shops to <span className="font-semibold">{allUsers.find((u: any) => u.id === shopAssignUserId)?.email}</span>
+            </p>
+
+            <div className="space-y-2">
+              <Label>Assigned Shops</Label>
+              {userShops.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic" data-testid="text-no-shops-assigned">No shops assigned yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {userShops.map((ms: any) => (
+                    <div key={ms.shopId} className="flex items-center justify-between rounded-md border p-2" data-testid={`row-assigned-shop-${ms.shopId}`}>
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4 text-green-500" />
+                        <span className="text-sm font-medium">{ms.shopName}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                        onClick={() => { if (shopAssignUserId) removeShopAssignment.mutate({ userId: shopAssignUserId, shopId: ms.shopId }); }}
+                        disabled={removeShopAssignment.isPending}
+                        data-testid={`button-remove-shop-${ms.shopId}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Add Shop</Label>
+              <div className="flex gap-2">
+                <Select value={selectedShopId} onValueChange={setSelectedShopId}>
+                  <SelectTrigger className="flex-1" data-testid="select-assign-shop">
+                    <SelectValue placeholder="Select a shop..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allShops
+                      .filter((s: any) => !userShops.some((ms: any) => ms.shopId === s.id))
+                      .map((s: any) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={() => { if (shopAssignUserId && selectedShopId) assignShop.mutate({ userId: shopAssignUserId, shopId: parseInt(selectedShopId) }); }}
+                  disabled={!selectedShopId || assignShop.isPending}
+                  data-testid="button-submit-assign-shop"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Assign
+                </Button>
+              </div>
+              {assignShop.error && (
+                <p className="text-sm text-red-500" data-testid="text-assign-error">{(assignShop.error as Error).message}</p>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

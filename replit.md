@@ -117,6 +117,9 @@ Preferred communication style: Simple, everyday language.
 - `PATCH /api/staff/users/:id/role` - Update user role
 - `PATCH /api/staff/users/:id/password` - Reset user password
 - `DELETE /api/staff/users/:id` - Remove user (cannot delete self)
+- `GET /api/staff/users/:id/shops` - Get shops assigned to a user
+- `POST /api/staff/users/:id/shops` - Assign a shop to a user
+- `DELETE /api/staff/users/:id/shops/:shopId` - Remove shop assignment from user
 
 ### Partner Portal (requires PARTNER role)
 - `GET /api/partner/shops` - List partner's shops
