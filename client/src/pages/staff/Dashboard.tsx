@@ -311,10 +311,10 @@ export default function StaffDashboard() {
   };
 
   return (
-    <div className="littr-dashboard">
-      <div className="littr-nav px-4 py-3 flex justify-between items-center">
+    <div className="littr-dashboard min-h-screen bg-white dark:bg-gray-950 transition-colors duration-300">
+      <div className="littr-nav px-4 py-3 flex justify-between items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
             <Recycle className="h-5 w-5 text-white" />
           </div>
           <div>
