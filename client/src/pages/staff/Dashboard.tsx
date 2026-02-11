@@ -1048,6 +1048,7 @@ function UsersManagement() {
   const [resetUserId, setResetUserId] = useState<string | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['all-users'],
@@ -1126,6 +1127,23 @@ function UsersManagement() {
     onSuccess: () => {
       setResetUserId(null);
       setResetPassword("");
+    },
+  });
+
+  const deleteUser = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest(`/api/staff/users/${userId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(err.error || 'Failed to delete user');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-users'] });
+      setDeleteUserId(null);
     },
   });
 
@@ -1322,15 +1340,26 @@ function UsersManagement() {
                     {new Date(u.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { setResetUserId(u.id); setResetPassword(""); }}
-                      data-testid={`button-reset-password-${u.id}`}
-                    >
-                      <Key className="h-4 w-4 mr-1" />
-                      Reset Password
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setResetUserId(u.id); setResetPassword(""); }}
+                        data-testid={`button-reset-password-${u.id}`}
+                      >
+                        <Key className="h-4 w-4 mr-1" />
+                        Reset Password
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                        onClick={() => setDeleteUserId(u.id)}
+                        data-testid={`button-delete-user-${u.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -1387,6 +1416,31 @@ function UsersManagement() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteUserId} onOpenChange={(open) => { if (!open) setDeleteUserId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove User?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <span className="font-semibold">{allUsers.find((u: any) => u.id === deleteUserId)?.email}</span> and all their session data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteUser.error && (
+            <p className="text-sm text-red-500" data-testid="text-delete-error">{(deleteUser.error as Error).message}</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-user">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              onClick={() => { if (deleteUserId) deleteUser.mutate(deleteUserId); }}
+              disabled={deleteUser.isPending}
+              data-testid="button-confirm-delete-user"
+            >
+              {deleteUser.isPending ? 'Removing...' : 'Remove User'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

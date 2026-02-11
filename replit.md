@@ -116,6 +116,7 @@ Preferred communication style: Simple, everyday language.
 - `POST /api/staff/users` - Create new user account (email, password, role)
 - `PATCH /api/staff/users/:id/role` - Update user role
 - `PATCH /api/staff/users/:id/password` - Reset user password
+- `DELETE /api/staff/users/:id` - Remove user (cannot delete self)
 
 ### Partner Portal (requires PARTNER role)
 - `GET /api/partner/shops` - List partner's shops

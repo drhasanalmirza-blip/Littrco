@@ -93,6 +93,7 @@ export interface IStorage {
   updateUserPassword(userId: string, newPasswordHash: string): Promise<User | undefined>;
   updateUserRole(userId: string, role: string): Promise<User | undefined>;
   updateUserTheme(userId: string, theme: string): Promise<void>;
+  deleteUser(userId: string): Promise<boolean>;
   
   // Sessions
   createSession(userId: string, expiresAt: Date): Promise<Session>;
@@ -324,6 +325,12 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserTheme(userId: string, theme: string): Promise<void> {
     await db.update(users).set({ themePreference: theme }).where(eq(users.id, userId));
+  }
+
+  async deleteUser(userId: string): Promise<boolean> {
+    await db.delete(sessions).where(eq(sessions.userId, userId));
+    const result = await db.delete(users).where(eq(users.id, userId)).returning();
+    return result.length > 0;
   }
   
   // Sessions

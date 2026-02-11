@@ -2196,6 +2196,22 @@ export async function registerRoutes(
     }
   });
   
+  app.delete("/api/staff/users/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const targetId = req.params.id;
+      if (targetId === (req as any).user.id) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+      const deleted = await storage.deleteUser(targetId);
+      if (!deleted) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
   // ==================== PARTNER BIN ENDPOINTS ====================
   
   // Get partner's bins
