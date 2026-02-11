@@ -47,6 +47,22 @@
   --radius: 0.75rem;
 }
 
+:root {
+  --littr-green: #22c55e;
+  --littr-green-dark: #16a34a;
+  --littr-black: #000000;
+  --littr-white: #ffffff;
+  --littr-gray-50: #fafafa;
+  --littr-gray-100: #f5f5f5;
+  --littr-gray-200: #e5e5e5;
+  --littr-gray-300: #d4d4d4;
+  --littr-gray-400: #a3a3a3;
+  --littr-gray-500: #737373;
+  --littr-gray-600: #525252;
+  --littr-gray-800: #262626;
+  --littr-gray-900: #171717;
+}
+
 .dark {
   --color-background: hsl(0 0% 7%);
   --color-foreground: hsl(0 0% 93%);
@@ -110,22 +126,6 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-sans tracking-tight font-bold;
   }
-}
-
-:root {
-  --littr-green: #22c55e;
-  --littr-green-dark: #16a34a;
-  --littr-black: #000000;
-  --littr-white: #ffffff;
-  --littr-gray-50: #fafafa;
-  --littr-gray-100: #f5f5f5;
-  --littr-gray-200: #e5e5e5;
-  --littr-gray-300: #d4d4d4;
-  --littr-gray-400: #a3a3a3;
-  --littr-gray-500: #737373;
-  --littr-gray-600: #525252;
-  --littr-gray-800: #262626;
-  --littr-gray-900: #171717;
 }
 
 .glass-panel {
