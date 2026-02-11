@@ -59,6 +59,10 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(mapRef.current);
+
+      setTimeout(() => {
+        mapRef.current?.invalidateSize();
+      }, 100);
     } catch (err) {
       setMapError("Failed to initialize map");
       console.error("Map init error:", err);
