@@ -2123,17 +2123,76 @@ export async function registerRoutes(
     }
   });
   
-  // Get all staff users (for mailbox creation dropdown)
+  // Get all users for staff management
   app.get("/api/staff/users", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
-      const allUsers = await storage.getAllMailboxes();
-      const staffWithMailbox = allUsers.map(m => m.userId);
-      
-      // Get all staff users from the users table via a search
-      // For simplicity, we'll return staff users that have mailboxes, and indicate which don't
-      res.json(allUsers);
+      const allUsers = await storage.getAllUsers();
+      const safeUsers = allUsers.map(({ passwordHash, ...rest }) => rest);
+      res.json(safeUsers);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // Update user role
+  app.patch("/api/staff/users/:id/role", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { role } = req.body;
+      if (!["STAFF", "PARTNER", "CUSTOMER"].includes(role)) {
+        return res.status(400).json({ error: "Invalid role" });
+      }
+      const updated = await storage.updateUserRole(req.params.id, role);
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const { passwordHash, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update role" });
+    }
+  });
+
+  // Reset user password (staff sets new password)
+  app.patch("/api/staff/users/:id/password", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { password } = req.body;
+      if (!password || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      const newHash = await hashPassword(password);
+      const updated = await storage.updateUserPassword(req.params.id, newHash);
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reset password" });
+    }
+  });
+
+  // Create new user account (staff)
+  app.post("/api/staff/users", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { email, password, role } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      if (!["STAFF", "PARTNER", "CUSTOMER"].includes(role)) {
+        return res.status(400).json({ error: "Invalid role" });
+      }
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(409).json({ error: "Email already registered" });
+      }
+      const passwordHash = await hashPassword(password);
+      const user = await storage.createUser({ email, passwordHash, role });
+      const { passwordHash: _, ...safeUser } = user;
+      res.status(201).json(safeUser);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create user" });
     }
   });
   

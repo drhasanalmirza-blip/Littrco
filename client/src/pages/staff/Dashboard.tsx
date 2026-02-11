@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo, useEffect } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash, Sun, Moon } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash, Sun, Moon, UserCog, Plus, Key, Eye, EyeOff } from "lucide-react";
 import { MailboxManager } from "@/components/staff/MailboxManager";
 import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -413,7 +413,7 @@ export default function StaffDashboard() {
         </div>
 
         <Tabs defaultValue="leads" className="space-y-4">
-          <TabsList className="grid grid-cols-8 w-full max-w-4xl">
+          <TabsList className="grid grid-cols-9 w-full max-w-5xl">
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="shops">Shops</TabsTrigger>
             <TabsTrigger value="bins" className="flex items-center gap-1">
@@ -440,6 +440,10 @@ export default function StaffDashboard() {
               )}
             </TabsTrigger>
             <TabsTrigger value="volunteers">Volunteers</TabsTrigger>
+            <TabsTrigger value="users" className="flex items-center gap-1">
+              <UserCog className="h-4 w-4" />
+              Users
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="leads">
@@ -1022,8 +1026,367 @@ export default function StaffDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="users">
+            <UsersManagement />
+          </TabsContent>
         </Tabs>
       </div>
+    </div>
+  );
+}
+
+function UsersManagement() {
+  const queryClient = useQueryClient();
+  const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("ALL");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState("CUSTOMER");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [resetUserId, setResetUserId] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['all-users'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/users');
+      if (!res.ok) throw new Error('Failed to fetch users');
+      return res.json();
+    },
+  });
+
+  const filteredUsers = useMemo(() => {
+    let filtered = allUsers;
+    if (roleFilter !== "ALL") {
+      filtered = filtered.filter((u: any) => u.role === roleFilter);
+    }
+    if (userSearch.trim()) {
+      const q = userSearch.toLowerCase();
+      filtered = filtered.filter((u: any) =>
+        u.email?.toLowerCase().includes(q) || u.id?.toLowerCase().includes(q)
+      );
+    }
+    return filtered;
+  }, [allUsers, roleFilter, userSearch]);
+
+  const updateRole = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      const res = await apiRequest(`/api/staff/users/${userId}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(err.error || 'Failed to update role');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-users'] });
+    },
+  });
+
+  const createUser = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('/api/staff/users', {
+        method: 'POST',
+        body: JSON.stringify({ email: newEmail, password: newPassword, role: newRole }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(err.error || 'Failed to create user');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-users'] });
+      setCreateOpen(false);
+      setNewEmail("");
+      setNewPassword("");
+      setNewRole("CUSTOMER");
+    },
+  });
+
+  const resetUserPassword = useMutation({
+    mutationFn: async () => {
+      if (!resetUserId) return;
+      const res = await apiRequest(`/api/staff/users/${resetUserId}/password`, {
+        method: 'PATCH',
+        body: JSON.stringify({ password: resetPassword }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(err.error || 'Failed to reset password');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setResetUserId(null);
+      setResetPassword("");
+    },
+  });
+
+  const roleCounts = useMemo(() => {
+    const counts: Record<string, number> = { STAFF: 0, PARTNER: 0, CUSTOMER: 0 };
+    allUsers.forEach((u: any) => { counts[u.role] = (counts[u.role] || 0) + 1; });
+    return counts;
+  }, [allUsers]);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Users className="h-8 w-8 text-blue-500" />
+              <div>
+                <p className="text-2xl font-bold" data-testid="text-total-users">{allUsers.length}</p>
+                <p className="text-xs text-muted-foreground">Total Users</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="h-8 w-8 text-red-500" />
+              <div>
+                <p className="text-2xl font-bold" data-testid="text-staff-count">{roleCounts.STAFF}</p>
+                <p className="text-xs text-muted-foreground">Staff</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Building className="h-8 w-8 text-green-500" />
+              <div>
+                <p className="text-2xl font-bold" data-testid="text-partner-count">{roleCounts.PARTNER}</p>
+                <p className="text-xs text-muted-foreground">Partners</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <UserCog className="h-8 w-8 text-purple-500" />
+              <div>
+                <p className="text-2xl font-bold" data-testid="text-customer-count">{roleCounts.CUSTOMER}</p>
+                <p className="text-xs text-muted-foreground">Customers</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>User Accounts</CardTitle>
+            <CardDescription>Manage all user accounts, roles, and credentials</CardDescription>
+          </div>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="bg-green-500 hover:bg-green-600 text-white" data-testid="button-create-user">
+                <Plus className="h-4 w-4 mr-1" />
+                Create Account
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Account</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    placeholder="user@example.com"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    data-testid="input-new-user-email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Password</Label>
+                  <div className="relative">
+                    <Input
+                      type={showNewPassword ? "text" : "password"}
+                      placeholder="Min 6 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      data-testid="input-new-user-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      data-testid="button-toggle-new-password"
+                    >
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Role</Label>
+                  <Select value={newRole} onValueChange={setNewRole}>
+                    <SelectTrigger data-testid="select-new-user-role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CUSTOMER">Customer</SelectItem>
+                      <SelectItem value="PARTNER">Partner</SelectItem>
+                      <SelectItem value="STAFF">Staff</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {createUser.error && (
+                  <p className="text-sm text-red-500" data-testid="text-create-error">{(createUser.error as Error).message}</p>
+                )}
+                <Button
+                  className="w-full bg-green-500 hover:bg-green-600 text-white"
+                  onClick={() => createUser.mutate()}
+                  disabled={createUser.isPending || !newEmail || !newPassword}
+                  data-testid="button-submit-create-user"
+                >
+                  {createUser.isPending ? 'Creating...' : 'Create Account'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col md:flex-row gap-3 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by email..."
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                className="pl-10"
+                data-testid="input-user-search"
+              />
+            </div>
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger className="w-[160px]" data-testid="select-role-filter">
+                <SelectValue placeholder="Filter by role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Roles</SelectItem>
+                <SelectItem value="STAFF">Staff</SelectItem>
+                <SelectItem value="PARTNER">Partner</SelectItem>
+                <SelectItem value="CUSTOMER">Customer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Theme</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.map((u: any) => (
+                <TableRow key={u.id} data-testid={`row-user-${u.id}`}>
+                  <TableCell className="font-medium">{u.email}</TableCell>
+                  <TableCell>
+                    <Select
+                      value={u.role}
+                      onValueChange={(role) => updateRole.mutate({ userId: u.id, role })}
+                    >
+                      <SelectTrigger className="w-[120px] h-8" data-testid={`select-role-${u.id}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CUSTOMER">Customer</SelectItem>
+                        <SelectItem value="PARTNER">Partner</SelectItem>
+                        <SelectItem value="STAFF">Staff</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-xs">
+                      {u.themePreference || 'light'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(u.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setResetUserId(u.id); setResetPassword(""); }}
+                      data-testid={`button-reset-password-${u.id}`}
+                    >
+                      <Key className="h-4 w-4 mr-1" />
+                      Reset Password
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filteredUsers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">No users found</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!resetUserId} onOpenChange={(open) => { if (!open) setResetUserId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Set a new password for {allUsers.find((u: any) => u.id === resetUserId)?.email}
+            </p>
+            <div className="space-y-2">
+              <Label>New Password</Label>
+              <div className="relative">
+                <Input
+                  type={showResetPassword ? "text" : "password"}
+                  placeholder="Min 6 characters"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  data-testid="input-reset-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetPassword(!showResetPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  data-testid="button-toggle-reset-password"
+                >
+                  {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            {resetUserPassword.error && (
+              <p className="text-sm text-red-500">{(resetUserPassword.error as Error).message}</p>
+            )}
+            <Button
+              className="w-full"
+              onClick={() => resetUserPassword.mutate()}
+              disabled={resetUserPassword.isPending || resetPassword.length < 6}
+              data-testid="button-submit-reset-password"
+            >
+              {resetUserPassword.isPending ? 'Resetting...' : 'Reset Password'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

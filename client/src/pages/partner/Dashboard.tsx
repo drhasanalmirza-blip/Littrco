@@ -300,8 +300,8 @@ export default function PartnerDashboard() {
       <div className="littr-dashboard">
         <div className="littr-nav px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-black dark:bg-white rounded-xl flex items-center justify-center">
-              <Recycle className="h-5 w-5 text-white dark:text-black" />
+            <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
+              <Recycle className="h-5 w-5 text-white" />
             </div>
             <h1 className="font-bold text-black dark:text-white">Partner Dashboard</h1>
           </div>
@@ -338,8 +338,8 @@ export default function PartnerDashboard() {
     <div className="littr-dashboard">
       <div className="littr-nav px-4 py-3 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-black dark:bg-white rounded-xl flex items-center justify-center">
-            <Recycle className="h-5 w-5 text-white dark:text-black" />
+          <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
+            <Recycle className="h-5 w-5 text-white" />
           </div>
           <div>
             <h1 className="font-bold text-black dark:text-white">{shop.name}</h1>

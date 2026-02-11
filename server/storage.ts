@@ -88,8 +88,10 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUserPassword(userId: string, newPasswordHash: string): Promise<User | undefined>;
+  updateUserRole(userId: string, role: string): Promise<User | undefined>;
   updateUserTheme(userId: string, theme: string): Promise<void>;
   
   // Sessions
@@ -306,8 +308,17 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
   async updateUserPassword(userId: string, newPasswordHash: string): Promise<User | undefined> {
     const [user] = await db.update(users).set({ passwordHash: newPasswordHash }).where(eq(users.id, userId)).returning();
+    return user;
+  }
+
+  async updateUserRole(userId: string, role: string): Promise<User | undefined> {
+    const [user] = await db.update(users).set({ role: role as any }).where(eq(users.id, userId)).returning();
     return user;
   }
 

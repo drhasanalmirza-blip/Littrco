@@ -112,6 +112,10 @@ Preferred communication style: Simple, everyday language.
 - `POST /api/staff/store-items` - Create store item
 - `GET /api/staff/redemptions` - List redemptions
 - `PATCH /api/staff/redemptions/:id` - Update redemption status
+- `GET /api/staff/users` - List all users (excludes password hashes)
+- `POST /api/staff/users` - Create new user account (email, password, role)
+- `PATCH /api/staff/users/:id/role` - Update user role
+- `PATCH /api/staff/users/:id/password` - Reset user password
 
 ### Partner Portal (requires PARTNER role)
 - `GET /api/partner/shops` - List partner's shops
