@@ -51,21 +51,20 @@ export default function Dropoff() {
             <p className="text-gray-500 dark:text-gray-400 mt-2">Stop by any of our partner shops near you</p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            <div className="group" data-testid="card-location-elite">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            <a href="https://www.google.com/maps/search/?api=1&query=Elite+Cigar+and+Smoke,+1555+E+Henrietta+Rd,+Rochester+NY+14623" target="_blank" rel="noopener noreferrer" className="group cursor-pointer" data-testid="card-location-elite">
+              <div className="relative h-48 md:h-56 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
                 <img src={eliteShopImage} alt="Elite Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <MapPin className="h-5 w-5" />
                 </div>
               </div>
-              <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Elite Smoke Shop</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
-            </div>
-            <div className="group" data-testid="card-location-highend">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
+              <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Elite Cigar and Smoke</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">1555 E Henrietta Rd, Rochester, NY</p>
+            </a>
+            <a href="https://www.google.com/maps/search/?api=1&query=High+End+Smoke+Shop,+1455+E+Henrietta+Rd,+Rochester+NY+14623" target="_blank" rel="noopener noreferrer" className="group cursor-pointer" data-testid="card-location-highend">
+              <div className="relative h-48 md:h-56 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
                 <img src={highEndShopImage} alt="High End Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
@@ -73,10 +72,10 @@ export default function Dropoff() {
                 </div>
               </div>
               <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">High End Smoke Shop</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
-            </div>
-            <div className="group" data-testid="card-location-redeye">
-              <div className="relative h-48 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">1455 E Henrietta Rd, Rochester, NY</p>
+            </a>
+            <a href="https://www.google.com/maps/search/?api=1&query=Red+Eye+Smoke+Shop,+Rochester+NY" target="_blank" rel="noopener noreferrer" className="group cursor-pointer" data-testid="card-location-redeye">
+              <div className="relative h-48 md:h-56 rounded-xl overflow-hidden mb-4 border border-transparent dark:border-gray-800 shadow-md">
                 <img src={redEyeShopImage} alt="Red Eye Smoke Shop" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" style={{ imageRendering: 'pixelated' }} />
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-4 left-4 text-white">
@@ -85,8 +84,7 @@ export default function Dropoff() {
               </div>
               <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Red Eye Smoke Shop</h3>
               <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
-            </div>
-          </div>
+            </a>
           </div>
         </div>
       </section>

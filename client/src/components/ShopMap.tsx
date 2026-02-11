@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin, Loader2 } from "lucide-react";
 
@@ -16,15 +16,22 @@ interface ShopLocation {
 
 interface ShopMapProps {
   height?: string;
-  selectedShopId?: number | null;
-  onShopSelect?: (shopId: number) => void;
 }
 
-export function ShopMap({ height = "400px", selectedShopId, onShopSelect }: ShopMapProps) {
+const shopIcon = L.divIcon({
+  className: "",
+  html: `<div style="width:32px;height:32px;background:#22c55e;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3" fill="#16a34a"/></svg>
+  </div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32],
+});
+
+export function ShopMap({ height = "400px" }: ShopMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const markers = useRef<mapboxgl.Marker[]>([]);
-  const [mapLoaded, setMapLoaded] = useState(false);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerGroup = useRef<L.LayerGroup | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
   const { data: shops = [], isLoading } = useQuery<ShopLocation[]>({
@@ -37,100 +44,68 @@ export function ShopMap({ height = "400px", selectedShopId, onShopSelect }: Shop
   });
 
   useEffect(() => {
-    if (!mapContainer.current) return;
-    if (map.current) return;
-
-    const token = import.meta.env.VITE_MAPBOX_TOKEN;
-    if (!token) {
-      setMapError("Mapbox token not configured");
-      return;
-    }
-
-    mapboxgl.accessToken = token;
+    if (!mapContainer.current || mapRef.current) return;
 
     try {
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: [-78.8, 43.0],
-        zoom: 7,
+      mapRef.current = L.map(mapContainer.current, {
+        center: [43.0, -77.6],
+        zoom: 10,
+        scrollWheelZoom: true,
       });
 
-      map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+      markerGroup.current = L.layerGroup().addTo(mapRef.current);
 
-      map.current.on("load", () => {
-        setMapLoaded(true);
-      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(mapRef.current);
     } catch (err) {
       setMapError("Failed to initialize map");
       console.error("Map init error:", err);
     }
 
     return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        markerGroup.current = null;
       }
     };
   }, []);
 
   useEffect(() => {
-    if (!map.current || !mapLoaded) return;
+    if (!mapRef.current || !markerGroup.current) return;
 
-    markers.current.forEach((marker) => marker.remove());
-    markers.current = [];
+    markerGroup.current.clearLayers();
 
     const shopsWithCoords = shops.filter((s) => s.latitude && s.longitude);
 
     shopsWithCoords.forEach((shop) => {
       if (!shop.latitude || !shop.longitude) return;
 
-      const el = document.createElement("div");
-      el.className = "shop-marker";
-      el.style.width = "32px";
-      el.style.height = "32px";
-      el.style.backgroundColor = selectedShopId === shop.id ? "#16a34a" : "#22c55e";
-      el.style.borderRadius = "50%";
-      el.style.border = "3px solid white";
-      el.style.boxShadow = "0 2px 6px rgba(0,0,0,0.3)";
-      el.style.cursor = "pointer";
-      el.style.display = "flex";
-      el.style.alignItems = "center";
-      el.style.justifyContent = "center";
-      el.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M19 7c.55 0 1 .45 1 1v10c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V8c0-.55.45-1 1-1h4l1.29-1.29A1 1 0 0 1 11 5h2a1 1 0 0 1 .71.29L15 7h4Z"/></svg>`;
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.address + ", " + shop.city)}`;
 
-      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
-        <div style="padding: 8px;">
-          <h3 style="font-weight: bold; margin: 0 0 4px 0;">${shop.name}</h3>
-          <p style="margin: 0; font-size: 12px; color: #666;">${shop.address}</p>
-          <p style="margin: 0; font-size: 12px; color: #666;">${shop.city}</p>
+      const marker = L.marker([shop.latitude, shop.longitude], { icon: shopIcon });
+
+      marker.bindPopup(`
+        <div style="padding:4px;min-width:160px;">
+          <h3 style="font-weight:bold;margin:0 0 4px 0;font-size:14px;">${shop.name}</h3>
+          <p style="margin:0 0 2px 0;font-size:12px;color:#666;">${shop.address}</p>
+          <p style="margin:0 0 8px 0;font-size:12px;color:#666;">${shop.city}</p>
+          <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#22c55e;color:white;padding:4px 12px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;">Get Directions</a>
         </div>
       `);
 
-      const marker = new mapboxgl.Marker(el)
-        .setLngLat([shop.longitude, shop.latitude])
-        .setPopup(popup)
-        .addTo(map.current!);
-
-      el.addEventListener("click", () => {
-        if (onShopSelect) {
-          onShopSelect(shop.id);
-        }
-      });
-
-      markers.current.push(marker);
+      markerGroup.current!.addLayer(marker);
     });
 
     if (shopsWithCoords.length > 0) {
-      const bounds = new mapboxgl.LngLatBounds();
-      shopsWithCoords.forEach((shop) => {
-        if (shop.latitude && shop.longitude) {
-          bounds.extend([shop.longitude, shop.latitude]);
-        }
-      });
-      map.current.fitBounds(bounds, { padding: 50, maxZoom: 12 });
+      const group = L.featureGroup(
+        shopsWithCoords.map((s) => L.marker([s.latitude!, s.longitude!]))
+      );
+      mapRef.current.fitBounds(group.getBounds().pad(0.3));
     }
-  }, [shops, mapLoaded, selectedShopId, onShopSelect]);
+  }, [shops]);
 
   if (isLoading) {
     return (
@@ -147,15 +122,22 @@ export function ShopMap({ height = "400px", selectedShopId, onShopSelect }: Shop
       <Card>
         <CardContent className="flex flex-col items-center justify-center text-center p-8" style={{ height }}>
           <MapPin className="h-12 w-12 text-gray-400 mb-3" />
-          <h3 className="font-semibold text-gray-700 mb-1">Map Not Available</h3>
-          <p className="text-sm text-gray-500">{mapError}</p>
-          <div className="mt-4 text-left w-full max-w-md">
-            <h4 className="font-medium text-gray-700 mb-2">Drop-off Locations:</h4>
+          <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-1">Map Not Available</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{mapError}</p>
+          <div className="text-left w-full max-w-md">
+            <h4 className="font-medium text-gray-700 dark:text-gray-200 mb-2">Drop-off Locations:</h4>
             <ul className="space-y-2">
               {shops.map((shop) => (
-                <li key={shop.id} className="flex items-center gap-2 text-sm text-gray-600" data-testid={`shop-list-item-${shop.id}`}>
-                  <MapPin className="h-4 w-4 text-green-500" />
-                  <span>{shop.name} - {shop.city}</span>
+                <li key={shop.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300" data-testid={`shop-list-item-${shop.id}`}>
+                  <MapPin className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.address + ", " + shop.city)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-green-600 underline"
+                  >
+                    {shop.name} — {shop.address}, {shop.city}
+                  </a>
                 </li>
               ))}
             </ul>
