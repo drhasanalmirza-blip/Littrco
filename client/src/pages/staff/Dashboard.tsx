@@ -18,8 +18,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 
-function DeleteShopButton({ shopId }: { shopId: number }) {
-  const [countdown, setCountdown] = useState(0);
+function DeleteShopButton({ shopId, shopName }: { shopId: number; shopName: string }) {
+  const [open, setOpen] = useState(false);
+  const [countdown, setCountdown] = useState(5);
   const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
@@ -30,41 +31,52 @@ function DeleteShopButton({ shopId }: { shopId: number }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shops'] });
+      setOpen(false);
     }
   });
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (countdown > 0) {
-      timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
-    }
+    if (!open) { setCountdown(5); return; }
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
     return () => clearTimeout(timer);
-  }, [countdown]);
-
-  const handleClick = () => {
-    if (countdown === 0) {
-      setCountdown(5);
-    } else {
-      deleteMutation.mutate();
-      setCountdown(0);
-    }
-  };
+  }, [open, countdown]);
 
   return (
-    <Button
-      variant="destructive"
-      size="icon"
-      className="h-8 w-8 bg-red-600 hover:bg-red-700 text-white relative"
-      onClick={handleClick}
-      disabled={deleteMutation.isPending}
-      data-testid={`button-delete-shop-${shopId}`}
-    >
-      {countdown > 0 ? (
-        <span className="text-[10px] font-bold">{countdown}</span>
-      ) : (
-        <Trash className="h-4 w-4" />
-      )}
-    </Button>
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+          data-testid={`button-delete-shop-${shopId}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove Shop?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently remove <span className="font-semibold">{shopName}</span> and all associated data. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {deleteMutation.error && (
+          <p className="text-sm text-red-500" data-testid="text-delete-shop-error">{(deleteMutation.error as Error).message}</p>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid="button-cancel-delete-shop">Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-red-500 hover:bg-red-600 text-white disabled:opacity-50"
+            onClick={(e) => { e.preventDefault(); deleteMutation.mutate(); }}
+            disabled={countdown > 0 || deleteMutation.isPending}
+            data-testid="button-confirm-delete-shop"
+          >
+            {deleteMutation.isPending ? 'Removing...' : countdown > 0 ? `Remove Shop (${countdown}s)` : 'Remove Shop'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -524,7 +536,7 @@ export default function StaffDashboard() {
                         </TableCell>
                         <TableCell className="flex items-center gap-2">
                           <ShopActionsMenu shop={shop} />
-                          <DeleteShopButton shopId={shop.id} />
+                          <DeleteShopButton shopId={shop.id} shopName={shop.name} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1049,6 +1061,7 @@ function UsersManagement() {
   const [resetPassword, setResetPassword] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [deleteCountdown, setDeleteCountdown] = useState(5);
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['all-users'],
@@ -1129,6 +1142,13 @@ function UsersManagement() {
       setResetPassword("");
     },
   });
+
+  useEffect(() => {
+    if (!deleteUserId) { setDeleteCountdown(5); return; }
+    if (deleteCountdown <= 0) return;
+    const timer = setTimeout(() => setDeleteCountdown(prev => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [deleteUserId, deleteCountdown]);
 
   const deleteUser = useMutation({
     mutationFn: async (userId: string) => {
@@ -1431,12 +1451,12 @@ function UsersManagement() {
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-delete-user">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-500 hover:bg-red-600 text-white"
-              onClick={() => { if (deleteUserId) deleteUser.mutate(deleteUserId); }}
-              disabled={deleteUser.isPending}
+              className="bg-red-500 hover:bg-red-600 text-white disabled:opacity-50"
+              onClick={(e) => { e.preventDefault(); if (deleteUserId) deleteUser.mutate(deleteUserId); }}
+              disabled={deleteCountdown > 0 || deleteUser.isPending}
               data-testid="button-confirm-delete-user"
             >
-              {deleteUser.isPending ? 'Removing...' : 'Remove User'}
+              {deleteUser.isPending ? 'Removing...' : deleteCountdown > 0 ? `Remove User (${deleteCountdown}s)` : 'Remove User'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
