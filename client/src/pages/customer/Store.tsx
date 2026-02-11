@@ -64,7 +64,7 @@ export default function StorePage() {
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
         <div className="text-center">
           <p className="text-gray-500 dark:text-gray-400 mb-4">Please log in to view the store</p>
-          <Button onClick={() => setLocation('/app/login')} className="bg-black text-white hover:bg-gray-800">Sign In</Button>
+          <Button onClick={() => setLocation('/app/login')} className="littr-btn littr-btn-primary" data-testid="button-login">Sign In</Button>
         </div>
       </div>
     );
@@ -76,12 +76,12 @@ export default function StorePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
         <div className="w-full max-w-md text-center">
-          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-green-50 dark:bg-green-950 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="h-10 w-10 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-black dark:text-gray-100 mb-2">Redemption Requested!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Redemption Requested!</h2>
           <p className="text-gray-500 dark:text-gray-400 mb-6">
-            You've redeemed <span className="text-black font-semibold">{successItem.name}</span> for {successItem.pointsCost} batteries
+            You've redeemed <span className="text-gray-900 dark:text-gray-100 font-semibold">{successItem.name}</span> for {successItem.pointsCost} batteries
           </p>
           <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 mb-6 text-left border border-gray-100 dark:border-gray-800">
             <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -90,7 +90,8 @@ export default function StorePage() {
           </div>
           <Button 
             onClick={() => { setSuccessItem(null); setLocation('/app'); }}
-            className="w-full bg-black text-white hover:bg-gray-800 h-12 rounded-xl"
+            className="w-full littr-btn littr-btn-primary"
+            data-testid="button-back-wallet"
           >
             Back to Wallet
           </Button>
@@ -101,14 +102,14 @@ export default function StorePage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950">
-      <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between">
+      <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setLocation('/app')} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
+          <Button variant="ghost" size="sm" onClick={() => setLocation('/app')} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="font-bold text-lg text-black dark:text-gray-100">Rewards Store</h1>
+          <h1 className="font-bold text-lg text-gray-900 dark:text-gray-100">Rewards Store</h1>
         </div>
-        <div className="flex items-center gap-1.5 bg-black text-white px-3 py-1.5 rounded-full text-sm">
+        <div className="flex items-center gap-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-3 py-1.5 rounded-full text-sm">
           <Battery className="h-3.5 w-3.5" />
           <span className="font-bold">{wallet?.pointsBalance || 0}</span>
         </div>
@@ -126,17 +127,17 @@ export default function StorePage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {storeItems.map((item: any) => (
-              <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+              <div key={item.id} className="border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-gray-600 transition-colors bg-white dark:bg-gray-900" data-testid={`card-store-item-${item.id}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-semibold text-black dark:text-gray-100">{item.name}</h3>
-                    {item.description && <p className="text-gray-400 text-sm mt-0.5">{item.description}</p>}
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{item.name}</h3>
+                    {item.description && <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{item.description}</p>}
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Battery className="h-4 w-4 text-green-600" />
-                    <span className="font-bold text-black dark:text-gray-100">{item.pointsCost}</span>
+                    <span className="font-bold text-gray-900 dark:text-gray-100">{item.pointsCost}</span>
                     <span className="text-gray-400 text-sm">batteries</span>
                   </div>
                   <Button 
@@ -144,7 +145,7 @@ export default function StorePage() {
                     disabled={(wallet?.pointsBalance || 0) < item.pointsCost || redeemingId !== null}
                     onClick={() => redeemItem.mutate(item.id)}
                     className={(wallet?.pointsBalance || 0) >= item.pointsCost 
-                      ? "bg-black text-white hover:bg-gray-800 rounded-lg" 
+                      ? "littr-btn-primary rounded-lg" 
                       : "bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed rounded-lg"
                     }
                     data-testid={`button-redeem-${item.id}`}
@@ -163,8 +164,8 @@ export default function StorePage() {
         )}
 
         {storeItems.length === 0 && !isLoading && (
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center">
-            <ShoppingBag className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+          <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-12 text-center">
+            <ShoppingBag className="h-10 w-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
             <p className="text-gray-400 text-sm">No rewards available yet. Check back soon!</p>
           </div>
         )}

@@ -2,10 +2,10 @@ import { useStore, apiRequest } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Wallet, Gift, QrCode, ShoppingBag, Settings, MapPin, Recycle, LogOut, Star, Battery } from "lucide-react";
+import { Wallet, Gift, QrCode, ShoppingBag, Settings, MapPin, Recycle, LogOut, Star, Battery, Sun, Moon } from "lucide-react";
 
 export default function CustomerDashboard() {
-  const { user, role, clearAuth } = useStore();
+  const { user, role, clearAuth, theme, toggleTheme } = useStore();
   const [, setLocation] = useLocation();
 
   const { data: walletData } = useQuery({
@@ -89,15 +89,29 @@ export default function CustomerDashboard() {
               <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{user?.email}</p>
             </div>
           </div>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => setLocation('/app/change-password')}
-            className="text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
-            data-testid="button-settings"
-          >
-            <Settings className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTheme}
+              data-testid="button-theme-toggle"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-4 w-4 text-yellow-400" />
+              ) : (
+                <Moon className="h-4 w-4 text-gray-500" />
+              )}
+            </button>
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setLocation('/app/change-password')}
+              className="text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+              data-testid="button-settings"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       </div>
 

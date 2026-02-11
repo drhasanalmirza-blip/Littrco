@@ -90,6 +90,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserPassword(userId: string, newPasswordHash: string): Promise<User | undefined>;
+  updateUserTheme(userId: string, theme: string): Promise<void>;
   
   // Sessions
   createSession(userId: string, expiresAt: Date): Promise<Session>;
@@ -308,6 +309,10 @@ export class DatabaseStorage implements IStorage {
   async updateUserPassword(userId: string, newPasswordHash: string): Promise<User | undefined> {
     const [user] = await db.update(users).set({ passwordHash: newPasswordHash }).where(eq(users.id, userId)).returning();
     return user;
+  }
+
+  async updateUserTheme(userId: string, theme: string): Promise<void> {
+    await db.update(users).set({ themePreference: theme }).where(eq(users.id, userId));
   }
   
   // Sessions

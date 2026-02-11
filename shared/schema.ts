@@ -21,6 +21,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash"),
   role: userRoleEnum("role").notNull().default("CUSTOMER"),
+  themePreference: text("theme_preference").default("light"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

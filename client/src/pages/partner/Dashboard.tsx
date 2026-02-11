@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins, Gift } from "lucide-react";
+import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins, Gift, Sun, Moon } from "lucide-react";
 import littrOneImage from "@/assets/images/littr-one-official.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +117,7 @@ function PartnerRewardsStore({ shopId }: { shopId: number | undefined }) {
 }
 
 export default function PartnerDashboard() {
-  const { user, role, clearAuth } = useStore();
+  const { user, role, clearAuth, theme, toggleTheme } = useStore();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [pairCode, setPairCode] = useState("");
@@ -305,10 +305,24 @@ export default function PartnerDashboard() {
             </div>
             <h1 className="font-bold text-black dark:text-white">Partner Dashboard</h1>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </Button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTheme}
+              data-testid="button-theme-toggle"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-4 w-4 text-yellow-400" />
+              ) : (
+                <Moon className="h-4 w-4 text-gray-500" />
+              )}
+            </button>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
         </div>
         <div className="container mx-auto px-4 py-20 text-center">
           <p className="text-gray-500 dark:text-gray-400">No shop assigned to your account.</p>
@@ -332,10 +346,24 @@ export default function PartnerDashboard() {
             <p className="text-xs text-gray-400">{user?.email}</p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800" data-testid="button-logout">
-          <LogOut className="h-4 w-4 mr-2" />
-          Logout
-        </Button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleTheme}
+            data-testid="button-theme-toggle-main"
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-4 w-4 text-yellow-400" />
+            ) : (
+              <Moon className="h-4 w-4 text-gray-500" />
+            )}
+          </button>
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800" data-testid="button-logout">
+            <LogOut className="h-4 w-4 mr-2" />
+            Logout
+          </Button>
+        </div>
       </div>
 
       <div className="container mx-auto px-4 py-8">

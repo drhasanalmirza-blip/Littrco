@@ -74,7 +74,9 @@ export const useStore = create<StoreState>()(
         const role = user.role === 'STAFF' ? 'staff' : 
                      user.role === 'PARTNER' ? 'partner' : 
                      user.role === 'CUSTOMER' ? 'customer' : null;
-        set({ user, sessionId, role });
+        const theme = (user as any).themePreference === 'dark' ? 'dark' : 'light';
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        set({ user, sessionId, role, theme });
       },
       
       clearAuth: () => set({ user: null, sessionId: null, role: null }),
@@ -85,6 +87,16 @@ export const useStore = create<StoreState>()(
       toggleTheme: () => set((state) => {
         const next = state.theme === 'light' ? 'dark' : 'light';
         document.documentElement.classList.toggle('dark', next === 'dark');
+        if (state.sessionId) {
+          fetch('/api/auth/theme', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-Id': state.sessionId,
+            },
+            body: JSON.stringify({ theme: next }),
+          }).catch(() => {});
+        }
         return { theme: next };
       }),
       setTheme: (theme) => {

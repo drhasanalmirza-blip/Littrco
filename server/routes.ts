@@ -57,7 +57,8 @@ export async function registerRoutes(
         user: { 
           id: result.user.id, 
           email: result.user.email, 
-          role: result.user.role 
+          role: result.user.role,
+          themePreference: result.user.themePreference || 'light',
         }, 
         sessionId: result.sessionId 
       });
@@ -103,13 +104,28 @@ export async function registerRoutes(
   });
   
   app.get("/api/auth/me", authMiddleware, async (req, res) => {
+    const fullUser = await storage.getUser(req.user!.id);
     res.json({ 
       user: { 
         id: req.user!.id, 
         email: req.user!.email, 
-        role: req.user!.role 
+        role: req.user!.role,
+        themePreference: fullUser?.themePreference || 'light',
       } 
     });
+  });
+
+  app.patch("/api/auth/theme", authMiddleware, async (req, res) => {
+    try {
+      const { theme } = req.body;
+      if (!theme || !['light', 'dark'].includes(theme)) {
+        return res.status(400).json({ error: "Invalid theme" });
+      }
+      await storage.updateUserTheme(req.user!.id, theme);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update theme" });
+    }
   });
 
   app.post("/api/auth/change-password", authMiddleware, async (req, res) => {

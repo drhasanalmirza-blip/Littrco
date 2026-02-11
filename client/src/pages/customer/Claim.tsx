@@ -74,13 +74,13 @@ export default function ClaimPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
+        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
           <CardContent className="pt-6 text-center">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">Invalid Link</h2>
-            <p className="text-gray-500 mb-4">This claim link is invalid or has expired.</p>
-            <Button onClick={() => setLocation('/')}>Go Home</Button>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Invalid Link</h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-4">This claim link is invalid or has expired.</p>
+            <Button onClick={() => setLocation('/')} className="littr-btn littr-btn-primary">Go Home</Button>
           </CardContent>
         </Card>
       </div>
@@ -89,11 +89,11 @@ export default function ClaimPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
+        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
           <CardContent className="pt-6 text-center">
-            <Loader2 className="h-12 w-12 text-black mx-auto mb-4 animate-spin" />
-            <h2 className="text-xl font-bold">Claiming your batteries...</h2>
+            <Loader2 className="h-12 w-12 text-gray-900 dark:text-gray-100 mx-auto mb-4 animate-spin" />
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Claiming your batteries...</h2>
           </CardContent>
         </Card>
       </div>
@@ -102,15 +102,15 @@ export default function ClaimPage() {
 
   if (status === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
+        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
           <CardContent className="pt-6 text-center">
-            <div className="bg-green-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
+            <div className="bg-green-100 dark:bg-green-950 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="h-12 w-12 text-green-600" />
             </div>
-            <h2 className="text-3xl font-bold mb-2">+{points} Batteries!</h2>
-            <p className="text-gray-500 mb-6">Thanks for recycling responsibly!</p>
-            <Button onClick={() => setLocation('/app')} className="w-full">
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">+{points} Batteries!</h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-6">Thanks for recycling responsibly!</p>
+            <Button onClick={() => setLocation('/app')} className="w-full littr-btn littr-btn-primary">
               View My Wallet
             </Button>
           </CardContent>
@@ -121,58 +121,59 @@ export default function ClaimPage() {
 
   if (status === 'error') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
+        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
           <CardContent className="pt-6 text-center">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">Claim Failed</h2>
-            <p className="text-gray-500 mb-4">{message}</p>
-            <Button onClick={() => setLocation('/')}>Go Home</Button>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Claim Failed</h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-4">{message}</p>
+            <Button onClick={() => setLocation('/')} className="littr-btn littr-btn-primary">Go Home</Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // If not logged in, show login/register form
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
+        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
           <CardHeader className="text-center">
-            <CardTitle>Claim Your Batteries</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-gray-900 dark:text-gray-100">Claim Your Batteries</CardTitle>
+            <CardDescription className="text-gray-500 dark:text-gray-400">
               Sign in or create an account to claim your recycling reward
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleClaim} className="space-y-4">
               <div>
-                <Label>Email</Label>
+                <Label className="text-gray-900 dark:text-gray-100">Email</Label>
                 <Input 
                   type="email" 
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
+                  className="littr-input"
                   required
                   data-testid="input-email"
                 />
               </div>
               <div>
-                <Label>Password</Label>
+                <Label className="text-gray-900 dark:text-gray-100">Password</Label>
                 <Input 
                   type="password" 
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create or enter your password"
+                  className="littr-input"
                   required
                   data-testid="input-password"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   New user? This will create your account.
                 </p>
               </div>
-              <Button type="submit" className="w-full" data-testid="button-claim">
+              <Button type="submit" className="w-full littr-btn littr-btn-primary" data-testid="button-claim">
                 Claim Batteries
               </Button>
             </form>

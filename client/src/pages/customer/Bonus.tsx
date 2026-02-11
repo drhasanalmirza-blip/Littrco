@@ -138,7 +138,7 @@ export default function BonusPage() {
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
         <div className="text-center">
           <p className="text-gray-500 dark:text-gray-400 mb-4" data-testid="text-login-prompt">Please log in to access bonus surveys</p>
-          <Button onClick={() => setLocation("/app/login")} className="bg-black text-white hover:bg-gray-800" data-testid="button-login">
+          <Button onClick={() => setLocation("/app/login")} className="littr-btn littr-btn-primary" data-testid="button-login">
             Sign In
           </Button>
         </div>
@@ -150,19 +150,19 @@ export default function BonusPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4 animate-fade-in">
         <div className="w-full max-w-md text-center">
-          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 animate-slide-up">
+          <div className="w-20 h-20 bg-green-50 dark:bg-green-950 rounded-full flex items-center justify-center mx-auto mb-6 animate-slide-up">
             <Battery className="h-10 w-10 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-black dark:text-gray-100 mb-2" data-testid="text-success-title">Thanks for sharing!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2" data-testid="text-success-title">Thanks for sharing!</h2>
           <p className="text-gray-500 dark:text-gray-400 mb-2" data-testid="text-success-message">
-            You earned <span className="text-black font-semibold">{successData.batteries} batteries</span>
+            You earned <span className="text-gray-900 dark:text-gray-100 font-semibold">{successData.batteries} batteries</span>
           </p>
           <p className="text-gray-400 text-sm mb-8">Your answers help us understand how vaping affects people and the environment.</p>
           <Button
             onClick={() => {
               setSuccessData(null);
             }}
-            className="w-full bg-black text-white hover:bg-gray-800 h-12 rounded-xl"
+            className="w-full littr-btn littr-btn-primary"
             data-testid="button-back-to-bonus"
           >
             Back to Bonus
@@ -170,7 +170,7 @@ export default function BonusPage() {
           <Button
             variant="ghost"
             onClick={() => setLocation("/app")}
-            className="w-full mt-3 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+            className="w-full mt-3 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
             data-testid="button-back-to-wallet"
           >
             Back to Wallet
@@ -225,7 +225,7 @@ export default function BonusPage() {
 
     return (
       <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col">
-        <div className="bg-black px-4 py-3 flex items-center gap-3">
+        <div className="bg-gray-900 dark:bg-gray-800 px-4 py-3 flex items-center gap-3">
           <button onClick={handleBack} className="text-white" data-testid="button-survey-back">
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -252,7 +252,7 @@ export default function BonusPage() {
             Your answers help us learn how different vapes affect people and the environment. No wrong answers — just be real with us.
           </p>
 
-          <h2 className="text-xl font-bold text-black dark:text-gray-100 mb-6" data-testid="text-question">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6" data-testid="text-question">
             {currentQuestion.question}
           </h2>
 
@@ -280,13 +280,13 @@ export default function BonusPage() {
                     onClick={() => handleSelectOption(option)}
                     className={`w-full text-left px-4 py-3.5 rounded-xl border transition-all duration-200 flex items-center justify-between ${
                       isSelected
-                        ? "border-black bg-black text-white"
-                        : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-black dark:text-gray-100 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        ? "border-green-500 bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300"
+                        : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"
                     }`}
                     data-testid={`option-${option.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
                   >
                     <span className="font-medium text-sm">{option}</span>
-                    {isSelected && isMultiSelect && <Check className="h-4 w-4" />}
+                    {isSelected && isMultiSelect && <Check className="h-4 w-4 text-green-600" />}
                   </button>
                 );
               })}
@@ -299,7 +299,7 @@ export default function BonusPage() {
             <Button
               variant="outline"
               onClick={handleBack}
-              className="flex-1 h-12 rounded-xl border-gray-200 dark:border-gray-700 text-black dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="flex-1 h-12 rounded-xl border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
               data-testid="button-back"
             >
               Back
@@ -310,7 +310,7 @@ export default function BonusPage() {
                 disabled={!canProceed && !currentQuestion.optional}
                 className={`flex-1 h-12 rounded-xl ${
                   canProceed || currentQuestion.optional
-                    ? "bg-black text-white hover:bg-gray-800"
+                    ? "littr-btn-primary"
                     : "bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed"
                 }`}
                 data-testid="button-submit"
@@ -323,7 +323,7 @@ export default function BonusPage() {
                 disabled={!canProceed && !currentQuestion.optional}
                 className={`flex-1 h-12 rounded-xl ${
                   canProceed || currentQuestion.optional
-                    ? "bg-black text-white hover:bg-gray-800"
+                    ? "littr-btn-primary"
                     : "bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed"
                 }`}
                 data-testid="button-next"
@@ -343,7 +343,7 @@ export default function BonusPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950">
-      <div className="bg-black px-4 py-3 flex items-center gap-3">
+      <div className="bg-gray-900 dark:bg-gray-800 px-4 py-3 flex items-center gap-3">
         <button onClick={() => setLocation("/app")} className="text-white" data-testid="button-back-nav">
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -352,10 +352,10 @@ export default function BonusPage() {
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4 animate-fade-in">
         <div className="text-center mb-6">
-          <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+          <div className="w-14 h-14 bg-green-50 dark:bg-green-950 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <Star className="h-7 w-7 text-green-600" />
           </div>
-          <h2 className="text-xl font-bold text-black dark:text-gray-100 mb-1" data-testid="text-bonus-heading">Earn Extra Batteries</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1" data-testid="text-bonus-heading">Earn Extra Batteries</h2>
           <p className="text-gray-400 text-sm">Complete surveys to earn bonus rewards</p>
         </div>
 
@@ -370,7 +370,7 @@ export default function BonusPage() {
           disabled={!signupAvailable}
           className={`w-full text-left rounded-xl border p-5 transition-all ${
             signupAvailable
-              ? "border-gray-200 dark:border-gray-700 hover:border-gray-300 hover:shadow-sm active:scale-[0.98]"
+              ? "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm active:scale-[0.98]"
               : "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 opacity-60"
           }`}
           data-testid="card-signup-survey"
@@ -378,21 +378,21 @@ export default function BonusPage() {
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-bold text-black dark:text-gray-100">Sign-up Survey</h3>
+                <h3 className="font-bold text-gray-900 dark:text-gray-100">Sign-up Survey</h3>
                 {!signupAvailable && (
                   <span className="littr-badge littr-badge-green text-[10px]" data-testid="badge-signup-completed">Completed</span>
                 )}
               </div>
-              <p className="text-gray-400 text-sm mb-3">Tell us about your vaping habits</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">Tell us about your vaping habits</p>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
                   <Battery className="h-3.5 w-3.5 text-green-600" />
-                  <span className="text-sm font-semibold text-black dark:text-gray-100">20 batteries</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">20 batteries</span>
                 </div>
                 <span className="text-xs text-gray-400">~2 min</span>
               </div>
             </div>
-            {signupAvailable && <ChevronRight className="h-5 w-5 text-gray-300 mt-1" />}
+            {signupAvailable && <ChevronRight className="h-5 w-5 text-gray-300 dark:text-gray-600 mt-1" />}
           </div>
         </button>
 
@@ -407,7 +407,7 @@ export default function BonusPage() {
           disabled={!weeklyAvailable}
           className={`w-full text-left rounded-xl border p-5 transition-all ${
             weeklyAvailable
-              ? "border-gray-200 dark:border-gray-700 hover:border-gray-300 hover:shadow-sm active:scale-[0.98]"
+              ? "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm active:scale-[0.98]"
               : "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 opacity-60"
           }`}
           data-testid="card-weekly-survey"
@@ -415,23 +415,23 @@ export default function BonusPage() {
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-bold text-black dark:text-gray-100">Weekly Check-in</h3>
+                <h3 className="font-bold text-gray-900 dark:text-gray-100">Weekly Check-in</h3>
                 {!weeklyAvailable && !isLoading && (
                   <span className="littr-badge littr-badge-yellow text-[10px]" data-testid="badge-weekly-unavailable">
                     {nextWeeklyDate ? `Available ${new Date(nextWeeklyDate).toLocaleDateString()}` : "Completed"}
                   </span>
                 )}
               </div>
-              <p className="text-gray-400 text-sm mb-3">Quick update on your week</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">Quick update on your week</p>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
                   <Battery className="h-3.5 w-3.5 text-green-600" />
-                  <span className="text-sm font-semibold text-black dark:text-gray-100">3 batteries</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">3 batteries</span>
                 </div>
                 <span className="text-xs text-gray-400">~1 min</span>
               </div>
             </div>
-            {weeklyAvailable && <ChevronRight className="h-5 w-5 text-gray-300 mt-1" />}
+            {weeklyAvailable && <ChevronRight className="h-5 w-5 text-gray-300 dark:text-gray-600 mt-1" />}
           </div>
         </button>
 
