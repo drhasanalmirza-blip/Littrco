@@ -5,6 +5,7 @@ import { useStore } from "@/lib/store";
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { Lock, Mail, LogIn, Recycle, ArrowLeft } from "lucide-react";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 import pixelShopImage from "@assets/generated_images/pixel_art_smoke_shop_night.png";
 
@@ -15,6 +16,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
   const [loading, setLoading] = useState(false);
   const { setAuth } = useStore();
   const [, setLocation] = useLocation();
+  const { executeRecaptcha } = useRecaptcha();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,10 +24,12 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
     setLoading(true);
     
     try {
+      const recaptchaToken = await executeRecaptcha("login");
+      
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, recaptchaToken }),
       });
       
       const data = await res.json();

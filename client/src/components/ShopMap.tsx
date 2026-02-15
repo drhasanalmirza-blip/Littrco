@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import L from "leaflet";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin, Loader2 } from "lucide-react";
 
@@ -17,22 +16,11 @@ interface ShopMapProps {
   height?: string;
 }
 
-const shopIcon = L.divIcon({
-  className: "",
-  html: `<div style="width:32px;height:32px;background:#22c55e;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3" fill="#16a34a"/></svg>
-  </div>`,
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32],
-});
-
 export function ShopMap({ height = "400px" }: ShopMapProps) {
-  const mapRef = useRef<L.Map | null>(null);
-  const markerGroup = useRef<L.LayerGroup | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
 
   const { data: shops = [], isLoading } = useQuery<ShopLocation[]>({
     queryKey: ["shop-locations"],
@@ -43,64 +31,71 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
     },
   });
 
-  const initMap = useCallback((node: HTMLDivElement | null) => {
-    if (!node || mapRef.current) return;
-    containerRef.current = node;
-    console.log("[ShopMap] Initializing map on node", node.offsetWidth, "x", node.offsetHeight);
-
-    try {
-      const map = L.map(node, {
-        center: [43.0, -77.6],
-        zoom: 10,
-        scrollWheelZoom: true,
-      });
-
-      markerGroup.current = L.layerGroup().addTo(map);
-
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map);
-
-      mapRef.current = map;
-      console.log("[ShopMap] Map created successfully, tile layer added");
-
-      setTimeout(() => {
-        map.invalidateSize();
-        console.log("[ShopMap] invalidateSize called, container:", node.offsetWidth, "x", node.offsetHeight);
-      }, 200);
-
-      setMapReady(true);
-    } catch (err) {
-      setMapError("Failed to initialize map");
-      console.error("Map init error:", err);
-    }
-  }, []);
-
   useEffect(() => {
+    if (!mapContainer.current || mapRef.current) return;
+
+    let cancelled = false;
+
+    import("leaflet").then((L) => {
+      if (cancelled || !mapContainer.current) return;
+
+      try {
+        const map = L.default.map(mapContainer.current, {
+          center: [43.0, -77.6] as [number, number],
+          zoom: 10,
+          scrollWheelZoom: true,
+        });
+
+        L.default.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19,
+        }).addTo(map);
+
+        mapRef.current = { map, L: L.default, markerGroup: L.default.layerGroup().addTo(map) };
+
+        setTimeout(() => map.invalidateSize(), 300);
+
+        setMapLoaded(true);
+      } catch (err) {
+        console.error("Map init error:", err);
+        setMapError("Could not load map");
+      }
+    }).catch((err) => {
+      console.error("Leaflet import error:", err);
+      setMapError("Could not load map library");
+    });
+
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
+      cancelled = true;
+      if (mapRef.current?.map) {
+        mapRef.current.map.remove();
         mapRef.current = null;
-        markerGroup.current = null;
       }
     };
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || !markerGroup.current || !mapReady) return;
+    if (!mapRef.current || !mapLoaded) return;
+    const { map, L, markerGroup } = mapRef.current;
 
-    markerGroup.current.clearLayers();
+    markerGroup.clearLayers();
 
     const shopsWithCoords = shops.filter((s) => s.latitude && s.longitude);
 
-    shopsWithCoords.forEach((shop) => {
-      if (!shop.latitude || !shop.longitude) return;
+    const shopIcon = L.divIcon({
+      className: "",
+      html: `<div style="width:32px;height:32px;background:#22c55e;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3" fill="#16a34a"/></svg>
+      </div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -32],
+    });
 
+    shopsWithCoords.forEach((shop) => {
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.address + ", " + shop.city)}`;
 
-      const marker = L.marker([shop.latitude, shop.longitude], { icon: shopIcon });
-
+      const marker = L.marker([shop.latitude!, shop.longitude!], { icon: shopIcon });
       marker.bindPopup(`
         <div style="padding:4px;min-width:160px;">
           <h3 style="font-weight:bold;margin:0 0 4px 0;font-size:14px;">${shop.name}</h3>
@@ -109,17 +104,16 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
           <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#22c55e;color:white;padding:4px 12px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;">Get Directions</a>
         </div>
       `);
-
-      markerGroup.current!.addLayer(marker);
+      markerGroup.addLayer(marker);
     });
 
     if (shopsWithCoords.length > 0) {
       const group = L.featureGroup(
-        shopsWithCoords.map((s) => L.marker([s.latitude!, s.longitude!]))
+        shopsWithCoords.map((s: ShopLocation) => L.marker([s.latitude!, s.longitude!]))
       );
-      mapRef.current.fitBounds(group.getBounds().pad(0.3));
+      map.fitBounds(group.getBounds().pad(0.3));
     }
-  }, [shops, mapReady]);
+  }, [shops, mapLoaded]);
 
   if (mapError) {
     return (
@@ -154,12 +148,12 @@ export function ShopMap({ height = "400px" }: ShopMapProps) {
   return (
     <Card>
       <CardContent className="p-0 overflow-hidden rounded-lg relative" style={{ height }}>
-        {isLoading && (
+        {(isLoading || !mapLoaded) && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-900/80 z-10">
             <Loader2 className="h-8 w-8 animate-spin text-green-500" />
           </div>
         )}
-        <div ref={initMap} style={{ width: "100%", height: "100%" }} data-testid="shop-map" />
+        <div ref={mapContainer} style={{ width: "100%", height: "100%" }} data-testid="shop-map" />
       </CardContent>
     </Card>
   );

@@ -33,6 +33,7 @@ import {
   hashPassword,
 } from "./auth";
 import { z } from "zod";
+import { verifyRecaptcha } from "./recaptcha";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -43,9 +44,14 @@ export async function registerRoutes(
   
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, password, recaptchaToken } = req.body;
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password required" });
+      }
+      
+      const captcha = await verifyRecaptcha(recaptchaToken, "login");
+      if (!captcha.success) {
+        return res.status(403).json({ error: captcha.error || "Spam protection check failed" });
       }
       
       const result = await login(email, password);
@@ -69,9 +75,14 @@ export async function registerRoutes(
   
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, password, recaptchaToken } = req.body;
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password required" });
+      }
+      
+      const captcha = await verifyRecaptcha(recaptchaToken, "register");
+      if (!captcha.success) {
+        return res.status(403).json({ error: captcha.error || "Spam protection check failed" });
       }
       
       const existing = await storage.getUserByEmail(email);
