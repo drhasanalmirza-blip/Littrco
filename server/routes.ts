@@ -2960,7 +2960,7 @@ export async function registerRoutes(
     }
   });
 
-  // Background job: void expired unclaimed sessions every 30 seconds
+  // Background job: void expired unclaimed sessions every 10 minutes
   setInterval(async () => {
     try {
       const count = await storage.expireOldSessions();
@@ -2970,7 +2970,7 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[cleanup] Session expiry error:", error);
     }
-  }, 30_000);
+  }, 600_000);
 
   return httpServer;
 }
