@@ -63,7 +63,7 @@ export default function Home() {
         </div>
 
         {/* Floating Trust Badge */}
-        <div className="absolute top-24 right-8 z-20 hidden lg:block">
+        <div className="absolute top-20 right-8 z-20 hidden lg:block">
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 text-white text-sm">
             <span className="text-green-400 mr-2">✓</span> Trusted by local shops
           </div>
