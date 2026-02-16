@@ -424,6 +424,53 @@ export default function Why() {
         </div>
       </section>
 
+      {/* Partner Locations with images */}
+      <section className="py-24 bg-white dark:bg-gray-950">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <p className="text-sm uppercase tracking-widest text-gray-400 mb-4">Drop-off locations</p>
+            <h2 className="text-4xl font-bold dark:text-gray-100">Find a Partner Shop</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300 border border-transparent dark:border-gray-800">
+              <div className="relative h-48 rounded-t-xl overflow-hidden">
+                <img src="/assets/generated_images/elite_smoke_shop_pixel_art.png" alt="Elite Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+              </div>
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Elite Smoke Shop</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Rochester, NY</p>
+              </div>
+            </div>
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300 border border-transparent dark:border-gray-800">
+              <div className="relative h-48 rounded-t-xl overflow-hidden">
+                <img src="/assets/generated_images/high_end_smoke_shop_pixel_art.png" alt="High End Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+              </div>
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">High End Smoke Shop</h3>
+                <p className="text-gray-400 text-sm">Rochester, NY</p>
+              </div>
+            </div>
+            <div className="group cursor-pointer shadow-lg rounded-xl hover:scale-105 transition-transform duration-300 border border-transparent dark:border-gray-800">
+              <div className="relative h-48 rounded-t-xl overflow-hidden">
+                <img src="/assets/generated_images/red_eye_smoke_shop_pixel_art.png" alt="Red Eye Smoke Shop" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+              </div>
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-b-xl">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Red Eye Smoke Shop</h3>
+                <p className="text-gray-400 text-sm">Rochester, NY</p>
+              </div>
+            </div>
+          </div>
+          <div className="text-center mt-12">
+            <Link href="/business">
+              <Button size="lg" className="rounded-full px-10" data-testid="button-become-partner">Become a Partner Today</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Final CTA */}
       <section className="py-20 bg-black text-white">
         <div className="container mx-auto px-4 text-center">

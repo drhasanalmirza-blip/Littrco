@@ -19,7 +19,7 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-black">
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center overflow-hidden">
+      <section className="relative min-h-screen flex items-center overflow-hidden border-b-0">
         {/* Hero background image - single visible image */}
         <div className="absolute inset-0">
           <img 
