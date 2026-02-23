@@ -123,10 +123,15 @@ export default function PartnerDashboard() {
   const [pairCode, setPairCode] = useState("");
   const [pairResult, setPairResult] = useState<any | null>(null);
 
-  const { data: shops = [] } = useQuery({
+  const { data: shops = [], isLoading: shopsLoading, isError: shopsError } = useQuery({
     queryKey: ['partner-shops'],
     queryFn: async () => {
       const res = await apiRequest('/api/partner/shops');
+      if (res.status === 401) {
+        clearAuth();
+        setLocation('/partner/login');
+        throw new Error('Session expired');
+      }
       if (!res.ok) throw new Error('Failed to fetch shops');
       return res.json();
     },
@@ -284,12 +289,23 @@ export default function PartnerDashboard() {
     setLocation('/');
   };
 
-  if (role !== 'partner' && role !== 'admin') {
+  if (!user || (role !== 'partner' && role !== 'admin' && role !== 'staff')) {
     return (
       <div className="littr-dashboard flex items-center justify-center">
         <div className="littr-card-solid p-8 rounded-2xl text-center">
           <p className="text-xl mb-4 text-black dark:text-white">Access Denied</p>
           <Button onClick={() => setLocation('/partner/login')} className="littr-btn littr-btn-primary">Partner Login</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (shopsLoading) {
+    return (
+      <div className="littr-dashboard flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-500 dark:text-gray-400">Loading dashboard...</p>
         </div>
       </div>
     );
