@@ -26,6 +26,8 @@ import ChangePasswordPage from "@/pages/customer/ChangePassword";
 import ScanPage from "@/pages/customer/Scan";
 import StorePage from "@/pages/customer/Store";
 import BonusPage from "@/pages/customer/Bonus";
+import VeriScanPage from "@/pages/VeriScan";
+import DropsPage from "@/pages/customer/Drops";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -44,7 +46,8 @@ function Router() {
   const isDashboard = location.includes('/admin') || 
                       location.includes('/staff') || 
                       location.includes('/partner') ||
-                      location.includes('/app');
+                      location.includes('/app') ||
+                      location.includes('/veriscan');
 
   return (
     <>
@@ -66,6 +69,7 @@ function Router() {
         <Route path="/safety" component={Dropoff} />
         <Route path="/privacy" component={Why} />
         <Route path="/terms" component={Why} />
+        <Route path="/veriscan" component={VeriScanPage} />
 
         {/* Auth Portals */}
         <Route path="/admin/login" component={() => <Login type="admin" />} />
@@ -89,6 +93,7 @@ function Router() {
         <Route path="/app/bonus" component={BonusPage} />
         <Route path="/app/change-password" component={ChangePasswordPage} />
         <Route path="/app/settings" component={ChangePasswordPage} />
+        <Route path="/app/drops" component={DropsPage} />
         <Route path="/app/history" component={CustomerDashboard} />
 
         <Route component={NotFound} />

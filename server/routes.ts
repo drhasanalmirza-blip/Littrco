@@ -2972,5 +2972,1220 @@ export async function registerRoutes(
     }
   }, 600_000);
 
+  // ==================== DROP PIPELINE (T004) ====================
+
+  app.patch("/api/bins/:binId/capabilities", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const binId = parseInt(req.params.binId);
+      const { hasWeight, cameraMode, cameraCadenceJson, uploadPolicy, debugMode } = req.body;
+      const cap = await storage.upsertBinCapabilities({ binId, hasWeight, cameraMode, cameraCadenceJson, uploadPolicy, debugMode });
+      res.json(cap);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update bin capabilities" });
+    }
+  });
+
+  app.post("/api/drops/start", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const { binId, shopId } = req.body;
+      if (!shopId) return res.status(400).json({ error: "shopId required" });
+      const drop = await storage.createDrop({
+        binId: binId || null,
+        shopId,
+        userId: req.user?.id || null,
+        status: "awaiting_ai",
+        category: "Unknown",
+        pointsAwarded: 0,
+      });
+      res.json({ ok: true, data: drop });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to start drop" });
+    }
+  });
+
+  app.post("/api/drops/:dropId/weight", async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.dropId);
+      const { weightGrams } = req.body;
+      if (weightGrams == null) return res.status(400).json({ error: "weightGrams required" });
+      const drop = await storage.updateDrop(dropId, { weightGrams });
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      res.json({ ok: true, data: drop });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to update weight" });
+    }
+  });
+
+  app.post("/api/drops/:dropId/images", async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.dropId);
+      const { imageRole, storageUrl, hash } = req.body;
+      if (!imageRole || !storageUrl) return res.status(400).json({ error: "imageRole and storageUrl required" });
+      const drop = await storage.getDrop(dropId);
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      const image = await storage.createDropImage({ dropId, imageRole, storageUrl, hash });
+      res.json({ ok: true, data: image });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to add image" });
+    }
+  });
+
+  app.post("/api/drops/:dropId/submit", async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.dropId);
+      const drop = await storage.getDrop(dropId);
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      const images = await storage.getDropImages(dropId);
+      const hasClassifiable = images.some(img => img.imageRole === "crop" || img.imageRole === "after");
+      if (hasClassifiable) {
+        const job = await storage.createAiJob({ dropId, provider: process.env.OPENAI_API_KEY ? "openai" : "null", status: "queued" });
+        await storage.updateDrop(dropId, { status: "awaiting_ai" });
+
+        try {
+          const { runAiJobForDrop } = await import("./ai");
+          const result = await runAiJobForDrop(dropId);
+          if (result) {
+            await storage.updateAiJob(job.id, {
+              status: "done",
+              finishedAt: new Date(),
+              resultJson: result as any,
+            });
+            await storage.updateDrop(dropId, {
+              status: result.category === "Nicotine" ? "approved" : "denied",
+              category: result.category as any,
+              brand: result.brand,
+              subtype: result.subtype,
+              flavor: result.flavor,
+              aiConfidence: result.confidence,
+              aiModelVersion: result.modelVersion || "unknown",
+              pointsAwarded: result.category === "Nicotine" ? 1 : 0,
+            });
+          }
+        } catch (aiError) {
+          console.error("AI classification error:", aiError);
+          await storage.updateAiJob(job.id, { status: "failed", finishedAt: new Date(), error: String(aiError) });
+        }
+      } else {
+        await storage.updateDrop(dropId, { status: "approved", category: "Unknown", pointsAwarded: 1 });
+      }
+      const updated = await storage.getDrop(dropId);
+      res.json({ ok: true, data: updated });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to submit drop" });
+    }
+  });
+
+  app.get("/api/drops/:dropId", async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.dropId);
+      const drop = await storage.getDrop(dropId);
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      const images = await storage.getDropImages(dropId);
+      const jobs = await storage.getAiJobsByDrop(dropId);
+      const dropAppeals = await storage.getAppealsByDrop(dropId);
+      res.json({ ok: true, data: { ...drop, images, aiJobs: jobs, appeals: dropAppeals } });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch drop" });
+    }
+  });
+
+  app.post("/api/drops/:dropId/appeal", authMiddleware, async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.dropId);
+      const { reason } = req.body;
+      const drop = await storage.getDrop(dropId);
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      const appeal = await storage.createAppeal({
+        dropId,
+        userId: req.user!.id,
+        type: "appeal",
+        payloadJson: { reason },
+      });
+      await storage.updateDrop(dropId, { status: "appealed" });
+      res.json({ ok: true, data: appeal });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to create appeal" });
+    }
+  });
+
+  app.post("/api/drops/:dropId/self-report", authMiddleware, async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.dropId);
+      const { brand, subtype, flavor } = req.body;
+      const drop = await storage.getDrop(dropId);
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      const appeal = await storage.createAppeal({
+        dropId,
+        userId: req.user!.id,
+        type: "self_report",
+        payloadJson: { brand, subtype, flavor },
+      });
+      res.json({ ok: true, data: appeal });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to create self-report" });
+    }
+  });
+
+  // ==================== VERISCAN (T005) ====================
+
+  app.get("/api/veriscan", async (req, res) => {
+    try {
+      const { binId, shopId, sig } = req.query;
+      if (!shopId) return res.status(400).json({ error: "shopId required" });
+      const shop = await storage.getShop(parseInt(shopId as string));
+      if (!shop) return res.status(404).json({ error: "Shop not found" });
+      let bin = null;
+      if (binId) {
+        bin = await storage.getBin(parseInt(binId as string));
+      }
+      const shopBins = await storage.getBinsByShop(shop.id);
+      res.json({
+        ok: true,
+        data: {
+          shop: { id: shop.id, name: shop.name, address: shop.address },
+          bin: bin ? { id: bin.id, name: bin.name } : null,
+          bins: shopBins.map(b => ({ id: b.id, name: b.name })),
+          multiplesBins: shopBins.length > 1,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to validate VeriScan" });
+    }
+  });
+
+  app.post("/api/veriscan/session/start", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const { shopId, binId } = req.body;
+      if (!shopId) return res.status(400).json({ error: "shopId required" });
+      const session = await storage.createVeriscanSession({
+        userId: req.user?.id || null,
+        shopId,
+        binId: binId || null,
+        status: "active",
+        expectedItemCount: 0,
+      });
+      res.json({ ok: true, data: session });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to start VeriScan session" });
+    }
+  });
+
+  app.post("/api/veriscan/session/:id/items", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getVeriscanSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const { imageUrl } = req.body;
+      let aiResult = { brand: null as string | null, subtype: null as string | null, flavor: null as string | null, confidence: 0 };
+      if (imageUrl && process.env.OPENAI_API_KEY) {
+        try {
+          const { classifyDrop } = await import("./ai");
+          const result = await classifyDrop(imageUrl);
+          aiResult = { brand: result.brand, subtype: result.subtype, flavor: result.flavor, confidence: result.confidence };
+        } catch (e) {
+          console.error("VeriScan AI error:", e);
+        }
+      }
+      const item = await storage.createVeriscanItem({
+        sessionId,
+        imageUrl,
+        aiBrand: aiResult.brand,
+        aiSubtype: aiResult.subtype,
+        aiFlavor: aiResult.flavor,
+        aiConfidence: aiResult.confidence,
+        modifier: 2.0,
+      });
+      await storage.updateVeriscanSession(sessionId, { expectedItemCount: session.expectedItemCount + 1 });
+      res.json({ ok: true, data: item });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to add VeriScan item" });
+    }
+  });
+
+  app.post("/api/veriscan/session/:id/items/:itemId/confirm", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const itemId = parseInt(req.params.itemId);
+      const { brand, subtype, flavor } = req.body;
+      if (!brand) return res.status(400).json({ error: "brand required" });
+      const item = await storage.updateVeriscanItem(itemId, {
+        finalBrand: brand,
+        finalSubtype: subtype || null,
+        finalFlavor: flavor || null,
+        confirmedAt: new Date(),
+        modifier: 2.0,
+      });
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      res.json({ ok: true, data: item });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to confirm item" });
+    }
+  });
+
+  app.post("/api/veriscan/session/:id/arm", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getVeriscanSession(sessionId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const { timeoutSeconds = 60 } = req.body;
+      const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
+      const updated = await storage.updateVeriscanSession(sessionId, {
+        status: "armed",
+        expiresAt,
+      });
+      const { getRealtimeAdapter } = await import("./realtime");
+      const adapter = getRealtimeAdapter();
+      if (session.binId) {
+        adapter.sendArmVeriScan(session.binId, sessionId, expiresAt, session.expectedItemCount);
+      }
+      res.json({ ok: true, data: { ...updated, armStatus: "armed", expiresAt } });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to arm bin" });
+    }
+  });
+
+  // ==================== TAXONOMY & STAFF TOOLS (T006) ====================
+
+  app.get("/api/staff/brands", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allBrands = await storage.getAllBrands();
+      res.json({ ok: true, data: allBrands });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch brands" });
+    }
+  });
+
+  app.post("/api/staff/brands", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { name, suggested } = req.body;
+      if (!name) return res.status(400).json({ error: "name required" });
+      const brand = await storage.createBrand({ name, suggested: suggested || false });
+      res.json({ ok: true, data: brand });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to create brand" });
+    }
+  });
+
+  app.patch("/api/staff/brands/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const brand = await storage.updateBrand(id, req.body);
+      if (!brand) return res.status(404).json({ error: "Brand not found" });
+      res.json({ ok: true, data: brand });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to update brand" });
+    }
+  });
+
+  app.delete("/api/staff/brands/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const deleted = await storage.deleteBrand(parseInt(req.params.id));
+      res.json({ ok: true, deleted });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to delete brand" });
+    }
+  });
+
+  app.get("/api/staff/subtypes", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const brandId = req.query.brandId ? parseInt(req.query.brandId as string) : null;
+      const allSubtypes = brandId ? await storage.getSubtypesByBrand(brandId) : await storage.getAllSubtypes();
+      res.json({ ok: true, data: allSubtypes });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch subtypes" });
+    }
+  });
+
+  app.post("/api/staff/subtypes", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { brandId, name, suggested } = req.body;
+      if (!brandId || !name) return res.status(400).json({ error: "brandId and name required" });
+      const sub = await storage.createSubtype({ brandId, name, suggested: suggested || false });
+      res.json({ ok: true, data: sub });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to create subtype" });
+    }
+  });
+
+  app.delete("/api/staff/subtypes/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const deleted = await storage.deleteSubtype(parseInt(req.params.id));
+      res.json({ ok: true, deleted });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to delete subtype" });
+    }
+  });
+
+  app.get("/api/staff/flavors", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allFlavors = await storage.getAllFlavors();
+      res.json({ ok: true, data: allFlavors });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch flavors" });
+    }
+  });
+
+  app.post("/api/staff/flavors", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { name, suggested } = req.body;
+      if (!name) return res.status(400).json({ error: "name required" });
+      const flavor = await storage.createFlavor({ name, suggested: suggested || false });
+      res.json({ ok: true, data: flavor });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to create flavor" });
+    }
+  });
+
+  app.delete("/api/staff/flavors/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const deleted = await storage.deleteFlavor(parseInt(req.params.id));
+      res.json({ ok: true, deleted });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to delete flavor" });
+    }
+  });
+
+  app.get("/api/staff/drops", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 200;
+      const allDrops = await storage.getAllDrops(limit);
+      res.json({ ok: true, data: allDrops });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
+    }
+  });
+
+  app.patch("/api/staff/drops/:id/override", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { category, brand, subtype, flavor, status } = req.body;
+      const drop = await storage.updateDrop(id, {
+        category: category || undefined,
+        brand: brand || undefined,
+        subtype: subtype || undefined,
+        flavor: flavor || undefined,
+        status: status || undefined,
+        overrideSource: `staff:${req.user!.email}`,
+      });
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      res.json({ ok: true, data: drop });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to override drop" });
+    }
+  });
+
+  app.post("/api/staff/drops/:id/rerun-ai", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.id);
+      const drop = await storage.getDrop(dropId);
+      if (!drop) return res.status(404).json({ error: "Drop not found" });
+      const job = await storage.createAiJob({ dropId, provider: process.env.OPENAI_API_KEY ? "openai" : "null", status: "queued" });
+      try {
+        const { runAiJobForDrop } = await import("./ai");
+        const result = await runAiJobForDrop(dropId);
+        if (result) {
+          await storage.updateAiJob(job.id, { status: "done", finishedAt: new Date(), resultJson: result as any });
+          await storage.updateDrop(dropId, {
+            category: result.category as any,
+            brand: result.brand,
+            subtype: result.subtype,
+            flavor: result.flavor,
+            aiConfidence: result.confidence,
+            aiModelVersion: result.modelVersion || "unknown",
+          });
+        }
+      } catch (aiError) {
+        await storage.updateAiJob(job.id, { status: "failed", finishedAt: new Date(), error: String(aiError) });
+      }
+      const updated = await storage.getDrop(dropId);
+      res.json({ ok: true, data: updated });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to rerun AI" });
+    }
+  });
+
+  app.get("/api/staff/appeals", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allAppeals = await storage.getAllAppeals();
+      res.json({ ok: true, data: allAppeals });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch appeals" });
+    }
+  });
+
+  app.patch("/api/staff/appeals/:id/resolve", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { resolution } = req.body;
+      if (!resolution) return res.status(400).json({ error: "resolution required" });
+      const appeal = await storage.resolveAppeal(id, resolution, req.user!.id);
+      if (!appeal) return res.status(404).json({ error: "Appeal not found" });
+      res.json({ ok: true, data: appeal });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to resolve appeal" });
+    }
+  });
+
+  // ==================== BIN MODULE API (T008) ====================
+
+  app.post("/api/bin-module/register", async (req, res) => {
+    try {
+      const { binId, moduleType, firmwareVersion } = req.body;
+      if (!binId || !moduleType) return res.status(400).json({ error: "binId and moduleType required" });
+      const bin = await storage.getBin(binId);
+      if (!bin) return res.status(404).json({ error: "Bin not found" });
+      const crypto = await import("crypto");
+      const moduleToken = crypto.randomBytes(32).toString("hex");
+      const cap = await storage.upsertBinCapabilities({
+        binId,
+        cameraMode: moduleType,
+        moduleToken,
+      });
+      res.json({ ok: true, data: { moduleToken, binId, capabilities: cap } });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to register module" });
+    }
+  });
+
+  const moduleAuth = async (req: any, res: any, next: any) => {
+    const token = req.headers["x-module-token"] as string;
+    if (!token) return res.status(401).json({ error: "Module token required" });
+    const cap = await storage.getBinCapabilitiesByToken(token);
+    if (!cap) return res.status(401).json({ error: "Invalid module token" });
+    req.binCapabilities = cap;
+    next();
+  };
+
+  app.get("/api/bin-module/config", moduleAuth, async (req: any, res) => {
+    try {
+      const cap = req.binCapabilities;
+      res.json({
+        ok: true,
+        data: {
+          binId: cap.binId,
+          cameraMode: cap.cameraMode,
+          hasWeight: cap.hasWeight,
+          cadence: cap.cameraCadenceJson,
+          uploadPolicy: cap.uploadPolicy,
+          debugMode: cap.debugMode,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch config" });
+    }
+  });
+
+  app.post("/api/bin-module/heartbeat", moduleAuth, async (req: any, res) => {
+    try {
+      const cap = req.binCapabilities;
+      const bin = await storage.getBin(cap.binId);
+      if (bin) {
+        await storage.updateBinSensorData(bin.id, {});
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to record heartbeat" });
+    }
+  });
+
+  app.post("/api/bin-module/drop-capture", moduleAuth, async (req: any, res) => {
+    try {
+      const { dropId, imageRole, storageUrl, hash } = req.body;
+      if (!dropId || !imageRole || !storageUrl) return res.status(400).json({ error: "dropId, imageRole, storageUrl required" });
+      const image = await storage.createDropImage({ dropId, imageRole, storageUrl, hash });
+      res.json({ ok: true, data: image });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to store drop capture" });
+    }
+  });
+
+  app.post("/api/bin-module/baseline", moduleAuth, async (req: any, res) => {
+    try {
+      const cap = req.binCapabilities;
+      if (cap.uploadPolicy === "drop_only") {
+        return res.json({ ok: true, skipped: true, reason: "uploadPolicy is drop_only" });
+      }
+      const { storageUrl, hash } = req.body;
+      if (!storageUrl) return res.status(400).json({ error: "storageUrl required" });
+      res.json({ ok: true, stored: true });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to store baseline" });
+    }
+  });
+
+  app.get("/api/bin-module/pending-drops", moduleAuth, async (req: any, res) => {
+    try {
+      const cap = req.binCapabilities;
+      const bin = await storage.getBin(cap.binId);
+      if (!bin) return res.json({ ok: true, data: [] });
+      const shopDrops = await storage.getDropsByShop(bin.shopId, 10);
+      const pending = shopDrops.filter(d => d.status === "awaiting_ai" && d.binId === bin.id);
+      res.json({ ok: true, data: pending.map(d => ({ dropId: d.id, createdAt: d.createdAt })) });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch pending drops" });
+    }
+  });
+
+  // ==================== LITTR APP API (T009) ====================
+
+  // --- Guest endpoints ---
+  app.get("/api/app/shops", async (req, res) => {
+    try {
+      const allShops = await storage.getVerifiedShopsWithCoordinates();
+      const shopList = allShops.map(s => ({
+        id: s.id, name: s.name, address: s.address, city: s.city,
+        latitude: s.latitude, longitude: s.longitude,
+      }));
+      res.json({ ok: true, data: shopList });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch shops" });
+    }
+  });
+
+  app.get("/api/app/shops/:id", async (req, res) => {
+    try {
+      const shop = await storage.getShop(parseInt(req.params.id));
+      if (!shop) return res.status(404).json({ ok: false, error: "Shop not found" });
+      const shopBins = await storage.getBinsByShop(shop.id);
+      const rewardConfig = await storage.getRewardConfig(shop.id);
+      res.json({
+        ok: true,
+        data: {
+          id: shop.id, name: shop.name, address: shop.address, city: shop.city,
+          latitude: shop.latitude, longitude: shop.longitude,
+          binsCount: shopBins.length,
+          rewardConfig: rewardConfig ? { enabled: rewardConfig.enabled } : null,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch shop" });
+    }
+  });
+
+  app.get("/api/app/brands", async (req, res) => {
+    try {
+      const allBrands = await storage.getAllBrands();
+      const allSubtypes = await storage.getAllSubtypes();
+      const brandsWithSubs = allBrands.map(b => ({
+        ...b,
+        subtypes: allSubtypes.filter(s => s.brandId === b.id),
+      }));
+      res.json({ ok: true, data: brandsWithSubs });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch brands" });
+    }
+  });
+
+  app.post("/api/app/auth/register", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ ok: false, error: "Email and password required" });
+      const existing = await storage.getUserByEmail(email);
+      if (existing) return res.status(409).json({ ok: false, error: "Email already registered" });
+      const result = await register(email, password, "CUSTOMER");
+      res.json({
+        ok: true,
+        data: {
+          sessionId: result.sessionId,
+          user: { id: result.user.id, email: result.user.email, role: result.user.role },
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/app/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ ok: false, error: "Email and password required" });
+      const result = await login(email, password);
+      if (!result) return res.status(401).json({ ok: false, error: "Invalid credentials" });
+      res.json({
+        ok: true,
+        data: {
+          sessionId: result.sessionId,
+          user: { id: result.user.id, email: result.user.email, role: result.user.role },
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Login failed" });
+    }
+  });
+
+  app.post("/api/app/auth/forgot-password", async (req, res) => {
+    try {
+      res.json({ ok: true, message: "If the email exists, a reset link has been sent." });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to process request" });
+    }
+  });
+
+  // --- Customer endpoints ---
+  app.get("/api/app/me", authMiddleware, async (req, res) => {
+    try {
+      const user = req.user!;
+      let walletData = null;
+      if (user.role === "CUSTOMER") {
+        const customer = await storage.getCustomerByUserId(user.id);
+        if (customer) {
+          const wallet = await storage.getWallet(customer.id);
+          walletData = { publicId: customer.publicId, balance: wallet?.pointsBalance || 0, lifetimeEarned: wallet?.lifetimeEarned || 0 };
+        }
+      }
+      res.json({
+        ok: true,
+        data: { id: user.id, email: user.email, role: user.role, wallet: walletData }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch profile" });
+    }
+  });
+
+  app.patch("/api/app/me/password", authMiddleware, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) return res.status(400).json({ ok: false, error: "Current and new password required" });
+      const user = req.user!;
+      if (!user.passwordHash) return res.status(400).json({ ok: false, error: "No password set" });
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) return res.status(401).json({ ok: false, error: "Current password incorrect" });
+      const hash = await hashPassword(newPassword);
+      await storage.updateUserPassword(user.id, hash);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to change password" });
+    }
+  });
+
+  app.get("/api/app/wallet", authMiddleware, async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByUserId(req.user!.id);
+      if (!customer) return res.status(404).json({ ok: false, error: "Customer profile not found" });
+      const wallet = await storage.getWallet(customer.id);
+      const txns = await storage.getTransactionsByWallet(wallet!.id);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const paginated = txns.slice((page - 1) * limit, page * limit);
+      res.json({
+        ok: true,
+        data: {
+          balance: wallet?.pointsBalance || 0,
+          lifetimeEarned: wallet?.lifetimeEarned || 0,
+          transactions: paginated,
+          total: txns.length,
+          page,
+          limit,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch wallet" });
+    }
+  });
+
+  app.get("/api/app/drops", authMiddleware, async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const allDrops = await storage.getDropsByUser(req.user!.id, 500);
+      const filtered = req.query.status ? allDrops.filter(d => d.status === req.query.status) : allDrops;
+      const paginated = filtered.slice((page - 1) * limit, page * limit);
+      res.json({ ok: true, data: paginated, total: filtered.length, page, limit });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
+    }
+  });
+
+  app.get("/api/app/drops/:id", authMiddleware, async (req, res) => {
+    try {
+      const drop = await storage.getDrop(parseInt(req.params.id));
+      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
+      const images = await storage.getDropImages(drop.id);
+      const dropAppeals = await storage.getAppealsByDrop(drop.id);
+      res.json({ ok: true, data: { ...drop, images, appeals: dropAppeals } });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch drop" });
+    }
+  });
+
+  app.post("/api/app/drops/:id/appeal", authMiddleware, async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.id);
+      const { reason } = req.body;
+      const drop = await storage.getDrop(dropId);
+      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
+      const appeal = await storage.createAppeal({ dropId, userId: req.user!.id, type: "appeal", payloadJson: { reason } });
+      await storage.updateDrop(dropId, { status: "appealed" });
+      res.json({ ok: true, data: appeal });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to create appeal" });
+    }
+  });
+
+  app.post("/api/app/drops/:id/self-report", authMiddleware, async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.id);
+      const { brand, subtype, flavor } = req.body;
+      const appeal = await storage.createAppeal({ dropId, userId: req.user!.id, type: "self_report", payloadJson: { brand, subtype, flavor } });
+      res.json({ ok: true, data: appeal });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to self-report" });
+    }
+  });
+
+  app.get("/api/app/store", async (req, res) => {
+    try {
+      const items = await storage.getStoreItemsByCategory("customer");
+      res.json({ ok: true, data: items.filter(i => i.active) });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch store" });
+    }
+  });
+
+  app.post("/api/app/store/redeem", authMiddleware, async (req, res) => {
+    try {
+      const { itemId } = req.body;
+      if (!itemId) return res.status(400).json({ ok: false, error: "itemId required" });
+      const item = await storage.getStoreItem(itemId);
+      if (!item) return res.status(404).json({ ok: false, error: "Item not found" });
+      const customer = await storage.getCustomerByUserId(req.user!.id);
+      if (!customer) return res.status(404).json({ ok: false, error: "Customer not found" });
+      const wallet = await storage.getWallet(customer.id);
+      if (!wallet || wallet.pointsBalance < item.pointsCost) {
+        return res.status(400).json({ ok: false, error: "Insufficient balance" });
+      }
+      const redemption = await storage.createRedemption({ customerId: customer.id, storeItemId: item.id, pointsSpent: item.pointsCost, status: "PENDING" });
+      await storage.updateWalletBalance(customer.id, -item.pointsCost, false);
+      await storage.createTransaction({ walletId: wallet.id, amount: -item.pointsCost, type: "REDEEM", description: `Redeemed: ${item.name}` });
+      res.json({ ok: true, data: redemption });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to redeem" });
+    }
+  });
+
+  app.get("/api/app/redemptions", authMiddleware, async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByUserId(req.user!.id);
+      if (!customer) return res.json({ ok: true, data: [] });
+      const redemptionsList = await storage.getRedemptionsByCustomer(customer.id);
+      res.json({ ok: true, data: redemptionsList });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch redemptions" });
+    }
+  });
+
+  app.post("/api/app/claim", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const { token, email, password } = req.body;
+      if (!token) return res.status(400).json({ ok: false, error: "Token required" });
+      res.json({ ok: true, message: "Use the existing /api/claim or /api/v2/claim endpoint" });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to claim" });
+    }
+  });
+
+  app.post("/api/app/scan", authMiddleware, async (req, res) => {
+    try {
+      const { imageUrl } = req.body;
+      if (!imageUrl) return res.status(400).json({ ok: false, error: "imageUrl required" });
+      let result = { category: "Unknown", brand: null as string | null, subtype: null as string | null, flavor: null as string | null, confidence: 0 };
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const { classifyDrop } = await import("./ai");
+          result = await classifyDrop(imageUrl);
+        } catch (e) {
+          console.error("App scan AI error:", e);
+        }
+      }
+      res.json({ ok: true, data: result });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to scan" });
+    }
+  });
+
+  app.get("/api/app/notifications", authMiddleware, async (req, res) => {
+    try {
+      res.json({ ok: true, data: [] });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch notifications" });
+    }
+  });
+
+  // --- VeriScan app endpoints ---
+  app.get("/api/app/veriscan/validate", async (req, res) => {
+    try {
+      const { binId, shopId, sig } = req.query;
+      if (!shopId) return res.status(400).json({ ok: false, error: "shopId required" });
+      const shop = await storage.getShop(parseInt(shopId as string));
+      if (!shop) return res.status(404).json({ ok: false, error: "Shop not found" });
+      const shopBins = await storage.getBinsByShop(shop.id);
+      let bin = null;
+      if (binId) bin = await storage.getBin(parseInt(binId as string));
+      res.json({
+        ok: true,
+        data: {
+          shop: { id: shop.id, name: shop.name, address: shop.address },
+          bin: bin ? { id: bin.id, name: bin.name } : null,
+          bins: shopBins.map(b => ({ id: b.id, name: b.name })),
+          multipleBins: shopBins.length > 1,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to validate" });
+    }
+  });
+
+  app.post("/api/app/veriscan/session/start", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const { shopId, binId } = req.body;
+      if (!shopId) return res.status(400).json({ ok: false, error: "shopId required" });
+      const session = await storage.createVeriscanSession({ userId: req.user?.id || null, shopId, binId: binId || null, status: "active", expectedItemCount: 0 });
+      res.json({ ok: true, data: session });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to start session" });
+    }
+  });
+
+  app.post("/api/app/veriscan/session/:id/items", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getVeriscanSession(sessionId);
+      if (!session) return res.status(404).json({ ok: false, error: "Session not found" });
+      const { imageUrl } = req.body;
+      let aiResult = { brand: null as string | null, subtype: null as string | null, flavor: null as string | null, confidence: 0 };
+      if (imageUrl && process.env.OPENAI_API_KEY) {
+        try {
+          const { classifyDrop } = await import("./ai");
+          const result = await classifyDrop(imageUrl);
+          aiResult = { brand: result.brand, subtype: result.subtype, flavor: result.flavor, confidence: result.confidence };
+        } catch (e) { console.error("VeriScan AI error:", e); }
+      }
+      const item = await storage.createVeriscanItem({ sessionId, imageUrl, aiBrand: aiResult.brand, aiSubtype: aiResult.subtype, aiFlavor: aiResult.flavor, aiConfidence: aiResult.confidence, modifier: 2.0 });
+      await storage.updateVeriscanSession(sessionId, { expectedItemCount: session.expectedItemCount + 1 });
+      res.json({ ok: true, data: item });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to add item" });
+    }
+  });
+
+  app.post("/api/app/veriscan/session/:id/items/:itemId/confirm", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const { brand, subtype, flavor } = req.body;
+      if (!brand) return res.status(400).json({ ok: false, error: "brand required" });
+      const item = await storage.updateVeriscanItem(parseInt(req.params.itemId), { finalBrand: brand, finalSubtype: subtype || null, finalFlavor: flavor || null, confirmedAt: new Date(), modifier: 2.0 });
+      if (!item) return res.status(404).json({ ok: false, error: "Item not found" });
+      res.json({ ok: true, data: item });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to confirm" });
+    }
+  });
+
+  app.post("/api/app/veriscan/session/:id/arm", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getVeriscanSession(sessionId);
+      if (!session) return res.status(404).json({ ok: false, error: "Session not found" });
+      const { timeoutSeconds = 60 } = req.body;
+      const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
+      const updated = await storage.updateVeriscanSession(sessionId, { status: "armed", expiresAt });
+      const { getRealtimeAdapter } = await import("./realtime");
+      if (session.binId) getRealtimeAdapter().sendArmVeriScan(session.binId, sessionId, expiresAt, session.expectedItemCount);
+      res.json({ ok: true, data: { ...updated, armStatus: "armed", expiresAt } });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to arm" });
+    }
+  });
+
+  app.get("/api/app/veriscan/sessions", authMiddleware, async (req, res) => {
+    try {
+      const userSessions = await storage.getVeriscanSessionsByUser(req.user!.id);
+      res.json({ ok: true, data: userSessions });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch sessions" });
+    }
+  });
+
+  // --- Partner app endpoints ---
+  app.get("/api/app/partner/shops", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const partnerShops = await storage.getShopsByMemberId(req.user!.id);
+      const shopsWithStats = await Promise.all(partnerShops.map(async (shop) => {
+        const events = await storage.getDropEventsByShop(shop.id);
+        const shopBins = await storage.getBinsByShop(shop.id);
+        return {
+          id: shop.id, name: shop.name, address: shop.address,
+          totalDrops: events.length,
+          binsCount: shopBins.length,
+          status: shop.status,
+        };
+      }));
+      res.json({ ok: true, data: shopsWithStats });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch shops" });
+    }
+  });
+
+  app.get("/api/app/partner/shops/:id", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const shopId = parseInt(req.params.id);
+      const shop = await storage.getShop(shopId);
+      if (!shop) return res.status(404).json({ ok: false, error: "Shop not found" });
+      const shopBins = await storage.getBinsByShop(shopId);
+      const alerts = await storage.getFireAlertsByShop(shopId);
+      const recentDrops = await storage.getDropsByShop(shopId, 20);
+      res.json({
+        ok: true,
+        data: {
+          ...shop,
+          bins: shopBins.map(b => ({ id: b.id, name: b.name, status: b.status, fillLevel: b.fillLevel })),
+          activeAlerts: alerts.filter(a => !a.resolvedAt).length,
+          recentDrops: recentDrops.length,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch shop" });
+    }
+  });
+
+  app.get("/api/app/partner/shops/:id/stats", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const shopId = parseInt(req.params.id);
+      const events = await storage.getDropEventsByShop(shopId);
+      const shopDevices = await storage.getDevicesByShop(shopId);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const thisWeek = new Date(today); thisWeek.setDate(thisWeek.getDate() - 7);
+      const thisMonth = new Date(today); thisMonth.setDate(1);
+      res.json({
+        ok: true,
+        data: {
+          totalDrops: events.length,
+          dropsToday: events.filter(e => new Date(e.createdAt) >= today).length,
+          dropsThisWeek: events.filter(e => new Date(e.createdAt) >= thisWeek).length,
+          dropsThisMonth: events.filter(e => new Date(e.createdAt) >= thisMonth).length,
+          totalPoints: events.reduce((s, e) => s + e.pointsAwarded, 0),
+          activeDevices: shopDevices.filter(d => d.status === "ACTIVE").length,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch stats" });
+    }
+  });
+
+  app.get("/api/app/partner/shops/:id/drops", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const shopId = parseInt(req.params.id);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const shopDrops = await storage.getDropsByShop(shopId, 500);
+      const paginated = shopDrops.slice((page - 1) * limit, page * limit);
+      res.json({ ok: true, data: paginated, total: shopDrops.length, page, limit });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
+    }
+  });
+
+  app.get("/api/app/partner/shops/:id/bins", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const shopBins = await storage.getBinsByShop(parseInt(req.params.id));
+      const binsWithCaps = await Promise.all(shopBins.map(async (bin) => {
+        const cap = await storage.getBinCapabilities(bin.id);
+        return { ...bin, capabilities: cap || null };
+      }));
+      res.json({ ok: true, data: binsWithCaps });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bins" });
+    }
+  });
+
+  app.get("/api/app/partner/shops/:id/alerts", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const alerts = await storage.getFireAlertsByShop(parseInt(req.params.id));
+      res.json({ ok: true, data: alerts });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch alerts" });
+    }
+  });
+
+  app.post("/api/app/partner/shops/:id/alerts/:alertId/acknowledge", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const alert = await storage.acknowledgeFireAlert(parseInt(req.params.alertId), req.user!.id);
+      if (!alert) return res.status(404).json({ ok: false, error: "Alert not found" });
+      res.json({ ok: true, data: alert });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to acknowledge" });
+    }
+  });
+
+  app.post("/api/app/partner/shops/:id/pickup", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const { notes } = req.body;
+      const pickup = await storage.createPickupRequest({ shopId: parseInt(req.params.id), requestedById: req.user!.id, notes, status: "PENDING" });
+      res.json({ ok: true, data: pickup });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to request pickup" });
+    }
+  });
+
+  app.get("/api/app/partner/shops/:id/reward-config", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const config = await storage.getRewardConfig(parseInt(req.params.id));
+      res.json({ ok: true, data: config });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch config" });
+    }
+  });
+
+  app.patch("/api/app/partner/shops/:id/reward-config", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      const config = await storage.updateRewardConfig(parseInt(req.params.id), req.body);
+      res.json({ ok: true, data: config });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to update config" });
+    }
+  });
+
+  app.get("/api/app/partner/notifications", authMiddleware, requireRole("PARTNER"), async (req, res) => {
+    try {
+      res.json({ ok: true, data: [] });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch notifications" });
+    }
+  });
+
+  // --- Staff app endpoints ---
+  app.get("/api/app/staff/dashboard", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allDrops = await storage.getAllDrops(1000);
+      const allBins = await storage.getAllBins();
+      const pendingAppeals = await storage.getAllAppeals();
+      const pending = pendingAppeals.filter(a => !a.resolvedAt);
+      const denied = allDrops.filter(d => d.status === "denied");
+      const userViolations: Record<string, number> = {};
+      denied.forEach(d => { if (d.userId) userViolations[d.userId] = (userViolations[d.userId] || 0) + 1; });
+      const flaggedCount = Object.values(userViolations).filter(c => c >= 3).length;
+      res.json({
+        ok: true,
+        data: {
+          totalDrops: allDrops.length,
+          activeBins: allBins.filter(b => b.status === "ONLINE").length,
+          pendingAppeals: pending.length,
+          flaggedUsers: flaggedCount,
+          dropsToday: allDrops.filter(d => { const t = new Date(); t.setHours(0,0,0,0); return new Date(d.createdAt) >= t; }).length,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch dashboard" });
+    }
+  });
+
+  app.get("/api/app/staff/drops", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const allDrops = await storage.getAllDrops(1000);
+      let filtered = allDrops;
+      if (req.query.status) filtered = filtered.filter(d => d.status === req.query.status);
+      if (req.query.shopId) filtered = filtered.filter(d => d.shopId === parseInt(req.query.shopId as string));
+      const paginated = filtered.slice((page - 1) * limit, page * limit);
+      res.json({ ok: true, data: paginated, total: filtered.length, page, limit });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
+    }
+  });
+
+  app.get("/api/app/staff/drops/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const drop = await storage.getDrop(parseInt(req.params.id));
+      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
+      const images = await storage.getDropImages(drop.id);
+      const jobs = await storage.getAiJobsByDrop(drop.id);
+      const dropAppeals = await storage.getAppealsByDrop(drop.id);
+      res.json({ ok: true, data: { ...drop, images, aiJobs: jobs, appeals: dropAppeals } });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch drop" });
+    }
+  });
+
+  app.patch("/api/app/staff/drops/:id/override", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { category, brand, subtype, flavor, status } = req.body;
+      const drop = await storage.updateDrop(parseInt(req.params.id), {
+        category: category || undefined, brand: brand || undefined,
+        subtype: subtype || undefined, flavor: flavor || undefined,
+        status: status || undefined, overrideSource: `staff:${req.user!.email}`,
+      });
+      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
+      res.json({ ok: true, data: drop });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to override" });
+    }
+  });
+
+  app.get("/api/app/staff/appeals", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allAppeals = await storage.getAllAppeals();
+      res.json({ ok: true, data: allAppeals });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch appeals" });
+    }
+  });
+
+  app.patch("/api/app/staff/appeals/:id/resolve", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { resolution } = req.body;
+      if (!resolution) return res.status(400).json({ ok: false, error: "resolution required" });
+      const appeal = await storage.resolveAppeal(parseInt(req.params.id), resolution, req.user!.id);
+      if (!appeal) return res.status(404).json({ ok: false, error: "Appeal not found" });
+      res.json({ ok: true, data: appeal });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to resolve" });
+    }
+  });
+
+  app.get("/api/app/staff/flagged-users", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allDrops = await storage.getAllDrops(5000);
+      const denied = allDrops.filter(d => d.status === "denied" && d.userId);
+      const userCounts: Record<string, { count: number; categories: string[] }> = {};
+      denied.forEach(d => {
+        if (!d.userId) return;
+        if (!userCounts[d.userId]) userCounts[d.userId] = { count: 0, categories: [] };
+        userCounts[d.userId].count++;
+        userCounts[d.userId].categories.push(d.category);
+      });
+      const flagged = Object.entries(userCounts)
+        .filter(([, v]) => v.count >= 3)
+        .map(([userId, v]) => ({ userId, deniedCount: v.count, categories: v.categories }));
+      res.json({ ok: true, data: flagged });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch flagged users" });
+    }
+  });
+
+  app.get("/api/app/staff/bins", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const allBins = await storage.getAllBins();
+      const binsWithCaps = await Promise.all(allBins.map(async (bin) => {
+        const cap = await storage.getBinCapabilities(bin.id);
+        return { ...bin, capabilities: cap || null };
+      }));
+      res.json({ ok: true, data: binsWithCaps });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bins" });
+    }
+  });
+
+  app.post("/api/app/staff/pair-claim", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { pairCode, shopId } = req.body;
+      if (!pairCode || !shopId) return res.status(400).json({ ok: false, error: "pairCode and shopId required" });
+      const request = await storage.getPairRequestByCode(pairCode);
+      if (!request) return res.status(404).json({ ok: false, error: "Pair request not found" });
+      if (request.claimed) return res.status(400).json({ ok: false, error: "Already claimed" });
+      res.json({ ok: true, message: "Use /api/v2/device/pair-claim for full pairing flow" });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to claim" });
+    }
+  });
+
   return httpServer;
 }

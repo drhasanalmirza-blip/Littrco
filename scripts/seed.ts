@@ -1,5 +1,6 @@
 import { db } from "../server/db";
-import { users, shops, shopMembers, devices, rewardConfigs, storeItems } from "../shared/schema";
+import { users, shops, shopMembers, devices, rewardConfigs, storeItems, brands, subtypes } from "../shared/schema";
+import { and, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -108,6 +109,47 @@ async function seed() {
   ]).onConflictDoNothing();
 
   console.log("Store items created");
+
+  // Seed Upstate NY vape brands and subtypes
+  const brandData = [
+    { name: "Geek Bar", subtypes: ["Pulse X"] },
+    { name: "Hyde", subtypes: ["N Bar Recharge"] },
+    { name: "VIHO", subtypes: ["Turbo", "Supercharge"] },
+    { name: "Lost Mary", subtypes: [] },
+    { name: "Elf Bar", subtypes: [] },
+    { name: "RAZ", subtypes: [] },
+    { name: "Esco Bars", subtypes: [] },
+    { name: "Breeze", subtypes: [] },
+    { name: "Flum", subtypes: [] },
+    { name: "Tyson", subtypes: [] },
+    { name: "Mr Fog", subtypes: [] },
+    { name: "Fume", subtypes: [] },
+  ];
+
+  for (const b of brandData) {
+    const [brand] = await db.insert(brands).values({
+      name: b.name,
+      suggested: false,
+    }).onConflictDoNothing().returning();
+
+    const brandId = brand?.id;
+    if (brandId && b.subtypes.length > 0) {
+      for (const st of b.subtypes) {
+        const existing = await db.select().from(subtypes).where(
+          and(eq(subtypes.brandId, brandId), eq(subtypes.name, st))
+        );
+        if (existing.length === 0) {
+          await db.insert(subtypes).values({
+            brandId,
+            name: st,
+            suggested: false,
+          });
+        }
+      }
+    }
+  }
+
+  console.log("Upstate NY vape brands seeded");
 
   console.log("\n=== SEED COMPLETE ===");
   console.log("\nTest credentials:");

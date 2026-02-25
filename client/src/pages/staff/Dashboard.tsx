@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo, useEffect } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash, Sun, Moon, UserCog, Plus, Key, Eye, EyeOff } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash, Sun, Moon, UserCog, Plus, Key, Eye, EyeOff, ClipboardList, Tags, Settings2, Image, RefreshCw, Edit, Save } from "lucide-react";
 import { MailboxManager } from "@/components/staff/MailboxManager";
 import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -425,12 +425,24 @@ export default function StaffDashboard() {
         </div>
 
         <Tabs defaultValue="leads" className="space-y-4">
-          <TabsList className="grid grid-cols-9 w-full max-w-5xl">
+          <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-6xl">
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="shops">Shops</TabsTrigger>
             <TabsTrigger value="bins" className="flex items-center gap-1">
               <Cpu className="h-4 w-4" />
               Smart Bins
+            </TabsTrigger>
+            <TabsTrigger value="drop-review" className="flex items-center gap-1">
+              <ClipboardList className="h-4 w-4" />
+              Drop Review
+            </TabsTrigger>
+            <TabsTrigger value="taxonomy" className="flex items-center gap-1">
+              <Tags className="h-4 w-4" />
+              Taxonomy
+            </TabsTrigger>
+            <TabsTrigger value="bin-caps" className="flex items-center gap-1">
+              <Settings2 className="h-4 w-4" />
+              Bin Config
             </TabsTrigger>
             <TabsTrigger value="pairing" className="flex items-center gap-1">
               <Link2 className="h-4 w-4" />
@@ -1002,6 +1014,18 @@ export default function StaffDashboard() {
                 queryClient={queryClient}
               />
             )}
+          </TabsContent>
+
+          <TabsContent value="drop-review">
+            <DropReviewTab />
+          </TabsContent>
+
+          <TabsContent value="taxonomy">
+            <TaxonomyTab />
+          </TabsContent>
+
+          <TabsContent value="bin-caps">
+            <BinCapabilitiesTab bins={bins} />
           </TabsContent>
 
           <TabsContent value="volunteers">
@@ -2152,5 +2176,888 @@ If you have any concerns, please contact us immediately.`,
         </div>
       ))}
     </div>
+  );
+}
+
+function DropReviewTab() {
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedDrop, setSelectedDrop] = useState<any>(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideCategory, setOverrideCategory] = useState("");
+  const [overrideBrand, setOverrideBrand] = useState("");
+  const [overrideSubtype, setOverrideSubtype] = useState("");
+  const [overrideFlavor, setOverrideFlavor] = useState("");
+  const [overrideStatus, setOverrideStatus] = useState("");
+
+  const { data: dropsResponse, isLoading } = useQuery({
+    queryKey: ['staff-drops'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/drops');
+      if (!res.ok) throw new Error('Failed to fetch drops');
+      return res.json();
+    },
+  });
+
+  const drops = dropsResponse?.data || dropsResponse || [];
+
+  const { data: dropImagesData } = useQuery({
+    queryKey: ['drop-images', selectedDrop?.id],
+    queryFn: async () => {
+      if (!selectedDrop) return [];
+      const res = await apiRequest(`/api/drops/${selectedDrop.id}`);
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!selectedDrop,
+  });
+
+  const filteredDrops = useMemo(() => {
+    if (statusFilter === "all") return drops;
+    return drops.filter((d: any) => d.status === statusFilter);
+  }, [drops, statusFilter]);
+
+  const overrideMutation = useMutation({
+    mutationFn: async () => {
+      const body: any = {};
+      if (overrideCategory) body.category = overrideCategory;
+      if (overrideBrand) body.brand = overrideBrand;
+      if (overrideSubtype) body.subtype = overrideSubtype;
+      if (overrideFlavor) body.flavor = overrideFlavor;
+      if (overrideStatus) body.status = overrideStatus;
+      const res = await apiRequest(`/api/staff/drops/${selectedDrop.id}/override`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Failed to override');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-drops'] });
+      setOverrideOpen(false);
+      setSelectedDrop(null);
+    },
+  });
+
+  const rerunAiMutation = useMutation({
+    mutationFn: async (dropId: number) => {
+      const res = await apiRequest(`/api/staff/drops/${dropId}/rerun-ai`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to rerun AI');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-drops'] });
+    },
+  });
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case 'approved': return 'bg-green-500';
+      case 'denied': return 'bg-red-500';
+      case 'awaiting_ai': return 'bg-yellow-500 text-black';
+      case 'appealed': return 'bg-orange-500';
+      case 'corrected': return 'bg-blue-500';
+      default: return '';
+    }
+  };
+
+  const openOverride = (drop: any) => {
+    setSelectedDrop(drop);
+    setOverrideCategory(drop.category || "");
+    setOverrideBrand(drop.brand || "");
+    setOverrideSubtype(drop.subtype || "");
+    setOverrideFlavor(drop.flavor || "");
+    setOverrideStatus(drop.status || "");
+    setOverrideOpen(true);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5" />
+              Drop Review
+            </CardTitle>
+            <CardDescription>Review AI-classified drops, override classifications, and manage appeals</CardDescription>
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[180px]" data-testid="select-drop-status-filter">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="awaiting_ai">Awaiting AI</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="denied">Denied</SelectItem>
+              <SelectItem value="appealed">Appealed</SelectItem>
+              <SelectItem value="corrected">Corrected</SelectItem>
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading drops...</div>
+          ) : (
+            <Table data-testid="table-drop-review">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Brand</TableHead>
+                  <TableHead>Subtype</TableHead>
+                  <TableHead>Flavor</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead>Points</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredDrops.map((drop: any) => (
+                  <TableRow key={drop.id} data-testid={`row-drop-${drop.id}`}>
+                    <TableCell className="font-mono text-xs">{drop.id}</TableCell>
+                    <TableCell>
+                      <Badge className={statusColor(drop.status)} data-testid={`badge-drop-status-${drop.id}`}>
+                        {drop.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{drop.category || '—'}</TableCell>
+                    <TableCell>{drop.brand || '—'}</TableCell>
+                    <TableCell>{drop.subtype || '—'}</TableCell>
+                    <TableCell>{drop.flavor || '—'}</TableCell>
+                    <TableCell>
+                      {drop.aiConfidence !== null && drop.aiConfidence !== undefined
+                        ? `${(drop.aiConfidence * 100).toFixed(0)}%`
+                        : '—'}
+                    </TableCell>
+                    <TableCell>{drop.pointsAwarded}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(drop.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedDrop(drop)}
+                          data-testid={`button-view-drop-${drop.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openOverride(drop)}
+                          data-testid={`button-override-drop-${drop.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => rerunAiMutation.mutate(drop.id)}
+                          disabled={rerunAiMutation.isPending}
+                          data-testid={`button-rerun-ai-${drop.id}`}
+                        >
+                          <RefreshCw className={`h-4 w-4 ${rerunAiMutation.isPending ? 'animate-spin' : ''}`} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredDrops.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                      {statusFilter !== "all" ? "No drops with this status" : "No drops recorded yet"}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!selectedDrop && !overrideOpen} onOpenChange={(open) => { if (!open) setSelectedDrop(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5" />
+              Drop #{selectedDrop?.id}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedDrop && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <div><Badge className={statusColor(selectedDrop.status)}>{selectedDrop.status}</Badge></div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Category</Label>
+                  <p className="font-medium">{selectedDrop.category || '—'}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Brand</Label>
+                  <p className="font-medium">{selectedDrop.brand || '—'}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Subtype</Label>
+                  <p className="font-medium">{selectedDrop.subtype || '—'}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Flavor</Label>
+                  <p className="font-medium">{selectedDrop.flavor || '—'}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">AI Confidence</Label>
+                  <p className="font-medium">
+                    {selectedDrop.aiConfidence !== null && selectedDrop.aiConfidence !== undefined
+                      ? `${(selectedDrop.aiConfidence * 100).toFixed(1)}%`
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Weight</Label>
+                  <p className="font-medium">{selectedDrop.weightGrams ? `${selectedDrop.weightGrams}g` : 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Points</Label>
+                  <p className="font-medium">{selectedDrop.pointsAwarded}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Override By</Label>
+                  <p className="font-medium text-sm">{selectedDrop.overrideSource || 'None'}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">AI Model</Label>
+                  <p className="font-medium text-sm">{selectedDrop.aiModelVersion || 'N/A'}</p>
+                </div>
+              </div>
+              {(() => { const imgs = dropImagesData?.data?.images || dropImagesData?.images || []; return imgs.length > 0 ? (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-2 block">Images</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {imgs.map((img: any) => (
+                      <div key={img.id} className="relative rounded-lg overflow-hidden border">
+                        <img src={img.storageUrl} alt={img.imageRole} className="w-full h-32 object-cover" />
+                        <Badge className="absolute bottom-1 left-1 text-xs" variant="secondary">{img.imageRole}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null})()}
+              <div className="flex gap-2 pt-2">
+                <Button size="sm" onClick={() => openOverride(selectedDrop)} data-testid="button-override-from-detail">
+                  <Edit className="h-4 w-4 mr-1" />
+                  Override
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => rerunAiMutation.mutate(selectedDrop.id)} disabled={rerunAiMutation.isPending} data-testid="button-rerun-from-detail">
+                  <RefreshCw className={`h-4 w-4 mr-1 ${rerunAiMutation.isPending ? 'animate-spin' : ''}`} />
+                  Re-run AI
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={overrideOpen} onOpenChange={(open) => { if (!open) { setOverrideOpen(false); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Override Drop #{selectedDrop?.id}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={overrideStatus} onValueChange={setOverrideStatus}>
+                <SelectTrigger data-testid="select-override-status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="awaiting_ai">Awaiting AI</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="denied">Denied</SelectItem>
+                  <SelectItem value="appealed">Appealed</SelectItem>
+                  <SelectItem value="corrected">Corrected</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select value={overrideCategory} onValueChange={setOverrideCategory}>
+                <SelectTrigger data-testid="select-override-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Nicotine">Nicotine</SelectItem>
+                  <SelectItem value="THC">THC</SelectItem>
+                  <SelectItem value="Trash">Trash</SelectItem>
+                  <SelectItem value="Unknown">Unknown</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Brand</Label>
+              <Input
+                value={overrideBrand}
+                onChange={(e) => setOverrideBrand(e.target.value)}
+                placeholder="Brand name"
+                data-testid="input-override-brand"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Subtype</Label>
+              <Input
+                value={overrideSubtype}
+                onChange={(e) => setOverrideSubtype(e.target.value)}
+                placeholder="Subtype"
+                data-testid="input-override-subtype"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Flavor</Label>
+              <Input
+                value={overrideFlavor}
+                onChange={(e) => setOverrideFlavor(e.target.value)}
+                placeholder="Flavor"
+                data-testid="input-override-flavor"
+              />
+            </div>
+            {overrideMutation.error && (
+              <p className="text-sm text-red-500" data-testid="text-override-error">{(overrideMutation.error as Error).message}</p>
+            )}
+            <Button
+              className="w-full"
+              onClick={() => overrideMutation.mutate()}
+              disabled={overrideMutation.isPending}
+              data-testid="button-submit-override"
+            >
+              {overrideMutation.isPending ? 'Saving...' : 'Save Override'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function TaxonomyTab() {
+  const queryClient = useQueryClient();
+  const [newBrandName, setNewBrandName] = useState("");
+  const [newSubtypeName, setNewSubtypeName] = useState("");
+  const [newSubtypeBrandId, setNewSubtypeBrandId] = useState("");
+  const [newFlavorName, setNewFlavorName] = useState("");
+  const [editingBrand, setEditingBrand] = useState<{ id: number; name: string } | null>(null);
+
+  const { data: brandsResponse } = useQuery({
+    queryKey: ['taxonomy-brands'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/brands');
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+  });
+  const brandsList = brandsResponse?.data || brandsResponse || [];
+
+  const { data: subtypesResponse } = useQuery({
+    queryKey: ['taxonomy-subtypes'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/subtypes');
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+  });
+  const subtypesList = subtypesResponse?.data || subtypesResponse || [];
+
+  const { data: flavorsResponse } = useQuery({
+    queryKey: ['taxonomy-flavors'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/flavors');
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+  });
+  const flavorsList = flavorsResponse?.data || flavorsResponse || [];
+
+  const createBrand = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('/api/staff/brands', {
+        method: 'POST',
+        body: JSON.stringify({ name: newBrandName, suggested: false }),
+      });
+      if (!res.ok) throw new Error('Failed to create brand');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-brands'] });
+      setNewBrandName("");
+    },
+  });
+
+  const updateBrand = useMutation({
+    mutationFn: async ({ id, name }: { id: number; name: string }) => {
+      const res = await apiRequest(`/api/staff/brands/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error('Failed to update brand');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-brands'] });
+      setEditingBrand(null);
+    },
+  });
+
+  const deleteBrand = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/staff/brands/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete brand');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-brands'] });
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-subtypes'] });
+    },
+  });
+
+  const createSubtype = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('/api/staff/subtypes', {
+        method: 'POST',
+        body: JSON.stringify({ brandId: parseInt(newSubtypeBrandId), name: newSubtypeName, suggested: false }),
+      });
+      if (!res.ok) throw new Error('Failed to create subtype');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-subtypes'] });
+      setNewSubtypeName("");
+    },
+  });
+
+  const deleteSubtype = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/staff/subtypes/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete subtype');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-subtypes'] });
+    },
+  });
+
+  const createFlavor = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('/api/staff/flavors', {
+        method: 'POST',
+        body: JSON.stringify({ name: newFlavorName, suggested: false }),
+      });
+      if (!res.ok) throw new Error('Failed to create flavor');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-flavors'] });
+      setNewFlavorName("");
+    },
+  });
+
+  const deleteFlavor = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/staff/flavors/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete flavor');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxonomy-flavors'] });
+    },
+  });
+
+  return (
+    <div className="grid gap-6 md:grid-cols-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Tags className="h-4 w-4" />
+            Brands
+          </CardTitle>
+          <CardDescription>{brandsList.length} brands</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="New brand name"
+              value={newBrandName}
+              onChange={(e) => setNewBrandName(e.target.value)}
+              data-testid="input-new-brand"
+            />
+            <Button
+              size="sm"
+              onClick={() => createBrand.mutate()}
+              disabled={!newBrandName.trim() || createBrand.isPending}
+              data-testid="button-add-brand"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="space-y-1 max-h-96 overflow-y-auto">
+            {brandsList.map((brand: any) => (
+              <div key={brand.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted" data-testid={`row-brand-${brand.id}`}>
+                {editingBrand?.id === brand.id ? (
+                  <div className="flex items-center gap-1 flex-1">
+                    <Input
+                      value={editingBrand!.name}
+                      onChange={(e) => setEditingBrand({ id: brand.id, name: e.target.value })}
+                      className="h-7 text-sm"
+                      data-testid={`input-edit-brand-${brand.id}`}
+                    />
+                    <Button size="sm" variant="ghost" onClick={() => updateBrand.mutate({ id: brand.id, name: editingBrand!.name })} data-testid={`button-save-brand-${brand.id}`}>
+                      <Save className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingBrand(null)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{brand.name}</span>
+                      {brand.suggested && <Badge variant="outline" className="text-xs h-5">suggested</Badge>}
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingBrand({ id: brand.id, name: brand.name })} data-testid={`button-edit-brand-${brand.id}`}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600" onClick={() => deleteBrand.mutate(brand.id)} data-testid={`button-delete-brand-${brand.id}`}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+            {brandsList.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No brands yet</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Tags className="h-4 w-4" />
+            Subtypes
+          </CardTitle>
+          <CardDescription>{subtypesList.length} subtypes</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 mb-4">
+            <Select value={newSubtypeBrandId} onValueChange={setNewSubtypeBrandId}>
+              <SelectTrigger data-testid="select-subtype-brand">
+                <SelectValue placeholder="Select brand" />
+              </SelectTrigger>
+              <SelectContent>
+                {brandsList.map((b: any) => (
+                  <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2">
+              <Input
+                placeholder="New subtype name"
+                value={newSubtypeName}
+                onChange={(e) => setNewSubtypeName(e.target.value)}
+                data-testid="input-new-subtype"
+              />
+              <Button
+                size="sm"
+                onClick={() => createSubtype.mutate()}
+                disabled={!newSubtypeName.trim() || !newSubtypeBrandId || createSubtype.isPending}
+                data-testid="button-add-subtype"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-1 max-h-96 overflow-y-auto">
+            {subtypesList.map((sub: any) => {
+              const parentBrand = brandsList.find((b: any) => b.id === sub.brandId);
+              return (
+                <div key={sub.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted" data-testid={`row-subtype-${sub.id}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{sub.name}</span>
+                    <span className="text-xs text-muted-foreground">({parentBrand?.name || '?'})</span>
+                    {sub.suggested && <Badge variant="outline" className="text-xs h-5">suggested</Badge>}
+                  </div>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600" onClick={() => deleteSubtype.mutate(sub.id)} data-testid={`button-delete-subtype-${sub.id}`}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              );
+            })}
+            {subtypesList.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No subtypes yet</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Tags className="h-4 w-4" />
+            Flavors
+          </CardTitle>
+          <CardDescription>{flavorsList.length} flavors</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="New flavor name"
+              value={newFlavorName}
+              onChange={(e) => setNewFlavorName(e.target.value)}
+              data-testid="input-new-flavor"
+            />
+            <Button
+              size="sm"
+              onClick={() => createFlavor.mutate()}
+              disabled={!newFlavorName.trim() || createFlavor.isPending}
+              data-testid="button-add-flavor"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="space-y-1 max-h-96 overflow-y-auto">
+            {flavorsList.map((flavor: any) => (
+              <div key={flavor.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted" data-testid={`row-flavor-${flavor.id}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{flavor.name}</span>
+                  {flavor.suggested && <Badge variant="outline" className="text-xs h-5">suggested</Badge>}
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600" onClick={() => deleteFlavor.mutate(flavor.id)} data-testid={`button-delete-flavor-${flavor.id}`}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+            {flavorsList.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No flavors yet</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function BinCapabilitiesTab({ bins }: { bins: any[] }) {
+  const queryClient = useQueryClient();
+  const [selectedBinId, setSelectedBinId] = useState<string>("");
+  const [hasWeight, setHasWeight] = useState(false);
+  const [cameraMode, setCameraMode] = useState("none");
+  const [uploadPolicy, setUploadPolicy] = useState("drop_only");
+  const [debugMode, setDebugMode] = useState(false);
+  const [cadenceJson, setCadenceJson] = useState('{"idleIntervalSec":60,"burstIntervalSec":1,"burstDurationSec":15,"cooldownIntervalSec":5,"cooldownDurationSec":60}');
+  const [loadedBinId, setLoadedBinId] = useState<number | null>(null);
+
+  const { data: capData, refetch: refetchCap } = useQuery({
+    queryKey: ['bin-capabilities', selectedBinId],
+    queryFn: async () => {
+      if (!selectedBinId) return null;
+      const res = await apiRequest(`/api/bins/${selectedBinId}/capabilities`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: false,
+  });
+
+  const loadCapabilities = async () => {
+    if (!selectedBinId) return;
+    try {
+      const res = await apiRequest(`/api/bins/${selectedBinId}/capabilities`);
+      if (res.ok) {
+        const cap = await res.json();
+        setHasWeight(cap.hasWeight || false);
+        setCameraMode(cap.cameraMode || "none");
+        setUploadPolicy(cap.uploadPolicy || "drop_only");
+        setDebugMode(cap.debugMode || false);
+        setCadenceJson(cap.cameraCadenceJson ? JSON.stringify(cap.cameraCadenceJson, null, 2) : '{"idleIntervalSec":60,"burstIntervalSec":1,"burstDurationSec":15,"cooldownIntervalSec":5,"cooldownDurationSec":60}');
+        setLoadedBinId(parseInt(selectedBinId));
+      } else {
+        setHasWeight(false);
+        setCameraMode("none");
+        setUploadPolicy("drop_only");
+        setDebugMode(false);
+        setCadenceJson('{"idleIntervalSec":60,"burstIntervalSec":1,"burstDurationSec":15,"cooldownIntervalSec":5,"cooldownDurationSec":60}');
+        setLoadedBinId(parseInt(selectedBinId));
+      }
+    } catch {
+      setLoadedBinId(parseInt(selectedBinId));
+    }
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      let parsedCadence;
+      try {
+        parsedCadence = JSON.parse(cadenceJson);
+      } catch {
+        throw new Error('Invalid cadence JSON');
+      }
+      const res = await apiRequest(`/api/bins/${selectedBinId}/capabilities`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          binId: parseInt(selectedBinId),
+          hasWeight,
+          cameraMode,
+          uploadPolicy,
+          debugMode,
+          cameraCadenceJson: parsedCadence,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to update capabilities');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bin-capabilities'] });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Settings2 className="h-5 w-5" />
+          Bin Capabilities
+        </CardTitle>
+        <CardDescription>Configure camera mode, weight sensor, and capture cadence for each bin</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-6">
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <Label>Select Bin</Label>
+              <Select value={selectedBinId} onValueChange={setSelectedBinId}>
+                <SelectTrigger data-testid="select-bin-for-caps">
+                  <SelectValue placeholder="Choose a bin..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {bins.map((bin: any) => (
+                    <SelectItem key={bin.id} value={String(bin.id)}>
+                      {bin.name} (ID: {bin.id}) — {bin.shop?.name || 'Unknown'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={loadCapabilities} disabled={!selectedBinId} data-testid="button-load-caps">
+              Load
+            </Button>
+          </div>
+
+          {loadedBinId && (
+            <div className="space-y-4 border rounded-lg p-4">
+              <h3 className="font-medium">Configuration for Bin #{loadedBinId}</h3>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Has Weight Sensor</Label>
+                  <Select value={hasWeight ? "true" : "false"} onValueChange={(v) => setHasWeight(v === "true")}>
+                    <SelectTrigger data-testid="select-has-weight">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="false">No</SelectItem>
+                      <SelectItem value="true">Yes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Camera Mode</Label>
+                  <Select value={cameraMode} onValueChange={setCameraMode}>
+                    <SelectTrigger data-testid="select-camera-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="s3cam">ESP32-S3-CAM</SelectItem>
+                      <SelectItem value="android_cam">Android Camera</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Upload Policy</Label>
+                  <Select value={uploadPolicy} onValueChange={setUploadPolicy}>
+                    <SelectTrigger data-testid="select-upload-policy">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="drop_only">Drop Only</SelectItem>
+                      <SelectItem value="drop_plus_baseline">Drop + Baseline</SelectItem>
+                      <SelectItem value="debug_all">Debug All</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Debug Mode</Label>
+                  <Select value={debugMode ? "true" : "false"} onValueChange={(v) => setDebugMode(v === "true")}>
+                    <SelectTrigger data-testid="select-debug-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="false">Off</SelectItem>
+                      <SelectItem value="true">On</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Camera Cadence (JSON)</Label>
+                <Textarea
+                  value={cadenceJson}
+                  onChange={(e) => setCadenceJson(e.target.value)}
+                  className="font-mono text-sm h-32"
+                  data-testid="textarea-cadence-json"
+                />
+                <p className="text-xs text-muted-foreground">Fields: idleIntervalSec, burstIntervalSec, burstDurationSec, cooldownIntervalSec, cooldownDurationSec</p>
+              </div>
+
+              {saveMutation.error && (
+                <p className="text-sm text-red-500" data-testid="text-caps-error">{(saveMutation.error as Error).message}</p>
+              )}
+              {saveMutation.isSuccess && (
+                <p className="text-sm text-green-600" data-testid="text-caps-success">Capabilities saved successfully!</p>
+              )}
+
+              <Button
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending}
+                className="w-full"
+                data-testid="button-save-caps"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {saveMutation.isPending ? 'Saving...' : 'Save Capabilities'}
+              </Button>
+            </div>
+          )}
+
+          {bins.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              No bins found. Create a device first to generate bins.
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

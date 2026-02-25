@@ -2,7 +2,7 @@ import { useStore, apiRequest } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Wallet, Gift, QrCode, ShoppingBag, Settings, MapPin, Recycle, LogOut, Star, Battery, Sun, Moon } from "lucide-react";
+import { Wallet, Gift, QrCode, ShoppingBag, Settings, MapPin, Recycle, LogOut, Star, Battery, Sun, Moon, History } from "lucide-react";
 
 export default function CustomerDashboard() {
   const { user, role, clearAuth, theme, toggleTheme } = useStore();
@@ -282,9 +282,9 @@ export default function CustomerDashboard() {
           <ShoppingBag className="h-5 w-5" />
           <span>Store</span>
         </button>
-        <button className="littr-tab-item" onClick={() => setLocation('/app/bonus')} data-testid="tab-bonus">
-          <Star className="h-5 w-5" />
-          <span>Bonus</span>
+        <button className="littr-tab-item" onClick={() => setLocation('/app/drops')} data-testid="tab-drops">
+          <History className="h-5 w-5" />
+          <span>Drops</span>
         </button>
         <button className="littr-tab-item" onClick={handleLogout} data-testid="button-logout">
           <LogOut className="h-5 w-5" />

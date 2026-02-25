@@ -52,6 +52,26 @@ import {
   type InsertPartnerRedemption,
   type SurveyResponse,
   type InsertSurveyResponse,
+  type BinCapabilities,
+  type InsertBinCapabilities,
+  type Drop,
+  type InsertDrop,
+  type DropImage,
+  type InsertDropImage,
+  type AiJob,
+  type InsertAiJob,
+  type Appeal,
+  type InsertAppeal,
+  type Brand,
+  type InsertBrand,
+  type Subtype,
+  type InsertSubtype,
+  type Flavor,
+  type InsertFlavor,
+  type VeriscanSession,
+  type InsertVeriscanSession,
+  type VeriscanItem,
+  type InsertVeriscanItem,
   users,
   contacts,
   volunteers,
@@ -80,6 +100,16 @@ import {
   partnerPointsLedger,
   partnerRedemptions,
   surveyResponses,
+  binCapabilities,
+  drops,
+  dropImages,
+  aiJobs,
+  appeals,
+  brands,
+  subtypes,
+  flavors,
+  veriscanSessions,
+  veriscanItems,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gte, sql, lt, inArray } from "drizzle-orm";
@@ -279,6 +309,70 @@ export interface IStorage {
 
   // Shops deletion
   deleteShop(id: number): Promise<boolean>;
+
+  // ==================== CAMERA / AI / VERISCAN ====================
+
+  // Bin Capabilities
+  getBinCapabilities(binId: number): Promise<BinCapabilities | undefined>;
+  upsertBinCapabilities(data: InsertBinCapabilities): Promise<BinCapabilities>;
+  updateBinCapabilities(binId: number, data: Partial<InsertBinCapabilities>): Promise<BinCapabilities | undefined>;
+  getBinCapabilitiesByToken(token: string): Promise<BinCapabilities | undefined>;
+
+  // Drops (AI-tracked)
+  createDrop(data: InsertDrop): Promise<Drop>;
+  getDrop(id: number): Promise<Drop | undefined>;
+  getDropsByShop(shopId: number, limit?: number): Promise<Drop[]>;
+  getDropsByUser(userId: string, limit?: number): Promise<Drop[]>;
+  getAllDrops(limit?: number): Promise<Drop[]>;
+  updateDrop(id: number, data: Partial<Drop>): Promise<Drop | undefined>;
+
+  // Drop Images
+  createDropImage(data: InsertDropImage): Promise<DropImage>;
+  getDropImages(dropId: number): Promise<DropImage[]>;
+  getDropImageByHash(hash: string): Promise<DropImage | undefined>;
+
+  // AI Jobs
+  createAiJob(data: InsertAiJob): Promise<AiJob>;
+  getAiJob(id: number): Promise<AiJob | undefined>;
+  getAiJobsByDrop(dropId: number): Promise<AiJob[]>;
+  updateAiJob(id: number, data: Partial<AiJob>): Promise<AiJob | undefined>;
+
+  // Appeals
+  createAppeal(data: InsertAppeal): Promise<Appeal>;
+  getAppealsByDrop(dropId: number): Promise<Appeal[]>;
+  getAppealsByUser(userId: string): Promise<Appeal[]>;
+  getAllAppeals(): Promise<Appeal[]>;
+  resolveAppeal(id: number, resolution: string, resolvedById: string): Promise<Appeal | undefined>;
+
+  // Brands
+  createBrand(data: InsertBrand): Promise<Brand>;
+  getBrand(id: number): Promise<Brand | undefined>;
+  getAllBrands(): Promise<Brand[]>;
+  updateBrand(id: number, data: Partial<InsertBrand>): Promise<Brand | undefined>;
+  deleteBrand(id: number): Promise<boolean>;
+
+  // Subtypes
+  createSubtype(data: InsertSubtype): Promise<Subtype>;
+  getSubtypesByBrand(brandId: number): Promise<Subtype[]>;
+  getAllSubtypes(): Promise<Subtype[]>;
+  deleteSubtype(id: number): Promise<boolean>;
+
+  // Flavors
+  createFlavor(data: InsertFlavor): Promise<Flavor>;
+  getAllFlavors(): Promise<Flavor[]>;
+  deleteFlavor(id: number): Promise<boolean>;
+
+  // VeriScan Sessions
+  createVeriscanSession(data: InsertVeriscanSession): Promise<VeriscanSession>;
+  getVeriscanSession(id: number): Promise<VeriscanSession | undefined>;
+  getVeriscanSessionsByUser(userId: string): Promise<VeriscanSession[]>;
+  updateVeriscanSession(id: number, data: Partial<VeriscanSession>): Promise<VeriscanSession | undefined>;
+
+  // VeriScan Items
+  createVeriscanItem(data: InsertVeriscanItem): Promise<VeriscanItem>;
+  getVeriscanItem(id: number): Promise<VeriscanItem | undefined>;
+  getVeriscanItemsBySession(sessionId: number): Promise<VeriscanItem[]>;
+  updateVeriscanItem(id: number, data: Partial<VeriscanItem>): Promise<VeriscanItem | undefined>;
 }
 
 export interface ActivityLogEntry {
@@ -1087,6 +1181,209 @@ export class DatabaseStorage implements IStorage {
   async deleteShop(id: number): Promise<boolean> {
     const result = await db.delete(shops).where(eq(shops.id, id)).returning();
     return result.length > 0;
+  }
+
+  // ==================== CAMERA / AI / VERISCAN ====================
+
+  async getBinCapabilities(binId: number): Promise<BinCapabilities | undefined> {
+    const [cap] = await db.select().from(binCapabilities).where(eq(binCapabilities.binId, binId));
+    return cap;
+  }
+
+  async upsertBinCapabilities(data: InsertBinCapabilities): Promise<BinCapabilities> {
+    const existing = await this.getBinCapabilities(data.binId);
+    if (existing) {
+      const [updated] = await db.update(binCapabilities).set({ ...data, updatedAt: new Date() }).where(eq(binCapabilities.binId, data.binId)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(binCapabilities).values(data).returning();
+    return created;
+  }
+
+  async updateBinCapabilities(binId: number, data: Partial<InsertBinCapabilities>): Promise<BinCapabilities | undefined> {
+    const [updated] = await db.update(binCapabilities).set({ ...data, updatedAt: new Date() }).where(eq(binCapabilities.binId, binId)).returning();
+    return updated;
+  }
+
+  async getBinCapabilitiesByToken(token: string): Promise<BinCapabilities | undefined> {
+    const [cap] = await db.select().from(binCapabilities).where(eq(binCapabilities.moduleToken, token));
+    return cap;
+  }
+
+  async createDrop(data: InsertDrop): Promise<Drop> {
+    const [drop] = await db.insert(drops).values(data).returning();
+    return drop;
+  }
+
+  async getDrop(id: number): Promise<Drop | undefined> {
+    const [drop] = await db.select().from(drops).where(eq(drops.id, id));
+    return drop;
+  }
+
+  async getDropsByShop(shopId: number, limit = 100): Promise<Drop[]> {
+    return db.select().from(drops).where(eq(drops.shopId, shopId)).orderBy(desc(drops.createdAt)).limit(limit);
+  }
+
+  async getDropsByUser(userId: string, limit = 100): Promise<Drop[]> {
+    return db.select().from(drops).where(eq(drops.userId, userId)).orderBy(desc(drops.createdAt)).limit(limit);
+  }
+
+  async getAllDrops(limit = 200): Promise<Drop[]> {
+    return db.select().from(drops).orderBy(desc(drops.createdAt)).limit(limit);
+  }
+
+  async updateDrop(id: number, data: Partial<Drop>): Promise<Drop | undefined> {
+    const [updated] = await db.update(drops).set(data).where(eq(drops.id, id)).returning();
+    return updated;
+  }
+
+  async createDropImage(data: InsertDropImage): Promise<DropImage> {
+    const [img] = await db.insert(dropImages).values(data).returning();
+    return img;
+  }
+
+  async getDropImages(dropId: number): Promise<DropImage[]> {
+    return db.select().from(dropImages).where(eq(dropImages.dropId, dropId)).orderBy(dropImages.createdAt);
+  }
+
+  async getDropImageByHash(hash: string): Promise<DropImage | undefined> {
+    const [img] = await db.select().from(dropImages).where(eq(dropImages.hash, hash));
+    return img;
+  }
+
+  async createAiJob(data: InsertAiJob): Promise<AiJob> {
+    const [job] = await db.insert(aiJobs).values(data).returning();
+    return job;
+  }
+
+  async getAiJob(id: number): Promise<AiJob | undefined> {
+    const [job] = await db.select().from(aiJobs).where(eq(aiJobs.id, id));
+    return job;
+  }
+
+  async getAiJobsByDrop(dropId: number): Promise<AiJob[]> {
+    return db.select().from(aiJobs).where(eq(aiJobs.dropId, dropId)).orderBy(desc(aiJobs.createdAt));
+  }
+
+  async updateAiJob(id: number, data: Partial<AiJob>): Promise<AiJob | undefined> {
+    const [updated] = await db.update(aiJobs).set(data).where(eq(aiJobs.id, id)).returning();
+    return updated;
+  }
+
+  async createAppeal(data: InsertAppeal): Promise<Appeal> {
+    const [appeal] = await db.insert(appeals).values(data).returning();
+    return appeal;
+  }
+
+  async getAppealsByDrop(dropId: number): Promise<Appeal[]> {
+    return db.select().from(appeals).where(eq(appeals.dropId, dropId)).orderBy(desc(appeals.createdAt));
+  }
+
+  async getAppealsByUser(userId: string): Promise<Appeal[]> {
+    return db.select().from(appeals).where(eq(appeals.userId, userId)).orderBy(desc(appeals.createdAt));
+  }
+
+  async getAllAppeals(): Promise<Appeal[]> {
+    return db.select().from(appeals).orderBy(desc(appeals.createdAt));
+  }
+
+  async resolveAppeal(id: number, resolution: string, resolvedById: string): Promise<Appeal | undefined> {
+    const [updated] = await db.update(appeals).set({ resolution, resolvedById, resolvedAt: new Date() }).where(eq(appeals.id, id)).returning();
+    return updated;
+  }
+
+  async createBrand(data: InsertBrand): Promise<Brand> {
+    const [brand] = await db.insert(brands).values(data).returning();
+    return brand;
+  }
+
+  async getBrand(id: number): Promise<Brand | undefined> {
+    const [brand] = await db.select().from(brands).where(eq(brands.id, id));
+    return brand;
+  }
+
+  async getAllBrands(): Promise<Brand[]> {
+    return db.select().from(brands).orderBy(brands.name);
+  }
+
+  async updateBrand(id: number, data: Partial<InsertBrand>): Promise<Brand | undefined> {
+    const [updated] = await db.update(brands).set(data).where(eq(brands.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBrand(id: number): Promise<boolean> {
+    const result = await db.delete(brands).where(eq(brands.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createSubtype(data: InsertSubtype): Promise<Subtype> {
+    const [sub] = await db.insert(subtypes).values(data).returning();
+    return sub;
+  }
+
+  async getSubtypesByBrand(brandId: number): Promise<Subtype[]> {
+    return db.select().from(subtypes).where(eq(subtypes.brandId, brandId)).orderBy(subtypes.name);
+  }
+
+  async getAllSubtypes(): Promise<Subtype[]> {
+    return db.select().from(subtypes).orderBy(subtypes.name);
+  }
+
+  async deleteSubtype(id: number): Promise<boolean> {
+    const result = await db.delete(subtypes).where(eq(subtypes.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createFlavor(data: InsertFlavor): Promise<Flavor> {
+    const [flavor] = await db.insert(flavors).values(data).returning();
+    return flavor;
+  }
+
+  async getAllFlavors(): Promise<Flavor[]> {
+    return db.select().from(flavors).orderBy(flavors.name);
+  }
+
+  async deleteFlavor(id: number): Promise<boolean> {
+    const result = await db.delete(flavors).where(eq(flavors.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createVeriscanSession(data: InsertVeriscanSession): Promise<VeriscanSession> {
+    const [session] = await db.insert(veriscanSessions).values(data).returning();
+    return session;
+  }
+
+  async getVeriscanSession(id: number): Promise<VeriscanSession | undefined> {
+    const [session] = await db.select().from(veriscanSessions).where(eq(veriscanSessions.id, id));
+    return session;
+  }
+
+  async getVeriscanSessionsByUser(userId: string): Promise<VeriscanSession[]> {
+    return db.select().from(veriscanSessions).where(eq(veriscanSessions.userId, userId)).orderBy(desc(veriscanSessions.createdAt));
+  }
+
+  async updateVeriscanSession(id: number, data: Partial<VeriscanSession>): Promise<VeriscanSession | undefined> {
+    const [updated] = await db.update(veriscanSessions).set(data).where(eq(veriscanSessions.id, id)).returning();
+    return updated;
+  }
+
+  async createVeriscanItem(data: InsertVeriscanItem): Promise<VeriscanItem> {
+    const [item] = await db.insert(veriscanItems).values(data).returning();
+    return item;
+  }
+
+  async getVeriscanItem(id: number): Promise<VeriscanItem | undefined> {
+    const [item] = await db.select().from(veriscanItems).where(eq(veriscanItems.id, id));
+    return item;
+  }
+
+  async getVeriscanItemsBySession(sessionId: number): Promise<VeriscanItem[]> {
+    return db.select().from(veriscanItems).where(eq(veriscanItems.sessionId, sessionId)).orderBy(veriscanItems.createdAt);
+  }
+
+  async updateVeriscanItem(id: number, data: Partial<VeriscanItem>): Promise<VeriscanItem | undefined> {
+    const [updated] = await db.update(veriscanItems).set(data).where(eq(veriscanItems.id, id)).returning();
+    return updated;
   }
 }
 

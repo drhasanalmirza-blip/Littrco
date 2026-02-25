@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique, doublePrecision, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -552,3 +552,208 @@ export const insertSurveyResponseSchema = createInsertSchema(surveyResponses).om
 });
 export type InsertSurveyResponse = z.infer<typeof insertSurveyResponseSchema>;
 export type SurveyResponse = typeof surveyResponses.$inferSelect;
+
+// ==================== CAMERA / AI / VERISCAN TABLES ====================
+
+export const cameraModeEnum = pgEnum("camera_mode", ["none", "s3cam", "android_cam"]);
+export const uploadPolicyEnum = pgEnum("upload_policy", ["drop_only", "drop_plus_baseline", "debug_all"]);
+export const dropStatusEnum = pgEnum("drop_status", ["awaiting_ai", "approved", "denied", "appealed", "corrected"]);
+export const dropCategoryEnum = pgEnum("drop_category", ["Nicotine", "THC", "Trash", "Unknown"]);
+export const imageRoleEnum = pgEnum("image_role", ["baseline", "after", "crop", "debug"]);
+export const aiJobStatusEnum = pgEnum("ai_job_status", ["queued", "running", "done", "failed"]);
+export const appealTypeEnum = pgEnum("appeal_type", ["appeal", "self_report"]);
+export const veriscanStatusEnum = pgEnum("veriscan_status", ["active", "armed", "completed", "expired", "cancelled"]);
+
+export const binCapabilities = pgTable("bin_capabilities", {
+  id: serial("id").primaryKey(),
+  binId: integer("bin_id").notNull().references(() => bins.id, { onDelete: "cascade" }).unique(),
+  hasWeight: boolean("has_weight").notNull().default(false),
+  cameraMode: cameraModeEnum("camera_mode").notNull().default("none"),
+  cameraCadenceJson: jsonb("camera_cadence_json").default(sql`'{"idleIntervalSec":60,"burstIntervalSec":1,"burstDurationSec":15,"cooldownIntervalSec":5,"cooldownDurationSec":60}'::jsonb`),
+  uploadPolicy: uploadPolicyEnum("upload_policy").notNull().default("drop_only"),
+  debugMode: boolean("debug_mode").notNull().default(false),
+  moduleToken: text("module_token"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertBinCapabilitiesSchema = createInsertSchema(binCapabilities).omit({
+  id: true,
+  updatedAt: true,
+});
+export type InsertBinCapabilities = z.infer<typeof insertBinCapabilitiesSchema>;
+export type BinCapabilities = typeof binCapabilities.$inferSelect;
+
+export const drops = pgTable("drops", {
+  id: serial("id").primaryKey(),
+  binId: integer("bin_id").references(() => bins.id),
+  shopId: integer("shop_id").references(() => shops.id),
+  userId: varchar("user_id").references(() => users.id),
+  status: dropStatusEnum("status").notNull().default("awaiting_ai"),
+  category: dropCategoryEnum("category").notNull().default("Unknown"),
+  brand: text("brand"),
+  subtype: text("subtype"),
+  flavor: text("flavor"),
+  weightGrams: real("weight_grams"),
+  pointsAwarded: integer("points_awarded").notNull().default(0),
+  aiConfidence: real("ai_confidence"),
+  aiModelVersion: text("ai_model_version"),
+  overrideSource: text("override_source"),
+  veriscanItemId: integer("veriscan_item_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDropSchema = createInsertSchema(drops).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDrop = z.infer<typeof insertDropSchema>;
+export type Drop = typeof drops.$inferSelect;
+
+export const dropImages = pgTable("drop_images", {
+  id: serial("id").primaryKey(),
+  dropId: integer("drop_id").notNull().references(() => drops.id, { onDelete: "cascade" }),
+  imageRole: imageRoleEnum("image_role").notNull(),
+  storageUrl: text("storage_url").notNull(),
+  hash: text("hash"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDropImageSchema = createInsertSchema(dropImages).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDropImage = z.infer<typeof insertDropImageSchema>;
+export type DropImage = typeof dropImages.$inferSelect;
+
+export const aiJobs = pgTable("ai_jobs", {
+  id: serial("id").primaryKey(),
+  dropId: integer("drop_id").notNull().references(() => drops.id, { onDelete: "cascade" }),
+  status: aiJobStatusEnum("status").notNull().default("queued"),
+  provider: text("provider").notNull().default("null"),
+  startedAt: timestamp("started_at"),
+  finishedAt: timestamp("finished_at"),
+  costMetaJson: jsonb("cost_meta_json"),
+  resultJson: jsonb("result_json"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAiJobSchema = createInsertSchema(aiJobs).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  finishedAt: true,
+});
+export type InsertAiJob = z.infer<typeof insertAiJobSchema>;
+export type AiJob = typeof aiJobs.$inferSelect;
+
+export const appeals = pgTable("appeals", {
+  id: serial("id").primaryKey(),
+  dropId: integer("drop_id").notNull().references(() => drops.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id),
+  type: appealTypeEnum("type").notNull(),
+  payloadJson: jsonb("payload_json"),
+  resolution: text("resolution"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedById: varchar("resolved_by_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAppealSchema = createInsertSchema(appeals).omit({
+  id: true,
+  createdAt: true,
+  resolvedAt: true,
+  resolvedById: true,
+  resolution: true,
+});
+export type InsertAppeal = z.infer<typeof insertAppealSchema>;
+export type Appeal = typeof appeals.$inferSelect;
+
+export const brands = pgTable("brands", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  suggested: boolean("suggested").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBrandSchema = createInsertSchema(brands).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBrand = z.infer<typeof insertBrandSchema>;
+export type Brand = typeof brands.$inferSelect;
+
+export const subtypes = pgTable("subtypes", {
+  id: serial("id").primaryKey(),
+  brandId: integer("brand_id").notNull().references(() => brands.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  suggested: boolean("suggested").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSubtypeSchema = createInsertSchema(subtypes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSubtype = z.infer<typeof insertSubtypeSchema>;
+export type Subtype = typeof subtypes.$inferSelect;
+
+export const flavors = pgTable("flavors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  suggested: boolean("suggested").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFlavorSchema = createInsertSchema(flavors).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertFlavor = z.infer<typeof insertFlavorSchema>;
+export type Flavor = typeof flavors.$inferSelect;
+
+export const veriscanSessions = pgTable("veriscan_sessions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id),
+  shopId: integer("shop_id").notNull().references(() => shops.id),
+  binId: integer("bin_id").references(() => bins.id),
+  status: veriscanStatusEnum("status").notNull().default("active"),
+  expectedItemCount: integer("expected_item_count").notNull().default(0),
+  dropsMatchedCount: integer("drops_matched_count").notNull().default(0),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertVeriscanSessionSchema = createInsertSchema(veriscanSessions).omit({
+  id: true,
+  createdAt: true,
+  dropsMatchedCount: true,
+});
+export type InsertVeriscanSession = z.infer<typeof insertVeriscanSessionSchema>;
+export type VeriscanSession = typeof veriscanSessions.$inferSelect;
+
+export const veriscanItems = pgTable("veriscan_items", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => veriscanSessions.id, { onDelete: "cascade" }),
+  imageUrl: text("image_url"),
+  aiBrand: text("ai_brand"),
+  aiSubtype: text("ai_subtype"),
+  aiFlavor: text("ai_flavor"),
+  aiConfidence: real("ai_confidence"),
+  finalBrand: text("final_brand"),
+  finalSubtype: text("final_subtype"),
+  finalFlavor: text("final_flavor"),
+  confirmedAt: timestamp("confirmed_at"),
+  modifier: real("modifier").notNull().default(1.0),
+  matchedDropId: integer("matched_drop_id").references(() => drops.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertVeriscanItemSchema = createInsertSchema(veriscanItems).omit({
+  id: true,
+  createdAt: true,
+  confirmedAt: true,
+  matchedDropId: true,
+});
+export type InsertVeriscanItem = z.infer<typeof insertVeriscanItemSchema>;
+export type VeriscanItem = typeof veriscanItems.$inferSelect;
