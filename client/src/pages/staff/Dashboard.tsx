@@ -4,7 +4,6 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -225,6 +224,8 @@ export default function StaffDashboard() {
     return { totalClaims, totalPoints, uniqueUsers, flaggedUsers };
   }, [activityLog]);
 
+  const [section, setSection] = useState<string | null>(null);
+
   const { data: mailboxes = [] } = useQuery({
     queryKey: ['mailboxes'],
     queryFn: async () => {
@@ -322,30 +323,548 @@ export default function StaffDashboard() {
     totalBins: bins.length,
   };
 
+  const pendingPairCount = pairRequests.filter((pr: any) => !pr.claimed && new Date(pr.expiresAt) >= new Date()).length;
+  const unreadInboxCount = myMailbox?.unreadCount || 0;
+
+  const navSections = [
+    { id: "leads", label: "Leads", icon: Package, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950", count: stats.totalLeads },
+    { id: "shops", label: "Shops", icon: Building, color: "text-green-500", bg: "bg-green-50 dark:bg-green-950", count: stats.activeShops },
+    { id: "devices", label: "Devices & Bins", icon: Cpu, color: "text-teal-500", bg: "bg-teal-50 dark:bg-teal-950", count: stats.totalBins, badge: pendingPairCount > 0 ? pendingPairCount : undefined },
+    { id: "drop-review", label: "Drop Review", icon: ClipboardList, color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-950" },
+    { id: "taxonomy", label: "Taxonomy", icon: Tags, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950" },
+    { id: "activity", label: "Activity", icon: TrendingUp, color: "text-cyan-500", bg: "bg-cyan-50 dark:bg-cyan-950", count: stats.todayDrops },
+    { id: "emails", label: "Emails", icon: Send, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950" },
+    { id: "messages", label: "Inbox", icon: Inbox, color: "text-pink-500", bg: "bg-pink-50 dark:bg-pink-950", badge: unreadInboxCount > 0 ? unreadInboxCount : undefined },
+    { id: "volunteers", label: "Volunteers", icon: HandHeart, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950" },
+    { id: "users", label: "Users", icon: UserCog, color: "text-slate-500", bg: "bg-slate-50 dark:bg-slate-950" },
+  ];
+
+  const renderSectionContent = () => {
+    switch (section) {
+      case "leads": return renderLeads();
+      case "shops": return renderShops();
+      case "devices": return renderDevices();
+      case "drop-review": return <DropReviewTab />;
+      case "taxonomy": return <TaxonomyTab />;
+      case "activity": return renderActivity();
+      case "emails": return renderEmails();
+      case "messages": return renderMessages();
+      case "volunteers": return renderVolunteers();
+      case "users": return <UsersManagement />;
+      default: return null;
+    }
+  };
+
+  const renderLeads = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Bin Request Leads</CardTitle>
+        <CardDescription>Businesses requesting recycling bins</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Business</TableHead>
+              <TableHead>Contact</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Date</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {leads.map((lead: any) => (
+              <TableRow key={lead.id}>
+                <TableCell className="font-medium">{lead.businessName}</TableCell>
+                <TableCell>
+                  {lead.contactName}<br />
+                  <span className="text-xs text-gray-400">{lead.email}</span>
+                </TableCell>
+                <TableCell>{lead.address}</TableCell>
+                <TableCell>
+                  <Badge variant={lead.status === 'NEW' ? 'default' : lead.status === 'CONVERTED' ? 'outline' : 'secondary'}>
+                    {lead.status}
+                  </Badge>
+                </TableCell>
+                <TableCell>{new Date(lead.createdAt).toLocaleDateString()}</TableCell>
+              </TableRow>
+            ))}
+            {leads.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-gray-400">No leads yet</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+
+  const renderShops = () => (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Partner Shops</CardTitle>
+          <CardDescription>Manage verified partner locations</CardDescription>
+        </div>
+        <CreateShopDialog />
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead>Service Area</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {shops.map((shop: any) => (
+              <TableRow key={shop.id}>
+                <TableCell className="font-medium">{shop.name}</TableCell>
+                <TableCell>{shop.address}, {shop.city}</TableCell>
+                <TableCell>{shop.serviceArea}</TableCell>
+                <TableCell>
+                  <Badge variant={shop.status === 'VERIFIED' ? 'default' : shop.status === 'PENDING' ? 'secondary' : 'destructive'}>
+                    {shop.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="flex items-center gap-2">
+                  <ShopActionsMenu shop={shop} />
+                  <DeleteShopButton shopId={shop.id} shopName={shop.name} />
+                </TableCell>
+              </TableRow>
+            ))}
+            {shops.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-gray-400">No shops yet</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+
+  const renderDevices = () => (
+    <div className="space-y-6">
+      {fireAlerts.length > 0 && (
+        <Card className="border-red-500 !bg-red-50 dark:!bg-red-950">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-500">
+              <Flame className="h-5 w-5 animate-pulse" />
+              Active Fire Alerts
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {fireAlerts.map((alert: any) => (
+                <div
+                  key={alert.id}
+                  className={`p-4 rounded-lg border ${
+                    alert.severity === 'CRITICAL' ? 'bg-red-50 dark:bg-red-950 border-red-500 animate-pulse' :
+                    alert.severity === 'HIGH' ? 'bg-red-50 dark:bg-red-950 border-red-400' :
+                    alert.severity === 'MEDIUM' ? 'bg-orange-50 dark:bg-orange-950 border-orange-400' :
+                    'bg-yellow-50 dark:bg-yellow-950 border-yellow-400'
+                  }`}
+                  data-testid={`fire-alert-${alert.id}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Flame className={`h-6 w-6 ${
+                        alert.severity === 'CRITICAL' ? 'text-red-500 animate-pulse' :
+                        alert.severity === 'HIGH' ? 'text-red-500' :
+                        alert.severity === 'MEDIUM' ? 'text-orange-600' : 'text-yellow-600'
+                      }`} />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'destructive' : alert.severity === 'MEDIUM' ? 'default' : 'secondary'}
+                            className={alert.severity === 'CRITICAL' ? 'animate-pulse bg-red-600' : alert.severity === 'HIGH' ? 'bg-red-500' : alert.severity === 'MEDIUM' ? 'bg-orange-500' : 'bg-yellow-500 text-black'}
+                            data-testid={`severity-badge-${alert.id}`}
+                          >
+                            {alert.severity}
+                          </Badge>
+                          <span className="font-semibold text-black dark:text-white">{alert.bin?.name || `Bin #${alert.binId}`}</span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">at {alert.shop?.name || 'Unknown Shop'}</span>
+                        </div>
+                        <div className="text-sm text-gray-400 mt-1">
+                          {alert.temperature !== null && <span className="mr-3">{alert.temperature?.toFixed(1)}°C</span>}
+                          {alert.temperatureRise !== null && alert.temperatureRise > 0 && <span className="text-red-500">+{alert.temperatureRise?.toFixed(1)}°C rise</span>}
+                          <span className="ml-3 text-gray-400">{new Date(alert.createdAt).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {!alert.acknowledged && (
+                        <Button size="sm" variant="outline" onClick={() => acknowledgeAlert.mutate(alert.id)} disabled={acknowledgeAlert.isPending} data-testid={`acknowledge-alert-${alert.id}`}>
+                          Acknowledge
+                        </Button>
+                      )}
+                      <Button size="sm" variant={alert.acknowledged ? "default" : "secondary"} onClick={() => resolveAlert.mutate(alert.id)} disabled={resolveAlert.isPending} data-testid={`resolve-alert-${alert.id}`}>
+                        Resolve
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5" />
+              Smart Bins
+            </CardTitle>
+            <CardDescription>All ESP32 recycling bins with sensors</CardDescription>
+          </div>
+          <CreateDeviceDialog shops={shops} />
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Shop</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Fill</TableHead>
+                <TableHead>Temp</TableHead>
+                <TableHead>VOC</TableHead>
+                <TableHead>Last Seen</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {bins.map((bin: any) => (
+                <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <TableCell className="font-mono text-xs">{bin.deviceId || bin.id}</TableCell>
+                  <TableCell className="font-medium">{bin.name}</TableCell>
+                  <TableCell>{bin.shop?.name || 'Unknown'}</TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={bin.status === 'ONLINE' ? 'default' : bin.status === 'FIRE_ALERT' ? 'destructive' : bin.status === 'MAINTENANCE' ? 'secondary' : 'outline'}
+                      className={bin.status === 'FIRE_ALERT' ? 'animate-pulse' : ''}
+                      data-testid={`bin-status-${bin.id}`}
+                    >
+                      {bin.status === 'FIRE_ALERT' && <Flame className="h-3 w-3 mr-1" />}
+                      {bin.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${bin.fillLevel >= 80 ? 'bg-red-500' : bin.fillLevel >= 50 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${bin.fillLevel || 0}%` }} />
+                      </div>
+                      <span className="text-sm">{bin.fillLevel != null ? `${bin.fillLevel}%` : <span className="text-orange-600 text-xs">N/A</span>}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {bin.lastTemperature != null ? (
+                      <span className={bin.lastTemperature >= 45 ? 'text-red-600 font-semibold' : ''}>{bin.lastTemperature?.toFixed(1)}°C</span>
+                    ) : <span className="text-gray-400 text-xs">--</span>}
+                  </TableCell>
+                  <TableCell>
+                    {bin.lastVocAnalog != null ? (
+                      <span className={bin.lastVocDigital ? 'text-red-600 font-semibold' : ''}>{bin.lastVocAnalog}</span>
+                    ) : <span className="text-gray-400 text-xs">--</span>}
+                  </TableCell>
+                  <TableCell>
+                    {bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : <span className="text-gray-400 text-xs">Never</span>}
+                  </TableCell>
+                  <TableCell>
+                    <BinDetailDialog bin={bin} shops={shops} />
+                  </TableCell>
+                </TableRow>
+              ))}
+              {bins.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center text-gray-400">No bins yet. Add a device to get started.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" />
+            Pair Requests
+          </CardTitle>
+          <CardDescription>ESP32 devices requesting to be paired with a shop</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table data-testid="table-pair-requests">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Pair Code</TableHead>
+                <TableHead>Device UID</TableHead>
+                <TableHead>Firmware</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Shop</TableHead>
+                <TableHead>Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pairRequests.map((pr: any) => (
+                <TableRow key={pr.id} data-testid={`pair-request-row-${pr.id}`}>
+                  <TableCell><Badge variant="outline" className="font-mono">{pr.pairCode}</Badge></TableCell>
+                  <TableCell className="font-mono text-xs">...{pr.uid?.slice(-8)}</TableCell>
+                  <TableCell>{pr.firmwareVersion || 'Unknown'}</TableCell>
+                  <TableCell>
+                    {pr.claimed ? <Badge className="bg-green-600">Claimed</Badge> :
+                     new Date(pr.expiresAt) < new Date() ? <Badge className="bg-red-600">Expired</Badge> :
+                     <Badge className="bg-yellow-600 text-black">Pending</Badge>}
+                  </TableCell>
+                  <TableCell>{pr.shopId ? shops.find((s: any) => s.id === pr.shopId)?.name || 'Unknown' : '—'}</TableCell>
+                  <TableCell>{new Date(pr.createdAt).toLocaleString()}</TableCell>
+                </TableRow>
+              ))}
+              {pairRequests.length === 0 && (
+                <TableRow><TableCell colSpan={6} className="text-center text-gray-400">No pair requests yet</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <BinCapabilitiesTab bins={bins} />
+    </div>
+  );
+
+  const renderActivity = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
+                <Activity className="h-5 w-5 text-black dark:text-white" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold" data-testid="activity-log-count">{activityStats.totalClaims}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total Claims</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
+                <TrendingUp className="h-5 w-5 text-black dark:text-white" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{activityStats.totalPoints.toLocaleString()}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Points Redeemed</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
+                <Users className="h-5 w-5 text-black dark:text-white" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{activityStats.uniqueUsers}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Unique Users</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {activityStats.flaggedUsers.length > 0 && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200 text-base">
+              <ShieldAlert className="h-5 w-5" />
+              High-Activity Users
+            </CardTitle>
+            <CardDescription className="text-amber-600 dark:text-amber-400">Users with 10+ claims or 100+ total points</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {activityStats.flaggedUsers.map((u: any) => (
+                <div key={u.email} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white dark:bg-gray-900 border border-amber-100 dark:border-amber-800">
+                  <span className="font-medium text-sm">{u.email}</span>
+                  <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
+                    <span>{u.count} claims</span>
+                    <span className="font-semibold text-amber-700 dark:text-amber-300">{u.points} pts</span>
+                    <span className="text-xs text-gray-400">last: {new Date(u.lastClaim).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Claims Log</CardTitle>
+              <CardDescription>All points redeemed from bins</CardDescription>
+            </div>
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input data-testid="activity-log-search" placeholder="Search..." value={activitySearch} onChange={(e) => setActivitySearch(e.target.value)} className="pl-9" />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Table data-testid="activity-log-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Shop</TableHead>
+                <TableHead>Device</TableHead>
+                <TableHead className="text-right">Points</TableHead>
+                <TableHead className="text-right">Drops</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Claimed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredActivity.slice(0, activityLimit).map((entry: any) => (
+                <TableRow key={`${entry.source}-${entry.id}`}>
+                  <TableCell className="font-medium text-sm">{entry.userEmail}</TableCell>
+                  <TableCell className="text-sm">{entry.shopName}</TableCell>
+                  <TableCell className="text-sm text-gray-500 dark:text-gray-400">{entry.deviceName}</TableCell>
+                  <TableCell className="text-right font-semibold">+{entry.pointsClaimed}</TableCell>
+                  <TableCell className="text-right text-gray-500 dark:text-gray-400">{entry.dropCount}</TableCell>
+                  <TableCell>
+                    <Badge variant={entry.source === 'v2' ? 'default' : 'secondary'} className={entry.source === 'v2' ? 'bg-black text-white text-xs' : 'text-xs'}>
+                      {entry.source.toUpperCase()}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-gray-500 dark:text-gray-400">{new Date(entry.claimedAt).toLocaleString()}</TableCell>
+                </TableRow>
+              ))}
+              {filteredActivity.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-400">
+                    {activitySearch ? "No matching claims found" : "No claims recorded yet"}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          {filteredActivity.length > activityLimit && (
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Showing {activityLimit} of {filteredActivity.length}</p>
+              <Button variant="outline" size="sm" onClick={() => setActivityLimit(prev => prev + 50)}>Load More</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderEmails = () => (
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Send className="h-5 w-5" />Compose Email</CardTitle>
+          <CardDescription>Send emails to staff, partners, or customers</CardDescription>
+        </CardHeader>
+        <CardContent><EmailComposer /></CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Email Templates</CardTitle>
+          <CardDescription>Quick templates for common communications</CardDescription>
+        </CardHeader>
+        <CardContent><EmailTemplates /></CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" />Staff Mailboxes</CardTitle>
+          <CardDescription>Manage @littr.co email addresses</CardDescription>
+        </CardHeader>
+        <CardContent><MailboxManager mailboxes={mailboxes} queryClient={queryClient} /></CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderMessages = () => (
+    !myMailbox ? (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-center py-12">
+            <Mail className="h-12 w-12 text-gray-500 dark:text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Mailbox Found</h3>
+            <p className="text-gray-400">You don't have an @littr.co email address yet.</p>
+          </div>
+        </CardContent>
+      </Card>
+    ) : (
+      <InboxPortal myMailbox={myMailbox} inboxMessages={inboxMessages} sentMessages={sentMessages} mailboxes={mailboxes} queryClient={queryClient} />
+    )
+  );
+
+  const renderVolunteers = () => (
+    <Card>
+      <CardHeader><CardTitle>Volunteer Applications</CardTitle></CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Interest</TableHead>
+              <TableHead>Availability</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {volunteers.map((v: any) => (
+              <TableRow key={v.id}>
+                <TableCell className="font-medium">{v.name}</TableCell>
+                <TableCell>{v.email}</TableCell>
+                <TableCell>{v.interest}</TableCell>
+                <TableCell>{v.availability}</TableCell>
+              </TableRow>
+            ))}
+            {volunteers.length === 0 && (
+              <TableRow><TableCell colSpan={4} className="text-center text-gray-400">No volunteers yet</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+
   return (
-    <div className="littr-dashboard">
+    <div className="littr-dashboard min-h-screen">
       <div className="littr-nav px-4 py-3 flex justify-between items-center">
         <div className="flex items-center gap-3">
+          {section && (
+            <button onClick={() => setSection(null)} className="p-2 -ml-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" data-testid="button-nav-back">
+              <X className="h-5 w-5 text-gray-500" />
+            </button>
+          )}
           <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
             <Recycle className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-black dark:text-white">Staff Dashboard</h1>
+            <h1 className="font-bold text-black dark:text-white">{section ? navSections.find(s => s.id === section)?.label || 'Dashboard' : 'LITTR Admin'}</h1>
             <p className="text-xs text-gray-400">{user?.email}</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            onClick={toggleTheme}
-            data-testid="button-theme-toggle"
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark' ? (
-              <Sun className="h-4 w-4 text-yellow-400" />
-            ) : (
-              <Moon className="h-4 w-4 text-gray-500" />
-            )}
+          <button onClick={toggleTheme} data-testid="button-theme-toggle" className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" aria-label="Toggle theme">
+            {theme === 'dark' ? <Sun className="h-4 w-4 text-yellow-400" /> : <Moon className="h-4 w-4 text-gray-500" />}
           </button>
           <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800" data-testid="button-logout">
             <LogOut className="h-4 w-4 mr-2" />
@@ -354,719 +873,80 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Package className="h-8 w-8 text-blue-500" />
-                <div>
-                  <p className="text-2xl font-bold">{stats.totalLeads}</p>
-                  <p className="text-xs text-gray-400">Leads</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Building className="h-8 w-8 text-green-500" />
-                <div>
-                  <p className="text-2xl font-bold">{stats.activeShops}</p>
-                  <p className="text-xs text-gray-400">Active Shops</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Trash2 className="h-8 w-8 text-teal-500" />
-                <div>
-                  <p className="text-2xl font-bold">{stats.totalBins}</p>
-                  <p className="text-xs text-gray-400">Bins</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={stats.activeFireAlerts > 0 ? "border-red-500 !bg-red-50 dark:!bg-red-950" : ""}>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Flame className={`h-8 w-8 ${stats.activeFireAlerts > 0 ? "text-red-500 animate-pulse" : "text-gray-500"}`} />
-                <div>
-                  <p className={`text-2xl font-bold ${stats.activeFireAlerts > 0 ? "text-red-500" : ""}`}>{stats.activeFireAlerts}</p>
-                  <p className="text-xs text-gray-400">Fire Alerts</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <TrendingUp className="h-8 w-8 text-orange-500" />
-                <div>
-                  <p className="text-2xl font-bold">{stats.todayDrops}</p>
-                  <p className="text-xs text-gray-400">Today's Drops</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Gift className="h-8 w-8 text-pink-500" />
-                <div>
-                  <p className="text-2xl font-bold">{stats.pendingRedemptions}</p>
-                  <p className="text-xs text-gray-400">Pending</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Tabs defaultValue="leads" className="space-y-4">
-          <TabsList className="flex flex-wrap gap-1 h-auto w-full max-w-6xl">
-            <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="shops">Shops</TabsTrigger>
-            <TabsTrigger value="bins" className="flex items-center gap-1">
-              <Cpu className="h-4 w-4" />
-              Smart Bins
-            </TabsTrigger>
-            <TabsTrigger value="drop-review" className="flex items-center gap-1">
-              <ClipboardList className="h-4 w-4" />
-              Drop Review
-            </TabsTrigger>
-            <TabsTrigger value="taxonomy" className="flex items-center gap-1">
-              <Tags className="h-4 w-4" />
-              Taxonomy
-            </TabsTrigger>
-            <TabsTrigger value="bin-caps" className="flex items-center gap-1">
-              <Settings2 className="h-4 w-4" />
-              Bin Config
-            </TabsTrigger>
-            <TabsTrigger value="pairing" className="flex items-center gap-1">
-              <Link2 className="h-4 w-4" />
-              Pairing
-              {pairRequests.filter((pr: any) => !pr.claimed && new Date(pr.expiresAt) >= new Date()).length > 0 && (
-                <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1">{pairRequests.filter((pr: any) => !pr.claimed && new Date(pr.expiresAt) >= new Date()).length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="emails" className="flex items-center gap-1">
-              <Send className="h-4 w-4" />
-              Emails
-            </TabsTrigger>
-            <TabsTrigger value="messages" className="flex items-center gap-1">
-              <Inbox className="h-4 w-4" />
-              Inbox
-              {myMailbox?.unreadCount > 0 && (
-                <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1">{myMailbox.unreadCount}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="volunteers">Volunteers</TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-1">
-              <UserCog className="h-4 w-4" />
-              Users
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="leads">
-            <Card>
-              <CardHeader>
-                <CardTitle>Bin Request Leads</CardTitle>
-                <CardDescription>Businesses requesting recycling bins</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Business</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Address</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {leads.map((lead: any) => (
-                      <TableRow key={lead.id}>
-                        <TableCell className="font-medium">{lead.businessName}</TableCell>
-                        <TableCell>
-                          {lead.contactName}<br />
-                          <span className="text-xs text-gray-400">{lead.email}</span>
-                        </TableCell>
-                        <TableCell>{lead.address}</TableCell>
-                        <TableCell>
-                          <Badge variant={lead.status === 'NEW' ? 'default' : lead.status === 'CONVERTED' ? 'outline' : 'secondary'}>
-                            {lead.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{new Date(lead.createdAt).toLocaleDateString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {leads.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-gray-400">No leads yet</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="shops">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Partner Shops</CardTitle>
-                  <CardDescription>Manage verified partner locations</CardDescription>
-                </div>
-                <CreateShopDialog />
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Address</TableHead>
-                      <TableHead>Service Area</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {shops.map((shop: any) => (
-                      <TableRow key={shop.id}>
-                        <TableCell className="font-medium">{shop.name}</TableCell>
-                        <TableCell>{shop.address}, {shop.city}</TableCell>
-                        <TableCell>{shop.serviceArea}</TableCell>
-                        <TableCell>
-                          <Badge variant={shop.status === 'VERIFIED' ? 'default' : shop.status === 'PENDING' ? 'secondary' : 'destructive'}>
-                            {shop.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="flex items-center gap-2">
-                          <ShopActionsMenu shop={shop} />
-                          <DeleteShopButton shopId={shop.id} shopName={shop.name} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {shops.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-gray-400">No shops yet</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="bins">
-            <div className="space-y-4">
-              {fireAlerts.length > 0 && (
-                <Card className="border-red-500 !bg-red-50 dark:!bg-red-950">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-500">
-                      <Flame className="h-5 w-5 animate-pulse" />
-                      Active Fire Alerts
-                    </CardTitle>
-                    <CardDescription className="text-red-500">
-                      Immediate attention required for these alerts
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {fireAlerts.map((alert: any) => (
-                        <div 
-                          key={alert.id} 
-                          className={`p-4 rounded-lg border ${
-                            alert.severity === 'CRITICAL' ? 'bg-red-50 dark:bg-red-950 border-red-500 animate-pulse' :
-                            alert.severity === 'HIGH' ? 'bg-red-50 dark:bg-red-950 border-red-400' :
-                            alert.severity === 'MEDIUM' ? 'bg-orange-50 dark:bg-orange-950 border-orange-400' :
-                            'bg-yellow-50 dark:bg-yellow-950 border-yellow-400'
-                          }`}
-                          data-testid={`fire-alert-${alert.id}`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <Flame className={`h-6 w-6 ${
-                                alert.severity === 'CRITICAL' ? 'text-red-500 animate-pulse' :
-                                alert.severity === 'HIGH' ? 'text-red-500' :
-                                alert.severity === 'MEDIUM' ? 'text-orange-600' :
-                                'text-yellow-600'
-                              }`} />
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <Badge 
-                                    variant={
-                                      alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'destructive' :
-                                      alert.severity === 'MEDIUM' ? 'default' : 'secondary'
-                                    }
-                                    className={
-                                      alert.severity === 'CRITICAL' ? 'animate-pulse bg-red-600' :
-                                      alert.severity === 'HIGH' ? 'bg-red-500' :
-                                      alert.severity === 'MEDIUM' ? 'bg-orange-500' :
-                                      'bg-yellow-500 text-black'
-                                    }
-                                    data-testid={`severity-badge-${alert.id}`}
-                                  >
-                                    {alert.severity}
-                                  </Badge>
-                                  <span className="font-semibold text-black dark:text-white">{alert.bin?.name || `Bin #${alert.binId}`}</span>
-                                  <span className="text-sm text-gray-500 dark:text-gray-400">at {alert.shop?.name || 'Unknown Shop'}</span>
-                                </div>
-                                <div className="text-sm text-gray-400 mt-1">
-                                  {alert.temperature !== null && (
-                                    <span className="mr-3">🌡️ {alert.temperature?.toFixed(1)}°C</span>
-                                  )}
-                                  {alert.temperatureRise !== null && alert.temperatureRise > 0 && (
-                                    <span className="text-red-500">↑ +{alert.temperatureRise?.toFixed(1)}°C rise</span>
-                                  )}
-                                  <span className="ml-3 text-gray-400">
-                                    {new Date(alert.createdAt).toLocaleString()}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              {!alert.acknowledged && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => acknowledgeAlert.mutate(alert.id)}
-                                  disabled={acknowledgeAlert.isPending}
-                                  data-testid={`acknowledge-alert-${alert.id}`}
-                                >
-                                  Acknowledge
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant={alert.acknowledged ? "default" : "secondary"}
-                                onClick={() => resolveAlert.mutate(alert.id)}
-                                disabled={resolveAlert.isPending}
-                                data-testid={`resolve-alert-${alert.id}`}
-                              >
-                                Resolve
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Cpu className="h-5 w-5" />
-                      Smart Bins (ESP32)
-                    </CardTitle>
-                    <CardDescription>LITTR recycling bins with integrated sensors</CardDescription>
-                  </div>
-                  <CreateDeviceDialog shops={shops} />
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Shop</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Fill Level</TableHead>
-                        <TableHead>Temperature</TableHead>
-                        <TableHead>VOC</TableHead>
-                        <TableHead>Last Seen</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {bins.map((bin: any) => (
-                        <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
-                          <TableCell className="font-mono text-xs">{bin.deviceId || bin.id}</TableCell>
-                          <TableCell className="font-medium">{bin.name}</TableCell>
-                          <TableCell>{bin.shop?.name || 'Unknown'}</TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={
-                                bin.status === 'ONLINE' ? 'default' : 
-                                bin.status === 'FIRE_ALERT' ? 'destructive' :
-                                bin.status === 'MAINTENANCE' ? 'secondary' : 'outline'
-                              }
-                              className={bin.status === 'FIRE_ALERT' ? 'animate-pulse' : ''}
-                              data-testid={`bin-status-${bin.id}`}
-                            >
-                              {bin.status === 'FIRE_ALERT' && <Flame className="h-3 w-3 mr-1" />}
-                              {bin.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                <div 
-                                  className={`h-full rounded-full ${
-                                    bin.fillLevel >= 80 ? 'bg-red-500' :
-                                    bin.fillLevel >= 50 ? 'bg-yellow-500' :
-                                    'bg-green-500'
-                                  }`}
-                                  style={{ width: `${bin.fillLevel || 0}%` }}
-                                />
-                              </div>
-                              <span className="text-sm">{bin.fillLevel !== null && bin.fillLevel !== undefined ? `${bin.fillLevel}%` : <span className="text-orange-600 text-xs">CONTACT SUPPORT</span>}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {bin.lastTemperature !== null && bin.lastTemperature !== undefined ? (
-                              <span className={bin.lastTemperature >= 45 ? 'text-red-600 font-semibold' : ''}>
-                                {bin.lastTemperature?.toFixed(1)}°C
-                              </span>
-                            ) : <span className="text-orange-600 text-xs">CONTACT SUPPORT</span>}
-                          </TableCell>
-                          <TableCell>
-                            {bin.lastVocAnalog !== null && bin.lastVocAnalog !== undefined ? (
-                              <span className={bin.lastVocDigital ? 'text-red-600 font-semibold' : ''}>
-                                {bin.lastVocAnalog}
-                              </span>
-                            ) : <span className="text-orange-600 text-xs">CONTACT SUPPORT</span>}
-                          </TableCell>
-                          <TableCell>
-                            {bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : <span className="text-orange-600 text-xs">CONTACT SUPPORT</span>}
-                          </TableCell>
-                          <TableCell>
-                            <BinDetailDialog bin={bin} shops={shops} />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {bins.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={9} className="text-center text-gray-400">No bins yet. Add a device to get started.</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="pairing">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Link2 className="h-5 w-5" />
-                  Device Pair Requests
-                </CardTitle>
-                <CardDescription>ESP32 bins requesting to be paired with a shop</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table data-testid="table-pair-requests">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Pair Code</TableHead>
-                      <TableHead>Device UID</TableHead>
-                      <TableHead>Firmware</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Shop</TableHead>
-                      <TableHead>Paired At</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pairRequests.map((pr: any) => (
-                      <TableRow key={pr.id} data-testid={`pair-request-row-${pr.id}`}>
-                        <TableCell>
-                          <Badge variant="outline" className="font-mono">{pr.pairCode}</Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">...{pr.uid?.slice(-8)}</TableCell>
-                        <TableCell>{pr.firmwareVersion || 'Unknown'}</TableCell>
-                        <TableCell>
-                          {pr.claimed ? (
-                            <Badge className="bg-green-600">Claimed</Badge>
-                          ) : new Date(pr.expiresAt) < new Date() ? (
-                            <Badge className="bg-red-600">Expired</Badge>
-                          ) : (
-                            <Badge className="bg-yellow-600 text-black">Pending</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>{pr.shopId ? shops.find((s: any) => s.id === pr.shopId)?.name || 'Unknown' : '—'}</TableCell>
-                        <TableCell>{new Date(pr.createdAt).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {pairRequests.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-gray-400">No pair requests yet</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="activity">
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
-                        <Activity className="h-5 w-5 text-black dark:text-white" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold" data-testid="activity-log-count">{activityStats.totalClaims}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Total Claims</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
-                        <TrendingUp className="h-5 w-5 text-black dark:text-white" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{activityStats.totalPoints.toLocaleString()}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Points Redeemed</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-black/5 dark:bg-white/10">
-                        <Users className="h-5 w-5 text-black dark:text-white" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{activityStats.uniqueUsers}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Unique Users</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {activityStats.flaggedUsers.length > 0 && (
-                <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200 text-base">
-                      <ShieldAlert className="h-5 w-5" />
-                      High-Activity Users
-                    </CardTitle>
-                    <CardDescription className="text-amber-600 dark:text-amber-400">Users with 10+ claims or 100+ total points — worth reviewing</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {activityStats.flaggedUsers.map((u: any) => (
-                        <div key={u.email} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white dark:bg-gray-900 border border-amber-100 dark:border-amber-800">
-                          <span className="font-medium text-sm">{u.email}</span>
-                          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
-                            <span>{u.count} claims</span>
-                            <span className="font-semibold text-amber-700 dark:text-amber-300">{u.points} pts</span>
-                            <span className="text-xs text-gray-400">last: {new Date(u.lastClaim).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
+      <div className="container mx-auto px-4 py-6">
+        {!section ? (
+          <div className="space-y-6">
+            {stats.activeFireAlerts > 0 && (
+              <button onClick={() => setSection('devices')} className="w-full text-left" data-testid="button-fire-alert-banner">
+                <Card className="border-red-500 !bg-red-50 dark:!bg-red-950 hover:shadow-md transition-shadow">
+                  <CardContent className="py-4 flex items-center gap-3">
+                    <Flame className="h-6 w-6 text-red-500 animate-pulse" />
                     <div>
-                      <CardTitle>Claims Log</CardTitle>
-                      <CardDescription>All points redeemed from bins — who, when, how many</CardDescription>
+                      <p className="font-semibold text-red-600">{stats.activeFireAlerts} Active Fire Alert{stats.activeFireAlerts > 1 ? 's' : ''}</p>
+                      <p className="text-sm text-red-500">Immediate attention required</p>
                     </div>
-                    <div className="relative w-64">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        data-testid="activity-log-search"
-                        placeholder="Search by email, shop, device..."
-                        value={activitySearch}
-                        onChange={(e) => setActivitySearch(e.target.value)}
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Table data-testid="activity-log-table">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>User</TableHead>
-                        <TableHead>Shop</TableHead>
-                        <TableHead>Device</TableHead>
-                        <TableHead className="text-right">Points</TableHead>
-                        <TableHead className="text-right">Drops</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Claimed</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredActivity.slice(0, activityLimit).map((entry: any) => (
-                        <TableRow key={`${entry.source}-${entry.id}`}>
-                          <TableCell className="font-medium text-sm">{entry.userEmail}</TableCell>
-                          <TableCell className="text-sm">{entry.shopName}</TableCell>
-                          <TableCell className="text-sm text-gray-500 dark:text-gray-400">{entry.deviceName}</TableCell>
-                          <TableCell className="text-right font-semibold">+{entry.pointsClaimed}</TableCell>
-                          <TableCell className="text-right text-gray-500 dark:text-gray-400">{entry.dropCount}</TableCell>
-                          <TableCell>
-                            <Badge variant={entry.source === 'v2' ? 'default' : 'secondary'} className={entry.source === 'v2' ? 'bg-black text-white text-xs' : 'text-xs'}>
-                              {entry.source.toUpperCase()}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm text-gray-500 dark:text-gray-400">{new Date(entry.claimedAt).toLocaleString()}</TableCell>
-                        </TableRow>
-                      ))}
-                      {filteredActivity.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-gray-400">
-                            {activitySearch ? "No matching claims found" : "No claims recorded yet"}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                  {filteredActivity.length > activityLimit && (
-                    <div className="mt-4 text-center">
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Showing {activityLimit} of {filteredActivity.length} claims</p>
-                      <Button variant="outline" size="sm" onClick={() => setActivityLimit(prev => prev + 50)}>
-                        Load More
-                      </Button>
-                    </div>
-                  )}
-                  {filteredActivity.length > 0 && filteredActivity.length <= activityLimit && (
-                    <p className="mt-3 text-center text-sm text-gray-400">Showing all {filteredActivity.length} claims</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="emails">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Send className="h-5 w-5" />
-                    Compose Email
-                  </CardTitle>
-                  <CardDescription>Send emails to staff, partners, or customers</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <EmailComposer />
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Email Templates
-                  </CardTitle>
-                  <CardDescription>Quick templates for common communications</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <EmailTemplates />
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mail className="h-5 w-5" />
-                    Staff Mailboxes
-                  </CardTitle>
-                  <CardDescription>Manage @littr.co email addresses</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <MailboxManager mailboxes={mailboxes} queryClient={queryClient} />
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="messages">
-            {!myMailbox ? (
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center py-12">
-                    <Mail className="h-12 w-12 text-gray-500 dark:text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No Mailbox Found</h3>
-                    <p className="text-gray-400">You don't have an @littr.co email address yet. Contact an admin to create one for you.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <InboxPortal 
-                myMailbox={myMailbox} 
-                inboxMessages={inboxMessages} 
-                sentMessages={sentMessages}
-                mailboxes={mailboxes}
-                queryClient={queryClient}
-              />
+                  </CardContent>
+                </Card>
+              </button>
             )}
-          </TabsContent>
 
-          <TabsContent value="drop-review">
-            <DropReviewTab />
-          </TabsContent>
+            <div className="grid grid-cols-3 md:grid-cols-4 gap-3 mb-4">
+              <Card className="text-center">
+                <CardContent className="pt-5 pb-3">
+                  <p className="text-2xl font-bold text-black dark:text-white">{stats.todayDrops}</p>
+                  <p className="text-xs text-gray-400 mt-1">Today's Drops</p>
+                </CardContent>
+              </Card>
+              <Card className="text-center">
+                <CardContent className="pt-5 pb-3">
+                  <p className="text-2xl font-bold text-black dark:text-white">{stats.activeShops}</p>
+                  <p className="text-xs text-gray-400 mt-1">Active Shops</p>
+                </CardContent>
+              </Card>
+              <Card className="text-center">
+                <CardContent className="pt-5 pb-3">
+                  <p className="text-2xl font-bold text-black dark:text-white">{stats.totalBins}</p>
+                  <p className="text-xs text-gray-400 mt-1">Bins</p>
+                </CardContent>
+              </Card>
+              <Card className="text-center">
+                <CardContent className="pt-5 pb-3">
+                  <p className="text-2xl font-bold text-black dark:text-white">{stats.pendingRedemptions}</p>
+                  <p className="text-xs text-gray-400 mt-1">Pending</p>
+                </CardContent>
+              </Card>
+            </div>
 
-          <TabsContent value="taxonomy">
-            <TaxonomyTab />
-          </TabsContent>
-
-          <TabsContent value="bin-caps">
-            <BinCapabilitiesTab bins={bins} />
-          </TabsContent>
-
-          <TabsContent value="volunteers">
-            <Card>
-              <CardHeader>
-                <CardTitle>Volunteer Applications</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Interest</TableHead>
-                      <TableHead>Availability</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {volunteers.map((v: any) => (
-                      <TableRow key={v.id}>
-                        <TableCell className="font-medium">{v.name}</TableCell>
-                        <TableCell>{v.email}</TableCell>
-                        <TableCell>{v.interest}</TableCell>
-                        <TableCell>{v.availability}</TableCell>
-                      </TableRow>
-                    ))}
-                    {volunteers.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-gray-400">No volunteers yet</TableCell>
-                      </TableRow>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {navSections.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setSection(s.id)}
+                    className="group relative flex flex-col items-center gap-2 p-5 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-md transition-all text-left"
+                    data-testid={`nav-section-${s.id}`}
+                  >
+                    {s.badge && (
+                      <span className="absolute top-2 right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">{s.badge}</span>
                     )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="users">
-            <UsersManagement />
-          </TabsContent>
-        </Tabs>
+                    <div className={`p-3 rounded-xl ${s.bg} transition-transform group-hover:scale-110`}>
+                      <Icon className={`h-6 w-6 ${s.color}`} />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{s.label}</span>
+                    {s.count !== undefined && (
+                      <span className="text-xs text-gray-400">{s.count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-right-4 duration-200">
+            {renderSectionContent()}
+          </div>
+        )}
       </div>
     </div>
   );

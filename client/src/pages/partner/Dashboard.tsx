@@ -220,6 +220,7 @@ export default function PartnerDashboard() {
   const pairDevice = useMutation({
     mutationKey: ['pair-device'],
     mutationFn: async () => {
+      if (!shop) throw new Error('No shop assigned');
       const res = await apiRequest('/api/v2/device/pair-claim', {
         method: 'POST',
         body: JSON.stringify({ pairCode, shopId: shop.id }),
@@ -243,6 +244,7 @@ export default function PartnerDashboard() {
   const updateDeviceConfig = useMutation({
     mutationKey: ['update-device-config'],
     mutationFn: async (updates: any) => {
+      if (!shop) throw new Error('No shop assigned');
       const res = await apiRequest(`/api/v2/shop/${shop.id}/device-config`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
@@ -257,6 +259,7 @@ export default function PartnerDashboard() {
 
   const updateConfig = useMutation({
     mutationFn: async (updates: any) => {
+      if (!shop) throw new Error('No shop assigned');
       const res = await apiRequest(`/api/partner/shops/${shop.id}/reward-config`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
@@ -271,6 +274,7 @@ export default function PartnerDashboard() {
 
   const requestPickup = useMutation({
     mutationFn: async () => {
+      if (!shop) throw new Error('No shop assigned');
       const res = await apiRequest(`/api/partner/shops/${shop.id}/pickup-request`, {
         method: 'POST',
         body: JSON.stringify({ notes: 'Pickup requested via dashboard' }),
@@ -482,20 +486,16 @@ export default function PartnerDashboard() {
         </Card>
 
         <Tabs defaultValue="activity" className="space-y-4">
-          <TabsList className="grid grid-cols-4 md:grid-cols-8">
+          <TabsList className="grid grid-cols-3 md:grid-cols-6">
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="bins" className="flex items-center gap-1">
               {shopFireAlerts.filter((a: any) => !a.acknowledged).length > 0 && (
                 <Flame className="h-4 w-4 text-red-500 animate-pulse" />
               )}
-              Bins
+              Devices
             </TabsTrigger>
-            <TabsTrigger value="rewards-config">Rewards Config</TabsTrigger>
-            <TabsTrigger value="pickup">Request Pickup</TabsTrigger>
-            <TabsTrigger value="pair" className="flex items-center gap-1">
-              <Link2 className="h-4 w-4" />
-              Pair Device
-            </TabsTrigger>
+            <TabsTrigger value="rewards-config">Rewards</TabsTrigger>
+            <TabsTrigger value="pickup">Pickup</TabsTrigger>
             <TabsTrigger value="points" className="flex items-center gap-1">
               <Coins className="h-4 w-4" />
               Points
@@ -711,6 +711,46 @@ export default function PartnerDashboard() {
                   </Button>
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Link2 className="h-5 w-5" />
+                    Pair a New Smart Bin
+                  </CardTitle>
+                  <CardDescription>Enter the 6-character pair code displayed on your smart bin to connect it to your shop</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-3">
+                    <Input
+                      placeholder="e.g. ABC123"
+                      value={pairCode}
+                      onChange={(e) => setPairCode(e.target.value.toUpperCase().slice(0, 6))}
+                      maxLength={6}
+                      className="font-mono text-lg tracking-widest uppercase"
+                      data-testid="input-pair-code"
+                    />
+                    <Button
+                      onClick={() => pairDevice.mutate()}
+                      disabled={pairDevice.isPending || pairCode.length !== 6}
+                      className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
+                      data-testid="button-pair-device"
+                    >
+                      {pairDevice.isPending ? 'Pairing...' : 'Pair Device'}
+                    </Button>
+                  </div>
+                  {pairResult && !pairResult.error && (
+                    <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-600">
+                      Device paired successfully!
+                    </div>
+                  )}
+                  {pairResult?.error && (
+                    <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-600">
+                      {pairResult.error}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
@@ -785,45 +825,6 @@ export default function PartnerDashboard() {
                     {requestPickup.isPending ? 'Requesting...' : 'Request Pickup'}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="pair">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pair a New Smart Bin</CardTitle>
-                <CardDescription>Enter the 6-character pair code displayed on your smart bin to connect it to your shop</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-3">
-                  <Input
-                    placeholder="e.g. ABC123"
-                    value={pairCode}
-                    onChange={(e) => setPairCode(e.target.value.toUpperCase().slice(0, 6))}
-                    maxLength={6}
-                    className="font-mono text-lg tracking-widest uppercase"
-                    data-testid="input-pair-code"
-                  />
-                  <Button
-                    onClick={() => pairDevice.mutate()}
-                    disabled={pairDevice.isPending || pairCode.length !== 6}
-                    className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
-                    data-testid="button-pair-device"
-                  >
-                    {pairDevice.isPending ? 'Pairing...' : 'Pair Device'}
-                  </Button>
-                </div>
-                {pairResult && !pairResult.error && (
-                  <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-600">
-                    Device paired successfully!
-                  </div>
-                )}
-                {pairResult?.error && (
-                  <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-600">
-                    {pairResult.error}
-                  </div>
-                )}
               </CardContent>
             </Card>
           </TabsContent>
