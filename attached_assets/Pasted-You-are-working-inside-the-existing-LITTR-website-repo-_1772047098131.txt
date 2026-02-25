@@ -1,0 +1,74 @@
+You are working inside the existing LITTR website repo. Do NOT create a new project. First, scan the repo structure and identify the current stack (Next.js/React, backend, DB, auth, admin pages, etc.). Then do two deliverables:
+
+DELIVERABLE A: “Plan for everything”
+Create /docs/ROADMAP.md and /docs/SYSTEM_SPEC.md defining the end-to-end architecture for:
+1) LITTR One bin + RP2040 sensor controller + optional modules
+   - Weight module: separate ESP32 + load cell reports stable grams/delta to main ESP32
+   - Camera module A: ESP32-S3-CAM
+   - Camera module B: Android camera unit (any compatible phone) running a dedicated autostart app
+   Both camera options must implement the SAME adaptive cadence + background reference concept:
+     - idle: capture every 60s
+     - after drop: 1s for 15s
+     - cooldown: 5s for 60s
+     - then back to 60s
+   Baseline frames are for background reference. They must NOT trigger AI and must NOT be uploaded by default.
+2) Website backend: DropSessions, module capabilities, storage, AI classification, admin tuning tools
+3) VeriScan✓ (separate from the Android camera unit): pre-scan photo + AI autofill + user confirm + 2× modifier + arm bin 60s, private matching
+4) Cost control rules: AI runs ONLY on explicit photo upload or drop submission with new images/crops, never on deploy, page load, cron, or background tasks.
+
+DELIVERABLE B: Phase 1 implementation (scaffolding + core data path)
+Implement the database schema + API stubs + minimal admin skeleton so the system can record drops and accept images/weights. Keep it clean and minimal.
+
+DATABASE (migrations + models)
+- BinCapabilities: binId, hasWeight, cameraMode (none|s3cam|android_cam), cameraCadenceJson (idle/burst/cooldown), updatedAt
+- Drop: dropId, binId, shopId, userId nullable, createdAt, status (awaiting_ai|approved|denied|appealed), category (Nicotine|THC|Trash|Unknown), brand/subtype/flavor (short strings), weightGrams nullable, pointsAwarded, aiConfidence, aiModelVersion, overrideSource nullable
+- DropImages: id, dropId, imageRole (baseline|after|crop|debug), storageUrl, hash, createdAt
+- AIJob: id, dropId, status (queued|running|done|failed), provider, startedAt, finishedAt, costMetaJson, error
+- Appeal/SelfReport: dropId, type, payloadJson, createdAt
+- Taxonomy tables: Brand, Subtype, Flavor + optional aliases and “suggested” flag
+- VeriScanSession + VeriScanItem tables (create tables now even if UI is minimal)
+
+API (implement endpoints, but keep behavior minimal where needed)
+- PATCH /api/bins/:binId/capabilities (toggle hasWeight, cameraMode, cadence settings, debug flags)
+- POST /api/drops/start (returns dropId)
+- POST /api/drops/:dropId/weight
+- POST /api/drops/:dropId/images (accept baseline/after/crop uploads; store imageRole + hash; do NOT call AI here)
+- POST /api/drops/:dropId/submit (enqueue AIJob ONLY if crop/after exists; set status awaiting_ai)
+- GET /api/drops/:dropId (status polling)
+- POST /api/drops/:dropId/appeal
+- POST /api/drops/:dropId/self_report
+
+VeriScan endpoints (create stubs with validation)
+- GET /api/veriscan (validate signed QR payload; return selected bin/store)
+- POST /api/veriscan/session/start
+- POST /api/veriscan/session/:id/items (upload photo + AI autofill in Phase 2; for Phase 1 just store image and return placeholder)
+- POST /api/veriscan/session/:id/items/:itemId/confirm
+- POST /api/veriscan/session/:id/arm (record expiresAt and expected count; realtime bin arming in Phase 2)
+
+Realtime (Phase 1: define interface, Phase 2: implement)
+- Create /docs/MQTT_PROTOCOL.md with topics and JSON schemas:
+  - bins/{binId}/events: drop_detected, weight_ready, image_ready
+  - bins/{binId}/commands: reward_update, arm_veriscan
+- Include a RealtimeAdapter interface with a no-op implementation; do not require MQTT to run locally.
+
+AI SERVICE (Phase 1 interface + safe defaults)
+- Create ai-service module with providers:
+  - openaiVision (config via env): returns JSON {category, brand, subtype, flavor, confidence}
+  - nullProvider: always returns Unknown
+- COST RULE: AI calls only happen inside /drops/:id/submit worker path and only when new crop/after exists.
+- Add dedupe: if image hash already has a stored result for same modelVersion, reuse it.
+- Add confidence threshold: low confidence -> Unknown (Phase 2 adds fallback model).
+
+ADMIN UI (Phase 1 minimal)
+- /admin/dev page:
+  - Drop review list + details (images + results + manual override)
+  - Bin capabilities editor (cameraMode, cadence json, hasWeight)
+  - Taxonomy manager CRUD
+Keep it minimal and functional.
+
+SEED DATA
+- Seed brands/subtypes: Geek Bar (Pulse X), Hyde (N Bar Recharge), VIHO (Turbo, Supercharge). suggested=false.
+
+OUTPUT
+- Print a concise checklist of what’s done and what’s next for Phase 2 (MQTT wiring + real AI provider + VeriScan UI polish + camera upload policies).
+- Ensure app runs locally without MQTT or AI keys (nullProvider default).
