@@ -49,9 +49,14 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Email and password required" });
       }
       
-      const captcha = await verifyRecaptcha(recaptchaToken, "login");
-      if (!captcha.success) {
-        return res.status(403).json({ error: captcha.error || "Spam protection check failed" });
+      const user = await storage.getUserByEmail(email);
+      const isInternalRole = user && (user.role === "STAFF" || user.role === "PARTNER");
+      
+      if (!isInternalRole) {
+        const captcha = await verifyRecaptcha(recaptchaToken, "login");
+        if (!captcha.success) {
+          return res.status(403).json({ error: captcha.error || "Spam protection check failed" });
+        }
       }
       
       const result = await login(email, password);

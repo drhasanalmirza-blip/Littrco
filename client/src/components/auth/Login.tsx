@@ -18,13 +18,15 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
   const [, setLocation] = useLocation();
   const { executeRecaptcha } = useRecaptcha();
 
+  const needsCaptcha = type === 'customer';
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     
     try {
-      const recaptchaToken = await executeRecaptcha("login");
+      const recaptchaToken = needsCaptcha ? await executeRecaptcha("login") : null;
       
       const res = await fetch('/api/auth/login', {
         method: 'POST',
