@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo, useEffect } from "react";
-import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash, Sun, Moon, UserCog, Plus, Key, Eye, EyeOff, ClipboardList, Tags, Settings2, Image, RefreshCw, Edit, Save } from "lucide-react";
+import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash, Sun, Moon, UserCog, Plus, Key, Eye, EyeOff, ClipboardList, Tags, Settings2, Image, RefreshCw, Edit, Save, ChevronRight, Camera, Wifi, WifiOff, Zap, ArrowLeft } from "lucide-react";
 import { MailboxManager } from "@/components/staff/MailboxManager";
 import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -326,24 +326,48 @@ export default function StaffDashboard() {
   const pendingPairCount = pairRequests.filter((pr: any) => !pr.claimed && new Date(pr.expiresAt) >= new Date()).length;
   const unreadInboxCount = myMailbox?.unreadCount || 0;
 
-  const navSections = [
-    { id: "leads", label: "Leads", icon: Package, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950", count: stats.totalLeads },
-    { id: "shops", label: "Shops", icon: Building, color: "text-green-500", bg: "bg-green-50 dark:bg-green-950", count: stats.activeShops },
-    { id: "devices", label: "Devices & Bins", icon: Cpu, color: "text-teal-500", bg: "bg-teal-50 dark:bg-teal-950", count: stats.totalBins, badge: pendingPairCount > 0 ? pendingPairCount : undefined },
-    { id: "drop-review", label: "Drop Review", icon: ClipboardList, color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-950" },
-    { id: "taxonomy", label: "Taxonomy", icon: Tags, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950" },
-    { id: "activity", label: "Activity", icon: TrendingUp, color: "text-cyan-500", bg: "bg-cyan-50 dark:bg-cyan-950", count: stats.todayDrops },
-    { id: "emails", label: "Emails", icon: Send, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950" },
-    { id: "messages", label: "Inbox", icon: Inbox, color: "text-pink-500", bg: "bg-pink-50 dark:bg-pink-950", badge: unreadInboxCount > 0 ? unreadInboxCount : undefined },
-    { id: "volunteers", label: "Volunteers", icon: HandHeart, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950" },
-    { id: "users", label: "Users", icon: UserCog, color: "text-slate-500", bg: "bg-slate-50 dark:bg-slate-950" },
+  const navGroups = [
+    {
+      title: "Operations",
+      items: [
+        { id: "leads", label: "Leads", desc: "Business inquiries", icon: Package, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950", count: stats.totalLeads },
+        { id: "shops", label: "Shops", desc: "Partner locations", icon: Building, color: "text-green-500", bg: "bg-green-50 dark:bg-green-950", count: stats.activeShops },
+        { id: "devices", label: "Devices & Bins", desc: "Smart bin hardware", icon: Cpu, color: "text-teal-500", bg: "bg-teal-50 dark:bg-teal-950", count: stats.totalBins, badge: pendingPairCount > 0 ? pendingPairCount : undefined },
+        { id: "modules", label: "Camera Modules", desc: "AI camera setup & pairing", icon: Camera, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950" },
+      ],
+    },
+    {
+      title: "AI & Classification",
+      items: [
+        { id: "drop-review", label: "Drop Review", desc: "Review & override AI", icon: ClipboardList, color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-950" },
+        { id: "taxonomy", label: "Taxonomy", desc: "Brands, subtypes, flavors", icon: Tags, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950" },
+        { id: "activity", label: "Activity", desc: "Drops & claims today", icon: TrendingUp, color: "text-cyan-500", bg: "bg-cyan-50 dark:bg-cyan-950", count: stats.todayDrops },
+      ],
+    },
+    {
+      title: "Communications",
+      items: [
+        { id: "emails", label: "Emails", desc: "Send & templates", icon: Send, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950" },
+        { id: "messages", label: "Inbox", desc: "Internal messages", icon: Inbox, color: "text-pink-500", bg: "bg-pink-50 dark:bg-pink-950", badge: unreadInboxCount > 0 ? unreadInboxCount : undefined },
+      ],
+    },
+    {
+      title: "People",
+      items: [
+        { id: "volunteers", label: "Volunteers", desc: "Sign-ups & outreach", icon: HandHeart, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950" },
+        { id: "users", label: "Users", desc: "Accounts & roles", icon: UserCog, color: "text-slate-500", bg: "bg-slate-50 dark:bg-slate-950" },
+      ],
+    },
   ];
+
+  const allNavItems = navGroups.flatMap(g => g.items);
 
   const renderSectionContent = () => {
     switch (section) {
       case "leads": return renderLeads();
       case "shops": return renderShops();
       case "devices": return renderDevices();
+      case "modules": return <ModulesTab bins={bins} shops={shops} />;
       case "drop-review": return <DropReviewTab />;
       case "taxonomy": return <TaxonomyTab />;
       case "activity": return renderActivity();
@@ -851,15 +875,15 @@ export default function StaffDashboard() {
         <div className="flex items-center gap-3">
           {section && (
             <button onClick={() => setSection(null)} className="p-2 -ml-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" data-testid="button-nav-back">
-              <X className="h-5 w-5 text-gray-500" />
+              <ArrowLeft className="h-5 w-5 text-gray-500" />
             </button>
           )}
           <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
             <Recycle className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-black dark:text-white">{section ? navSections.find(s => s.id === section)?.label || 'Dashboard' : 'LITTR Admin'}</h1>
-            <p className="text-xs text-gray-400">{user?.email}</p>
+            <h1 className="font-bold text-black dark:text-white">{section ? allNavItems.find(s => s.id === section)?.label || 'Dashboard' : 'LITTR Admin'}</h1>
+            <p className="text-xs text-gray-400">{section ? allNavItems.find(s => s.id === section)?.desc : user?.email}</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -873,74 +897,80 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 max-w-3xl">
         {!section ? (
           <div className="space-y-6">
             {stats.activeFireAlerts > 0 && (
               <button onClick={() => setSection('devices')} className="w-full text-left" data-testid="button-fire-alert-banner">
-                <Card className="border-red-500 !bg-red-50 dark:!bg-red-950 hover:shadow-md transition-shadow">
-                  <CardContent className="py-4 flex items-center gap-3">
+                <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 hover:shadow-md transition-shadow">
+                  <div className="p-2 rounded-full bg-red-500/10">
                     <Flame className="h-6 w-6 text-red-500 animate-pulse" />
-                    <div>
-                      <p className="font-semibold text-red-600">{stats.activeFireAlerts} Active Fire Alert{stats.activeFireAlerts > 1 ? 's' : ''}</p>
-                      <p className="text-sm text-red-500">Immediate attention required</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-red-600">{stats.activeFireAlerts} Active Fire Alert{stats.activeFireAlerts > 1 ? 's' : ''}</p>
+                    <p className="text-sm text-red-500">Tap to view details</p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-red-400" />
+                </div>
               </button>
             )}
 
-            <div className="grid grid-cols-3 md:grid-cols-4 gap-3 mb-4">
-              <Card className="text-center">
-                <CardContent className="pt-5 pb-3">
-                  <p className="text-2xl font-bold text-black dark:text-white">{stats.todayDrops}</p>
-                  <p className="text-xs text-gray-400 mt-1">Today's Drops</p>
-                </CardContent>
-              </Card>
-              <Card className="text-center">
-                <CardContent className="pt-5 pb-3">
-                  <p className="text-2xl font-bold text-black dark:text-white">{stats.activeShops}</p>
-                  <p className="text-xs text-gray-400 mt-1">Active Shops</p>
-                </CardContent>
-              </Card>
-              <Card className="text-center">
-                <CardContent className="pt-5 pb-3">
-                  <p className="text-2xl font-bold text-black dark:text-white">{stats.totalBins}</p>
-                  <p className="text-xs text-gray-400 mt-1">Bins</p>
-                </CardContent>
-              </Card>
-              <Card className="text-center">
-                <CardContent className="pt-5 pb-3">
-                  <p className="text-2xl font-bold text-black dark:text-white">{stats.pendingRedemptions}</p>
-                  <p className="text-xs text-gray-400 mt-1">Pending</p>
-                </CardContent>
-              </Card>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="text-center p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-today-drops">{stats.todayDrops}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Today</p>
+              </div>
+              <div className="text-center p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-shops">{stats.activeShops}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Shops</p>
+              </div>
+              <div className="text-center p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-bins">{stats.totalBins}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Bins</p>
+              </div>
+              <div className="text-center p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-pending">{stats.pendingRedemptions}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Pending</p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              {navSections.map((s) => {
-                const Icon = s.icon;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => setSection(s.id)}
-                    className="group relative flex flex-col items-center gap-2 p-5 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-md transition-all text-left"
-                    data-testid={`nav-section-${s.id}`}
-                  >
-                    {s.badge && (
-                      <span className="absolute top-2 right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">{s.badge}</span>
-                    )}
-                    <div className={`p-3 rounded-xl ${s.bg} transition-transform group-hover:scale-110`}>
-                      <Icon className={`h-6 w-6 ${s.color}`} />
-                    </div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{s.label}</span>
-                    {s.count !== undefined && (
-                      <span className="text-xs text-gray-400">{s.count}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            {navGroups.map((group) => (
+              <div key={group.title}>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-1">{group.title}</p>
+                <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setSection(item.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+                        data-testid={`nav-section-${item.id}`}
+                      >
+                        <div className={`p-2 rounded-xl ${item.bg} shrink-0`}>
+                          <Icon className={`h-5 w-5 ${item.color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{item.label}</span>
+                            {item.badge && (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">{item.badge}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{item.desc}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {item.count !== undefined && (
+                            <span className="text-sm font-medium text-gray-400 dark:text-gray-500 tabular-nums">{item.count}</span>
+                          )}
+                          <ChevronRight className="h-4 w-4 text-gray-300 dark:text-gray-600" />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-right-4 duration-200">
@@ -2732,6 +2762,276 @@ function TaxonomyTab() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function ModulesTab({ bins, shops }: { bins: any[]; shops: any[] }) {
+  const queryClient = useQueryClient();
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [selectedBinId, setSelectedBinId] = useState("");
+  const [moduleType, setModuleType] = useState("s3cam");
+  const [newModuleToken, setNewModuleToken] = useState<string | null>(null);
+
+  const { data: modulesResponse, isLoading } = useQuery({
+    queryKey: ['staff-modules'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/modules');
+      if (!res.ok) throw new Error('Failed to fetch modules');
+      return res.json();
+    },
+  });
+  const modules = modulesResponse?.data || [];
+
+  const registerModule = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('/api/staff/modules/register', {
+        method: 'POST',
+        body: JSON.stringify({ binId: parseInt(selectedBinId), moduleType }),
+      });
+      if (!res.ok) throw new Error('Failed to register module');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setNewModuleToken(data.data?.moduleToken || null);
+      queryClient.invalidateQueries({ queryKey: ['staff-modules'] });
+    },
+  });
+
+  const deregisterModule = useMutation({
+    mutationFn: async (binId: number) => {
+      const res = await apiRequest(`/api/staff/modules/${binId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to deregister');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-modules'] });
+    },
+  });
+
+  const activeModules = modules.filter((m: any) => m.cameraMode !== 'none' && m.moduleToken);
+  const binsWithoutModules = bins.filter(b => !modules.some((m: any) => m.binId === b.id && m.cameraMode !== 'none'));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="text-center p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <Camera className="h-4 w-4 text-violet-500" />
+          </div>
+          <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-active-modules">{activeModules.length}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Active Modules</p>
+        </div>
+        <div className="text-center p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <Cpu className="h-4 w-4 text-teal-500" />
+          </div>
+          <p className="text-2xl font-bold text-black dark:text-white">{modules.filter((m: any) => m.cameraMode === 's3cam').length}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">ESP32-S3-CAM</p>
+        </div>
+        <div className="text-center p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <Phone className="h-4 w-4 text-blue-500" />
+          </div>
+          <p className="text-2xl font-bold text-black dark:text-white">{modules.filter((m: any) => m.cameraMode === 'android_cam').length}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Android Cam</p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              Camera Modules
+            </CardTitle>
+            <CardDescription>Pair camera modules with bins to enable AI drop classification</CardDescription>
+          </div>
+          <Dialog open={registerOpen} onOpenChange={(o) => { setRegisterOpen(o); if (!o) { setNewModuleToken(null); setSelectedBinId(""); } }}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="bg-violet-500 hover:bg-violet-600 text-white" data-testid="button-register-module">
+                <Plus className="h-4 w-4 mr-1" />
+                Register Module
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" />
+                  Register Camera Module
+                </DialogTitle>
+              </DialogHeader>
+              {newModuleToken ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Save this token now!</p>
+                    <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-3">This is the only time the full token will be shown. Flash it to the module or copy it.</p>
+                    <div>
+                      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200 mb-1">Module Token (X-Module-Token):</p>
+                      <code className="block p-3 bg-black text-green-400 rounded-lg text-xs break-all font-mono" data-testid="text-new-module-token">
+                        {newModuleToken}
+                      </code>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-violet-50 dark:bg-violet-950 border border-violet-200 dark:border-violet-800 rounded-xl">
+                    <p className="text-sm font-medium text-violet-800 dark:text-violet-200 mb-1">What's next?</p>
+                    <ol className="text-xs text-violet-700 dark:text-violet-300 space-y-1 list-decimal list-inside">
+                      <li>Flash this token to the camera module</li>
+                      <li>Module will authenticate using X-Module-Token header</li>
+                      <li>Drops from this bin will now trigger AI classification</li>
+                    </ol>
+                  </div>
+                  <Button onClick={() => { setRegisterOpen(false); setNewModuleToken(null); }} className="w-full" data-testid="button-done-register">Done</Button>
+                </div>
+              ) : (
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label>Select Bin</Label>
+                    <Select value={selectedBinId} onValueChange={setSelectedBinId}>
+                      <SelectTrigger data-testid="select-module-bin">
+                        <SelectValue placeholder="Choose a bin to pair..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {binsWithoutModules.map((bin: any) => (
+                          <SelectItem key={bin.id} value={String(bin.id)}>
+                            {bin.name} (ID: {bin.id}) — {bin.shop?.name || 'Unassigned'}
+                          </SelectItem>
+                        ))}
+                        {binsWithoutModules.length === 0 && (
+                          <SelectItem value="_none" disabled>All bins already have modules</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Module Type</Label>
+                    <Select value={moduleType} onValueChange={setModuleType}>
+                      <SelectTrigger data-testid="select-module-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="s3cam">
+                          <div className="flex items-center gap-2">
+                            <Cpu className="h-4 w-4" />
+                            ESP32-S3-CAM
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="android_cam">
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            Android Camera (Pixel 3a)
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                    <p className="font-medium text-gray-600 dark:text-gray-300">This will:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li>Generate a unique module token for authentication</li>
+                      <li>Enable camera mode on the bin</li>
+                      <li>Allow AI classification for drops at this bin</li>
+                    </ul>
+                  </div>
+                  {registerModule.error && (
+                    <p className="text-sm text-red-500" data-testid="text-register-error">{(registerModule.error as Error).message}</p>
+                  )}
+                  <Button
+                    className="w-full bg-violet-500 hover:bg-violet-600 text-white"
+                    onClick={() => registerModule.mutate()}
+                    disabled={registerModule.isPending || !selectedBinId}
+                    data-testid="button-submit-register"
+                  >
+                    {registerModule.isPending ? 'Registering...' : 'Register & Generate Token'}
+                  </Button>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading modules...</div>
+          ) : activeModules.length > 0 ? (
+            <div className="space-y-3">
+              {activeModules.map((mod: any) => (
+                <div
+                  key={mod.id}
+                  className="flex items-center gap-4 p-4 rounded-xl border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  data-testid={`module-row-${mod.binId}`}
+                >
+                  <div className={`p-2.5 rounded-xl ${mod.cameraMode === 's3cam' ? 'bg-teal-50 dark:bg-teal-950' : 'bg-blue-50 dark:bg-blue-950'}`}>
+                    {mod.cameraMode === 's3cam' ? (
+                      <Cpu className="h-5 w-5 text-teal-500" />
+                    ) : (
+                      <Phone className="h-5 w-5 text-blue-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-gray-800 dark:text-gray-200">
+                        {mod.bin?.name || `Bin #${mod.binId}`}
+                      </span>
+                      <Badge variant="outline" className="text-xs">
+                        {mod.cameraMode === 's3cam' ? 'ESP32-S3-CAM' : 'Android'}
+                      </Badge>
+                      {mod.moduleToken && (
+                        <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
+                          <Wifi className="h-3 w-3 mr-1" />
+                          Paired
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                      <span>Token: <code className="font-mono">{mod.moduleToken || 'N/A'}</code></span>
+                      <span>Upload: {mod.uploadPolicy}</span>
+                      {mod.hasWeight && <span className="text-green-500">Weight sensor</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950" data-testid={`button-deregister-${mod.binId}`}>
+                          <WifiOff className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Deregister Module?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will disconnect the camera module from {mod.bin?.name || `Bin #${mod.binId}`}. AI classification will be disabled for drops at this bin. The physical module will need to be re-registered.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-500 hover:bg-red-600 text-white"
+                            onClick={() => deregisterModule.mutate(mod.binId)}
+                          >
+                            Deregister
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="p-4 rounded-full bg-violet-50 dark:bg-violet-950 w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <Camera className="h-8 w-8 text-violet-400" />
+              </div>
+              <p className="font-medium text-gray-800 dark:text-gray-200 mb-1">No camera modules registered</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 max-w-sm mx-auto">
+                Register an ESP32-S3-CAM or Android camera module to a bin to enable AI-powered drop classification and reward authentication.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <BinCapabilitiesTab bins={bins} />
     </div>
   );
 }

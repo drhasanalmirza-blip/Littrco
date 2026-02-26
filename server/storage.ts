@@ -314,6 +314,7 @@ export interface IStorage {
 
   // Bin Capabilities
   getBinCapabilities(binId: number): Promise<BinCapabilities | undefined>;
+  listAllBinCapabilities(): Promise<BinCapabilities[]>;
   upsertBinCapabilities(data: InsertBinCapabilities): Promise<BinCapabilities>;
   updateBinCapabilities(binId: number, data: Partial<InsertBinCapabilities>): Promise<BinCapabilities | undefined>;
   getBinCapabilitiesByToken(token: string): Promise<BinCapabilities | undefined>;
@@ -1188,6 +1189,10 @@ export class DatabaseStorage implements IStorage {
   async getBinCapabilities(binId: number): Promise<BinCapabilities | undefined> {
     const [cap] = await db.select().from(binCapabilities).where(eq(binCapabilities.binId, binId));
     return cap;
+  }
+
+  async listAllBinCapabilities(): Promise<BinCapabilities[]> {
+    return db.select().from(binCapabilities);
   }
 
   async upsertBinCapabilities(data: InsertBinCapabilities): Promise<BinCapabilities> {

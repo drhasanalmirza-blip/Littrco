@@ -2972,6 +2972,54 @@ export async function registerRoutes(
     }
   }, 600_000);
 
+  // ==================== MODULES & CAPABILITIES ====================
+
+  app.get("/api/staff/modules", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const caps = await storage.listAllBinCapabilities();
+      const enriched = await Promise.all(caps.map(async (cap) => {
+        const bin = await storage.getBin(cap.binId);
+        return {
+          ...cap,
+          moduleToken: cap.moduleToken ? `...${cap.moduleToken.slice(-8)}` : null,
+          bin: bin ? { id: bin.id, name: bin.name, shopId: bin.shopId, status: bin.status } : null,
+        };
+      }));
+      res.json({ ok: true, data: enriched });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch modules" });
+    }
+  });
+
+  app.post("/api/staff/modules/register", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const { binId, moduleType } = req.body;
+      if (!binId || !moduleType) return res.status(400).json({ ok: false, error: "binId and moduleType required" });
+      const bin = await storage.getBin(binId);
+      if (!bin) return res.status(404).json({ ok: false, error: "Bin not found" });
+      const crypto = await import("crypto");
+      const moduleToken = crypto.randomBytes(32).toString("hex");
+      const cap = await storage.upsertBinCapabilities({
+        binId,
+        cameraMode: moduleType,
+        moduleToken,
+      });
+      res.json({ ok: true, data: { moduleToken, binId, capabilities: cap } });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to register module" });
+    }
+  });
+
+  app.delete("/api/staff/modules/:binId", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const binId = parseInt(req.params.binId);
+      await storage.updateBinCapabilities(binId, { cameraMode: "none", moduleToken: null } as any);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to deregister module" });
+    }
+  });
+
   // ==================== DROP PIPELINE (T004) ====================
 
   app.patch("/api/bins/:binId/capabilities", authMiddleware, requireRole("STAFF"), async (req, res) => {
