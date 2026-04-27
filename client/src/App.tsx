@@ -53,11 +53,13 @@ function Router() {
   // Wrap dashboard pages (and other auth-gated app surfaces) in an ErrorBoundary so a
   // render error inside one of them shows a friendly fallback instead of a blank screen.
   // Marketing/auth pages are intentionally left outside this boundary.
-  const Guarded = (Component: React.ComponentType<any>) => (props: any) => (
-    <ErrorBoundary>
-      <Component {...props} />
-    </ErrorBoundary>
-  );
+  function Guarded<P extends object>(Component: React.ComponentType<P>) {
+    return (props: P) => (
+      <ErrorBoundary>
+        <Component {...props} />
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <>

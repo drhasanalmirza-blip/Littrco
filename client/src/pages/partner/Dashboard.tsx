@@ -15,6 +15,13 @@ import littrOneImage from "@/assets/images/littr-one-official.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
+class SessionExpiredError extends Error {
+  constructor() {
+    super('SESSION_EXPIRED');
+    this.name = 'SessionExpiredError';
+  }
+}
+
 function PartnerRewardsStore({ shopId }: { shopId: number | undefined }) {
   const queryClient = useQueryClient();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -131,7 +138,7 @@ export default function PartnerDashboard() {
     queryFn: async () => {
       const res = await apiRequest('/api/partner/shops');
       if (res.status === 401) {
-        throw new Error('SESSION_EXPIRED');
+        throw new SessionExpiredError();
       }
       if (!res.ok) throw new Error('Failed to fetch shops');
       return res.json();
@@ -139,7 +146,7 @@ export default function PartnerDashboard() {
   });
 
   useEffect(() => {
-    if (shopsError && shopsErrorObj instanceof Error && shopsErrorObj.message === 'SESSION_EXPIRED') {
+    if (shopsError && shopsErrorObj instanceof SessionExpiredError) {
       clearAuth();
       setLocation('/partner/login');
     }
@@ -315,8 +322,7 @@ export default function PartnerDashboard() {
     );
   }
 
-  const isSessionExpired =
-    shopsError && shopsErrorObj instanceof Error && shopsErrorObj.message === 'SESSION_EXPIRED';
+  const isSessionExpired = shopsError && shopsErrorObj instanceof SessionExpiredError;
 
   if (shopsLoading || isSessionExpired) {
     return (
