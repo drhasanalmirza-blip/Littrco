@@ -14,7 +14,7 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { setAuth } = useStore();
+  const { setAuth, clearAuth } = useStore();
   const [, setLocation] = useLocation();
   const { executeRecaptcha } = useRecaptcha();
 
@@ -42,6 +42,9 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
         return;
       }
       
+      // Clear any persisted state from a previous role/session before setting new auth
+      // so we never flash a stale dashboard during the route transition.
+      clearAuth();
       setAuth(data.user, data.sessionId);
       
       const roleMap: Record<string, string> = {

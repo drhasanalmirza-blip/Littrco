@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore, apiRequest } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
@@ -28,18 +28,21 @@ function PartnerRewardsStore({ shopId }: { shopId: number | undefined }) {
     },
   });
 
-  const { data: ledger = [] } = useQuery({
+  const { data: ledger = [] } = useQuery<any[]>({
     queryKey: ['partner-rewards-points', shopId],
     queryFn: async () => {
       if (!shopId) return [];
       const res = await apiRequest(`/api/v2/shop/${shopId}/points-ledger`);
       if (!res.ok) throw new Error('Failed to fetch points');
-      return res.json();
+      const data = await res.json();
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.entries)) return data.entries;
+      return [];
     },
     enabled: !!shopId,
   });
 
-  const totalPoints = ledger.reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
+  const totalPoints = (Array.isArray(ledger) ? ledger : []).reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
 
   const redeem = useMutation({
     mutationFn: async (storeItemId: number) => {
@@ -123,19 +126,24 @@ export default function PartnerDashboard() {
   const [pairCode, setPairCode] = useState("");
   const [pairResult, setPairResult] = useState<any | null>(null);
 
-  const { data: shops = [], isLoading: shopsLoading, isError: shopsError } = useQuery({
+  const { data: shops = [], isLoading: shopsLoading, isError: shopsError, error: shopsErrorObj } = useQuery({
     queryKey: ['partner-shops'],
     queryFn: async () => {
       const res = await apiRequest('/api/partner/shops');
       if (res.status === 401) {
-        clearAuth();
-        setLocation('/partner/login');
-        throw new Error('Session expired');
+        throw new Error('SESSION_EXPIRED');
       }
       if (!res.ok) throw new Error('Failed to fetch shops');
       return res.json();
     },
   });
+
+  useEffect(() => {
+    if (shopsError && shopsErrorObj instanceof Error && shopsErrorObj.message === 'SESSION_EXPIRED') {
+      clearAuth();
+      setLocation('/partner/login');
+    }
+  }, [shopsError, shopsErrorObj, clearAuth, setLocation]);
 
   const shop = shops[0];
 
@@ -195,13 +203,16 @@ export default function PartnerDashboard() {
     refetchInterval: 10000,
   });
 
-  const { data: pointsLedger = [] } = useQuery({
+  const { data: pointsLedger = [] } = useQuery<any[]>({
     queryKey: ['partner-points-ledger', shop?.id],
     queryFn: async () => {
       if (!shop) return [];
       const res = await apiRequest(`/api/v2/shop/${shop.id}/points-ledger`);
       if (!res.ok) throw new Error('Failed to fetch points ledger');
-      return res.json();
+      const data = await res.json();
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.entries)) return data.entries;
+      return [];
     },
     enabled: !!shop,
   });
@@ -352,7 +363,7 @@ export default function PartnerDashboard() {
     );
   }
 
-  const totalPointsEarned = pointsLedger.reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
+  const totalPointsEarned = (Array.isArray(pointsLedger) ? pointsLedger : []).reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
 
   return (
     <div className="littr-dashboard">

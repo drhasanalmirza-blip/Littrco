@@ -15,6 +15,7 @@ import Contact from "@/pages/Contact";
 import NotFound from "@/pages/not-found";
 import { Login } from "@/components/auth/Login";
 import { MobileStickyCTA } from "@/components/MobileStickyCTA";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import StaffDashboard from "@/pages/staff/Dashboard";
 import StaffSetup from "@/pages/staff/Setup";
@@ -53,6 +54,7 @@ function Router() {
     <>
       <ScrollToTop />
       {!isDashboard && <Header />}
+      <ErrorBoundary>
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/business" component={Business} />
@@ -98,6 +100,7 @@ function Router() {
 
         <Route component={NotFound} />
       </Switch>
+      </ErrorBoundary>
       {!isDashboard && <Footer />}
       {!isDashboard && <MobileStickyCTA />}
     </>
