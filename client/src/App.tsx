@@ -50,11 +50,19 @@ function Router() {
                       location.includes('/app') ||
                       location.includes('/veriscan');
 
+  // Wrap dashboard pages (and other auth-gated app surfaces) in an ErrorBoundary so a
+  // render error inside one of them shows a friendly fallback instead of a blank screen.
+  // Marketing/auth pages are intentionally left outside this boundary.
+  const Guarded = (Component: React.ComponentType<any>) => (props: any) => (
+    <ErrorBoundary>
+      <Component {...props} />
+    </ErrorBoundary>
+  );
+
   return (
     <>
       <ScrollToTop />
       {!isDashboard && <Header />}
-      <ErrorBoundary>
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/business" component={Business} />
@@ -71,36 +79,35 @@ function Router() {
         <Route path="/safety" component={Dropoff} />
         <Route path="/privacy" component={Why} />
         <Route path="/terms" component={Why} />
-        <Route path="/veriscan" component={VeriScanPage} />
+        <Route path="/veriscan" component={Guarded(VeriScanPage)} />
 
         {/* Auth Portals */}
         <Route path="/admin/login" component={() => <Login type="admin" />} />
-        <Route path="/admin/dashboard" component={AdminDashboard} />
+        <Route path="/admin/dashboard" component={Guarded(AdminDashboard)} />
         
         <Route path="/staff/login" component={() => <Login type="staff" />} />
-        <Route path="/staff/setup" component={StaffSetup} />
-        <Route path="/staff/dashboard" component={StaffDashboard} />
+        <Route path="/staff/setup" component={Guarded(StaffSetup)} />
+        <Route path="/staff/dashboard" component={Guarded(StaffDashboard)} />
         
         <Route path="/partner/login" component={() => <Login type="partner" />} />
-        <Route path="/partner/dashboard" component={PartnerDashboard} />
+        <Route path="/partner/dashboard" component={Guarded(PartnerDashboard)} />
 
         {/* Customer App */}
-        <Route path="/app" component={CustomerDashboard} />
-        <Route path="/app/dashboard" component={CustomerDashboard} />
+        <Route path="/app" component={Guarded(CustomerDashboard)} />
+        <Route path="/app/dashboard" component={Guarded(CustomerDashboard)} />
         <Route path="/app/login" component={() => <Login type="customer" />} />
         <Route path="/app/register" component={RegisterPage} />
-        <Route path="/app/claim" component={ClaimPage} />
-        <Route path="/app/scan" component={ScanPage} />
-        <Route path="/app/store" component={StorePage} />
-        <Route path="/app/bonus" component={BonusPage} />
-        <Route path="/app/change-password" component={ChangePasswordPage} />
-        <Route path="/app/settings" component={ChangePasswordPage} />
-        <Route path="/app/drops" component={DropsPage} />
-        <Route path="/app/history" component={CustomerDashboard} />
+        <Route path="/app/claim" component={Guarded(ClaimPage)} />
+        <Route path="/app/scan" component={Guarded(ScanPage)} />
+        <Route path="/app/store" component={Guarded(StorePage)} />
+        <Route path="/app/bonus" component={Guarded(BonusPage)} />
+        <Route path="/app/change-password" component={Guarded(ChangePasswordPage)} />
+        <Route path="/app/settings" component={Guarded(ChangePasswordPage)} />
+        <Route path="/app/drops" component={Guarded(DropsPage)} />
+        <Route path="/app/history" component={Guarded(CustomerDashboard)} />
 
         <Route component={NotFound} />
       </Switch>
-      </ErrorBoundary>
       {!isDashboard && <Footer />}
       {!isDashboard && <MobileStickyCTA />}
     </>
