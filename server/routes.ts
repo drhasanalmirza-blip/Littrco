@@ -34,6 +34,19 @@ import {
 } from "./auth";
 import { z } from "zod";
 import { verifyRecaptcha } from "./recaptcha";
+import type { DeviceConfig } from "@shared/schema";
+
+function serializeShopDeviceConfig(config: DeviceConfig) {
+  return {
+    session_window_sec: config.sessionWindowSec,
+    accepted_hold_ms: config.acceptedHoldMs,
+    warn_enabled: config.warnEnabled,
+    warn_temp_c: config.warnTempC,
+    warn_voc_analog: config.warnVocAnalog,
+    warn_use_voc_digital: config.warnUseVocDigital,
+    raw_swap_bytes: config.rawSwapBytes,
+  };
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -2893,7 +2906,7 @@ export async function registerRoutes(
         config = (await storage.updateDeviceConfig(shopId, updateData))!;
       }
 
-      res.json({ ok: true, config });
+      res.json({ ok: true, config: serializeShopDeviceConfig(config) });
     } catch (error) {
       console.error("V2 device-config update error:", error);
       res.status(500).json({ ok: false, error: "Config update failed" });
@@ -2920,7 +2933,7 @@ export async function registerRoutes(
         config = await storage.upsertDeviceConfig({ shopId });
       }
 
-      res.json({ ok: true, config });
+      res.json({ ok: true, config: serializeShopDeviceConfig(config) });
     } catch (error) {
       console.error("V2 get device-config error:", error);
       res.status(500).json({ ok: false, error: "Config fetch failed" });

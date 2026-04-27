@@ -14,6 +14,17 @@ import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recyc
 import littrOneImage from "@/assets/images/littr-one-official.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { unwrapEnvelope } from "@/lib/apiEnvelope";
+
+type PartnerDeviceConfig = {
+  session_window_sec?: number;
+  accepted_hold_ms?: number;
+  warn_enabled?: boolean;
+  warn_temp_c?: number;
+  warn_voc_analog?: number;
+  warn_use_voc_digital?: boolean;
+  raw_swap_bytes?: boolean;
+};
 
 class SessionExpiredError extends Error {
   constructor() {
@@ -220,20 +231,20 @@ export default function PartnerDashboard() {
       const res = await apiRequest(`/api/v2/shop/${shop.id}/points-ledger`);
       if (!res.ok) throw new Error('Failed to fetch points ledger');
       const data = await res.json();
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.entries)) return data.entries;
-      return [];
+      const entries = unwrapEnvelope<any[]>(data, 'entries');
+      return Array.isArray(entries) ? entries : [];
     },
     enabled: !!shop,
   });
 
-  const { data: deviceConfig } = useQuery({
+  const { data: deviceConfig } = useQuery<PartnerDeviceConfig | null>({
     queryKey: ['partner-device-config', shop?.id],
     queryFn: async () => {
       if (!shop) return null;
       const res = await apiRequest(`/api/v2/shop/${shop.id}/device-config`);
       if (!res.ok) throw new Error('Failed to fetch device config');
-      return res.json();
+      const data = await res.json();
+      return unwrapEnvelope<PartnerDeviceConfig>(data, 'config') ?? null;
     },
     enabled: !!shop,
   });
@@ -727,7 +738,19 @@ export default function PartnerDashboard() {
                   </div>
 
                   <Button
-                    onClick={() => updateDeviceConfig.mutate(deviceConfig || {})}
+                    onClick={() => {
+                      const cfg = deviceConfig ?? {};
+                      const payload: PartnerDeviceConfig = {
+                        session_window_sec: cfg.session_window_sec,
+                        accepted_hold_ms: cfg.accepted_hold_ms,
+                        warn_enabled: cfg.warn_enabled,
+                        warn_temp_c: cfg.warn_temp_c,
+                        warn_voc_analog: cfg.warn_voc_analog,
+                        warn_use_voc_digital: cfg.warn_use_voc_digital,
+                        raw_swap_bytes: cfg.raw_swap_bytes,
+                      };
+                      updateDeviceConfig.mutate(payload);
+                    }}
                     disabled={updateDeviceConfig.isPending}
                     className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
                     data-testid="button-save-config"
