@@ -30,6 +30,20 @@ import BonusPage from "@/pages/customer/Bonus";
 import VeriScanPage from "@/pages/VeriScan";
 import DropsPage from "@/pages/customer/Drops";
 
+// Wraps a route component in an ErrorBoundary so any render error inside the
+// dashboard/auth-gated app surfaces shows a friendly fallback instead of a
+// blank screen. Defined at module scope so wrapper component identities stay
+// stable across renders (avoids unintended remounts).
+function Guarded<P extends object>(Component: React.ComponentType<P>) {
+  const Wrapped = (props: P) => (
+    <ErrorBoundary>
+      <Component {...props} />
+    </ErrorBoundary>
+  );
+  Wrapped.displayName = `Guarded(${Component.displayName || Component.name || 'Component'})`;
+  return Wrapped;
+}
+
 function ScrollToTop() {
   const [location] = useLocation();
   
@@ -49,17 +63,6 @@ function Router() {
                       location.includes('/partner') ||
                       location.includes('/app') ||
                       location.includes('/veriscan');
-
-  // Wrap dashboard pages (and other auth-gated app surfaces) in an ErrorBoundary so a
-  // render error inside one of them shows a friendly fallback instead of a blank screen.
-  // Marketing/auth pages are intentionally left outside this boundary.
-  function Guarded<P extends object>(Component: React.ComponentType<P>) {
-    return (props: P) => (
-      <ErrorBoundary>
-        <Component {...props} />
-      </ErrorBoundary>
-    );
-  }
 
   return (
     <>
