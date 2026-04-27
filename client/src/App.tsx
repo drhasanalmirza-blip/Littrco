@@ -32,9 +32,10 @@ import DropsPage from "@/pages/customer/Drops";
 
 // Wraps a route component in an ErrorBoundary so any render error inside the
 // dashboard/auth-gated app surfaces shows a friendly fallback instead of a
-// blank screen. Defined at module scope so wrapper component identities stay
-// stable across renders (avoids unintended remounts).
-function Guarded<P extends object>(Component: React.ComponentType<P>) {
+// blank screen. Each wrapped component is computed ONCE below at module scope
+// so its identity is stable across re-renders of <Router/> and there is no
+// remount churn between location changes.
+function withErrorBoundary<P extends object>(Component: React.ComponentType<P>) {
   const Wrapped = (props: P) => (
     <ErrorBoundary>
       <Component {...props} />
@@ -43,6 +44,20 @@ function Guarded<P extends object>(Component: React.ComponentType<P>) {
   Wrapped.displayName = `Guarded(${Component.displayName || Component.name || 'Component'})`;
   return Wrapped;
 }
+
+// Pre-wrapped, stable route components for all dashboard / auth-gated surfaces.
+const GuardedVeriScan = withErrorBoundary(VeriScanPage);
+const GuardedAdminDashboard = withErrorBoundary(AdminDashboard);
+const GuardedStaffSetup = withErrorBoundary(StaffSetup);
+const GuardedStaffDashboard = withErrorBoundary(StaffDashboard);
+const GuardedPartnerDashboard = withErrorBoundary(PartnerDashboard);
+const GuardedCustomerDashboard = withErrorBoundary(CustomerDashboard);
+const GuardedClaimPage = withErrorBoundary(ClaimPage);
+const GuardedScanPage = withErrorBoundary(ScanPage);
+const GuardedStorePage = withErrorBoundary(StorePage);
+const GuardedBonusPage = withErrorBoundary(BonusPage);
+const GuardedChangePasswordPage = withErrorBoundary(ChangePasswordPage);
+const GuardedDropsPage = withErrorBoundary(DropsPage);
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -84,32 +99,32 @@ function Router() {
         <Route path="/safety" component={Dropoff} />
         <Route path="/privacy" component={Why} />
         <Route path="/terms" component={Why} />
-        <Route path="/veriscan" component={Guarded(VeriScanPage)} />
+        <Route path="/veriscan" component={GuardedVeriScan} />
 
         {/* Auth Portals */}
         <Route path="/admin/login" component={() => <Login type="admin" />} />
-        <Route path="/admin/dashboard" component={Guarded(AdminDashboard)} />
+        <Route path="/admin/dashboard" component={GuardedAdminDashboard} />
         
         <Route path="/staff/login" component={() => <Login type="staff" />} />
-        <Route path="/staff/setup" component={Guarded(StaffSetup)} />
-        <Route path="/staff/dashboard" component={Guarded(StaffDashboard)} />
+        <Route path="/staff/setup" component={GuardedStaffSetup} />
+        <Route path="/staff/dashboard" component={GuardedStaffDashboard} />
         
         <Route path="/partner/login" component={() => <Login type="partner" />} />
-        <Route path="/partner/dashboard" component={Guarded(PartnerDashboard)} />
+        <Route path="/partner/dashboard" component={GuardedPartnerDashboard} />
 
         {/* Customer App */}
-        <Route path="/app" component={Guarded(CustomerDashboard)} />
-        <Route path="/app/dashboard" component={Guarded(CustomerDashboard)} />
+        <Route path="/app" component={GuardedCustomerDashboard} />
+        <Route path="/app/dashboard" component={GuardedCustomerDashboard} />
         <Route path="/app/login" component={() => <Login type="customer" />} />
         <Route path="/app/register" component={RegisterPage} />
-        <Route path="/app/claim" component={Guarded(ClaimPage)} />
-        <Route path="/app/scan" component={Guarded(ScanPage)} />
-        <Route path="/app/store" component={Guarded(StorePage)} />
-        <Route path="/app/bonus" component={Guarded(BonusPage)} />
-        <Route path="/app/change-password" component={Guarded(ChangePasswordPage)} />
-        <Route path="/app/settings" component={Guarded(ChangePasswordPage)} />
-        <Route path="/app/drops" component={Guarded(DropsPage)} />
-        <Route path="/app/history" component={Guarded(CustomerDashboard)} />
+        <Route path="/app/claim" component={GuardedClaimPage} />
+        <Route path="/app/scan" component={GuardedScanPage} />
+        <Route path="/app/store" component={GuardedStorePage} />
+        <Route path="/app/bonus" component={GuardedBonusPage} />
+        <Route path="/app/change-password" component={GuardedChangePasswordPage} />
+        <Route path="/app/settings" component={GuardedChangePasswordPage} />
+        <Route path="/app/drops" component={GuardedDropsPage} />
+        <Route path="/app/history" component={GuardedCustomerDashboard} />
 
         <Route component={NotFound} />
       </Switch>
