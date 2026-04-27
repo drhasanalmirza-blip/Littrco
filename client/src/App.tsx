@@ -30,11 +30,6 @@ import BonusPage from "@/pages/customer/Bonus";
 import VeriScanPage from "@/pages/VeriScan";
 import DropsPage from "@/pages/customer/Drops";
 
-// Wraps a route component in an ErrorBoundary so any render error inside the
-// dashboard/auth-gated app surfaces shows a friendly fallback instead of a
-// blank screen. Each wrapped component is computed ONCE below at module scope
-// so its identity is stable across re-renders of <Router/> and there is no
-// remount churn between location changes.
 function withErrorBoundary<P extends object>(Component: React.ComponentType<P>) {
   const Wrapped = (props: P) => (
     <ErrorBoundary>
@@ -45,7 +40,6 @@ function withErrorBoundary<P extends object>(Component: React.ComponentType<P>) 
   return Wrapped;
 }
 
-// Pre-wrapped, stable route components for all dashboard / auth-gated surfaces.
 const GuardedVeriScan = withErrorBoundary(VeriScanPage);
 const GuardedAdminDashboard = withErrorBoundary(AdminDashboard);
 const GuardedStaffSetup = withErrorBoundary(StaffSetup);
