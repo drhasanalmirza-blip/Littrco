@@ -143,6 +143,9 @@ export default function PartnerDashboard() {
       if (!res.ok) throw new Error('Failed to fetch shops');
       return res.json();
     },
+    // Don't retry an expired-session response — we want the redirect to fire
+    // immediately on the first 401 instead of pausing for retry backoff.
+    retry: (_failureCount, error) => !(error instanceof SessionExpiredError),
   });
 
   useEffect(() => {
