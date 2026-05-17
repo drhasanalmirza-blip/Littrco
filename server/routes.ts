@@ -3207,7 +3207,7 @@ export async function registerRoutes(
               // Skip images the worker has already classified to avoid
               // duplicate runs / churn on resubmits. Worker still dedupes by
               // pHash, but this is a cheaper short-circuit.
-              if ((img as any).classifierRanAt) continue;
+              if (img.classifierRanAt) continue;
               queueMicrotask(async () => {
                 try {
                   const { processCapture } = await import("./classifier/worker");
@@ -3828,7 +3828,7 @@ export async function registerRoutes(
         humanLabel: correctedLabel,
         reviewerId: req.user!.id,
         notes: notes || null,
-      } as any);
+      });
 
       // Always clear the review flag.
       const update: any = {
@@ -3860,7 +3860,7 @@ export async function registerRoutes(
       // the points for this drop. Until a real claim event flips this flag,
       // staff corrections may freely flip the verdict and adjust points.
       // Verdict-decided != claimed.
-      const rewardClaimed = (drop as any).rewardClaimed === true;
+      const rewardClaimed = drop.rewardClaimed === true;
       const verdictChanged = drop.verdictAccepted !== correctedAccepted;
 
       if (!rewardClaimed && verdictChanged) {

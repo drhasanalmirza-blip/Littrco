@@ -128,8 +128,9 @@ export async function processCapture(args: {
         } else {
           try {
             result = await classifyImage(jpeg);
-          } catch (err: any) {
-            console.error("[classifier] classifyImage failed:", err?.message || err);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[classifier] classifyImage failed:", msg);
             result = makeFallback("classify_error");
           }
         }
@@ -150,7 +151,7 @@ export async function processCapture(args: {
         day: dayKey(),
         totalMicros: result.costMicros,
         callCount: cacheHit ? 0 : 1,
-      } as any);
+      });
     }
 
     const verdict = decideVerdict(result, {
@@ -179,8 +180,9 @@ export async function processCapture(args: {
       aiConfidence: result.confidence,
       aiModelVersion: result.version,
     });
-  } catch (err: any) {
-    console.error("[classifier] processCapture fatal:", err?.message || err);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[classifier] processCapture fatal:", msg);
     try {
       await storage.updateDropByEventId(eventId, {
         verdictReady: true,

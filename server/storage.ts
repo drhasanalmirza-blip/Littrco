@@ -1512,8 +1512,8 @@ export class DatabaseStorage implements IStorage {
 
   async recordClassifierCost(data: InsertClassifierCostLog): Promise<ClassifierCostLog> {
     const day = data.day;
-    const addMicros = Number((data as any).totalMicros ?? (data as any).costMicros ?? 0);
-    const addCount = Number((data as any).callCount ?? 1);
+    const addMicros = Number(data.totalMicros ?? 0);
+    const addCount = Number(data.callCount ?? 1);
     const [row] = await db
       .insert(classifierCostLog)
       .values({ day, totalMicros: addMicros, callCount: addCount })
