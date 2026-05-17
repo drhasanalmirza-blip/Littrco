@@ -16,7 +16,7 @@ The backend is built with Node.js and Express.js, offering RESTful API endpoints
 
 ### Classifier Pipeline (Task #5)
 - Phase 0 (default): pass-through fallback — every capture is "uncertain @ 0.5", hand-labeled via `/admin/review`. Zero AI cost. App runs without `ANTHROPIC_API_KEY`.
-- Phase 1 (opt-in via `CLASSIFIER_PROVIDER=anthropic`): Claude Haiku 4.5 vision with pHash dedupe, prompt caching, and a daily USD budget cap (`CLASSIFIER_DAILY_USD_CAP`, default $0.50). On budget exceed → Phase 0 fallback.
+- Phase 1 (opt-in via `CLASSIFIER_PROVIDER=anthropic`): Claude Haiku 4.5 vision with pHash dedupe, prompt caching, and a daily USD budget cap (`CLASSIFIER_DAILY_BUDGET_USD`, default $5). On budget exceed → Phase 0 fallback.
 - Hard rule: classifier is only invoked from `processCapture` in `server/classifier/worker.ts`, triggered exclusively by `POST /api/bin-module/drop-capture` for `after`/`crop` image roles. Never on boot, page load, or cron.
 - Verdict applied per-bin via `bins.rejectNonVapes` / `rejectThcVapes`; ambiguous results land in `classifier_corrections` after staff review.
 - See `docs/CLASSIFIER.md` and `docs/BIN_MODULE_API.md` (Phase 1 section).

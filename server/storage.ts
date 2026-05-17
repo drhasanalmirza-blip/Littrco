@@ -388,7 +388,7 @@ export interface IStorage {
   findOrCreateDropByEventId(eventId: string, defaults: InsertDrop): Promise<Drop>;
   createDropImageIdempotent(data: InsertDropImage): Promise<{ image: DropImage; created: boolean }>;
   updateDropImageClassifier(imageId: number, data: Partial<DropImage>): Promise<DropImage | undefined>;
-  findClassifierResultByPhash(phash: string): Promise<DropImage | undefined>;
+  findClassifierResultByPhash(phash: string, withinHours?: number): Promise<DropImage | undefined>;
   getClassifierCostMicrosForDay(day: string): Promise<number>;
   recordClassifierCost(data: InsertClassifierCostLog): Promise<ClassifierCostLog>;
   createClassifierCorrection(data: InsertClassifierCorrection): Promise<ClassifierCorrection>;
@@ -1465,11 +1465,18 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async findClassifierResultByPhash(phash: string): Promise<DropImage | undefined> {
+  async findClassifierResultByPhash(phash: string, withinHours = 24): Promise<DropImage | undefined> {
+    const cutoff = new Date(Date.now() - withinHours * 60 * 60 * 1000);
     const [img] = await db
       .select()
       .from(dropImages)
-      .where(and(eq(dropImages.phash, phash), sql`${dropImages.classifierLabel} IS NOT NULL`))
+      .where(
+        and(
+          eq(dropImages.phash, phash),
+          sql`${dropImages.classifierLabel} IS NOT NULL`,
+          sql`${dropImages.classifierRanAt} >= ${cutoff}`,
+        ),
+      )
       .orderBy(desc(dropImages.classifierRanAt))
       .limit(1);
     return img;

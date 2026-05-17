@@ -25,7 +25,7 @@ It does **NOT** run on:
 | `CLASSIFIER_PROVIDER` | `off` | `off` = Phase 0 pass-through; `anthropic` = Phase 1 vision |
 | `ANTHROPIC_API_KEY` | unset | required when provider=anthropic; without it, falls back to pass-through |
 | `CLASSIFIER_MODEL` | `claude-haiku-4-5-20251001` | Anthropic vision model id |
-| `CLASSIFIER_DAILY_USD_CAP` | `0.50` | daily USD spend cap; over the cap → pass-through fallback |
+| `CLASSIFIER_DAILY_BUDGET_USD` | `5` | daily USD spend cap; over the cap → pass-through fallback |
 
 The app must run with none of these set. Default is **Phase 0 pass-through**.
 
@@ -51,7 +51,7 @@ When `CLASSIFIER_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` is set:
 1. **pHash dedupe** — compute a perceptual hash; if a prior image with the same
    pHash already has a classifier result, reuse it at $0.
 2. **Daily budget check** — sum `classifier_cost_log.cost_micros` for today; if
-   it's over `CLASSIFIER_DAILY_USD_CAP`, fall back to pass-through.
+   it's over `CLASSIFIER_DAILY_BUDGET_USD`, fall back to pass-through.
 3. **Prompt caching** — the system prompt is sent with `cache_control:
    ephemeral` so repeated calls within ~5 min only pay the cache-read rate.
 4. Call Anthropic Messages API with the JPEG (base64).

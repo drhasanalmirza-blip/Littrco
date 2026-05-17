@@ -45,7 +45,7 @@ export default function AdminReview() {
   const { data: queueResp, isLoading } = useQuery({
     queryKey: ["admin-review-queue"],
     queryFn: async () => {
-      const res = await apiRequest("/api/admin/review/queue");
+      const res = await apiRequest("/api/admin/review");
       if (!res.ok) throw new Error("Failed to fetch queue");
       return res.json();
     },
@@ -64,11 +64,11 @@ export default function AdminReview() {
 
   const submit = useMutation({
     mutationFn: async (vars: { dropId: number; imageId: number | null; humanLabel: string; notes: string; acceptOverride: boolean }) => {
-      const res = await apiRequest(`/api/admin/review/${vars.dropId}`, {
+      const res = await apiRequest(`/api/admin/review/${vars.dropId}/correct`, {
         method: "POST",
         body: JSON.stringify({
           imageId: vars.imageId,
-          humanLabel: vars.humanLabel,
+          correctedLabel: vars.humanLabel,
           notes: vars.notes,
           acceptOverride: vars.acceptOverride,
         }),

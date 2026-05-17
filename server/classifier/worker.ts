@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { readCaptureByUrl } from "../blob";
-import { classifyImage, computePHash, classifierModel, type ClassifierLabel, type ClassifyResult } from "./classify";
+import { classifierConfig } from "../config";
+import { classifyImage, computePHash, type ClassifierLabel, type ClassifyResult } from "./classify";
 
 type Verdict = {
   accepted: boolean;
@@ -8,7 +9,7 @@ type Verdict = {
   reviewNeeded: boolean;
 };
 
-const PASS_THROUGH_VERSION = "pass_through:1";
+export const PASS_THROUGH_VERSION = "pass_through:1";
 const LOW_CONF = 0.55;
 const REVIEW_CONF = 0.7;
 
@@ -16,20 +17,25 @@ function dayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
-function makeFallback(reason: string): ClassifyResult {
+// Phase 0 / budget-exceeded fallback: auto-accept with review flag, per spec.
+function makeFallback(rationale: string): ClassifyResult {
   return {
     label: "uncertain",
     confidence: 0.5,
-    rationale: reason,
+    rationale,
     version: PASS_THROUGH_VERSION,
     costMicros: 0,
   };
 }
 
-function decideVerdict(
+export function decideVerdict(
   result: ClassifyResult,
   bin: { rejectNonVapes: boolean | null; rejectThcVapes: boolean | null },
 ): Verdict {
+  // Phase 0 / fallback: explicit auto-accept with review flag.
+  if (result.version.startsWith("pass_through")) {
+    return { accepted: true, reason: "auto_accepted", reviewNeeded: true };
+  }
   if (result.confidence < LOW_CONF) {
     return { accepted: true, reason: "low_confidence", reviewNeeded: true };
   }
@@ -40,17 +46,15 @@ function decideVerdict(
     return { accepted: false, reason: "thc_vape", reviewNeeded: true };
   }
   const reviewNeeded =
-    result.label === "uncertain" ||
-    result.confidence < REVIEW_CONF ||
-    result.version.startsWith("pass_through");
+    result.label === "uncertain" || result.confidence < REVIEW_CONF;
   return { accepted: true, reason: result.label, reviewNeeded };
 }
 
 async function dailyBudgetExceeded(): Promise<boolean> {
-  const capCents = parseFloat(process.env.CLASSIFIER_DAILY_USD_CAP || "0.50");
-  if (!capCents || capCents <= 0) return false;
+  const capUsd = classifierConfig.dailyBudgetUsd;
+  if (!capUsd || capUsd <= 0) return true; // 0 cap means immediately exceeded
   const spentMicros = await storage.getClassifierCostMicrosForDay(dayKey());
-  return spentMicros / 1_000_000 >= capCents;
+  return spentMicros / 1_000_000 >= capUsd;
 }
 
 export async function processCapture(args: {
@@ -64,7 +68,7 @@ export async function processCapture(args: {
     const bin = await storage.getBin(binId);
     if (!bin) return;
 
-    const provider = (process.env.CLASSIFIER_PROVIDER || "off").toLowerCase();
+    const provider = classifierConfig.provider;
     const jpeg = await readCaptureByUrl(storageUrl);
 
     let phash: string | null = null;
@@ -79,9 +83,10 @@ export async function processCapture(args: {
     let result: ClassifyResult | null = null;
     let cacheHit = false;
 
-    // pHash dedupe: if any prior image with same pHash has a classifier result, reuse it
+    // pHash dedupe: if any prior image with same pHash has a classifier result
+    // within the configured TTL, reuse it (no AI call, $0).
     if (phash) {
-      const prior = await storage.findClassifierResultByPhash(phash);
+      const prior = await storage.findClassifierResultByPhash(phash, classifierConfig.dedupeHours);
       if (prior) {
         result = {
           label: (prior.classifierLabel as ClassifierLabel) || "uncertain",
@@ -95,12 +100,12 @@ export async function processCapture(args: {
     }
 
     if (!result) {
-      if (provider === "off" || !process.env.ANTHROPIC_API_KEY) {
-        result = makeFallback(provider === "off" ? "provider_off" : "no_api_key");
+      if (provider === "off" || !classifierConfig.hasApiKey) {
+        result = makeFallback("auto_accepted");
       } else if (await dailyBudgetExceeded()) {
-        result = makeFallback("budget_exceeded");
+        result = makeFallback("auto_accepted");
       } else if (!jpeg) {
-        result = makeFallback("image_unreadable");
+        result = makeFallback("auto_accepted");
       } else {
         try {
           result = await classifyImage(jpeg);
@@ -167,4 +172,4 @@ export async function processCapture(args: {
   }
 }
 
-export const __testing = { decideVerdict, makeFallback, PASS_THROUGH_VERSION };
+export const __testing = { decideVerdict, makeFallback, PASS_THROUGH_VERSION, dailyBudgetExceeded };
