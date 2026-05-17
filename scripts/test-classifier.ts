@@ -133,4 +133,41 @@ if (!httpUp) {
   });
 }
 
+// SSRF hardening tests for readCaptureByUrl
+const { readCaptureByUrl } = await import("../server/blob");
+await test("SSRF: rejects http:// remote URLs", async () => {
+  const r = await readCaptureByUrl("http://example.com/x.jpg");
+  assert.equal(r, null);
+});
+await test("SSRF: rejects https when host not in allowlist", async () => {
+  delete process.env.CLASSIFIER_URL_ALLOWLIST;
+  const r = await readCaptureByUrl("https://attacker.example/x.jpg");
+  assert.equal(r, null);
+});
+await test("SSRF: rejects loopback even if allowlisted", async () => {
+  process.env.CLASSIFIER_URL_ALLOWLIST = "127.0.0.1,localhost";
+  const a = await readCaptureByUrl("https://127.0.0.1/x.jpg");
+  const b = await readCaptureByUrl("https://localhost/x.jpg");
+  assert.equal(a, null);
+  assert.equal(b, null);
+});
+await test("SSRF: rejects AWS/GCP metadata IPs", async () => {
+  process.env.CLASSIFIER_URL_ALLOWLIST = "169.254.169.254";
+  const r = await readCaptureByUrl("https://169.254.169.254/latest/meta-data/");
+  assert.equal(r, null);
+});
+await test("SSRF: rejects RFC1918 private ranges", async () => {
+  process.env.CLASSIFIER_URL_ALLOWLIST = "10.0.0.5,192.168.1.1,172.16.0.1";
+  const r1 = await readCaptureByUrl("https://10.0.0.5/x.jpg");
+  const r2 = await readCaptureByUrl("https://192.168.1.1/x.jpg");
+  const r3 = await readCaptureByUrl("https://172.16.0.1/x.jpg");
+  assert.equal(r1, null);
+  assert.equal(r2, null);
+  assert.equal(r3, null);
+});
+await test("SSRF: rejects path-traversal in /uploads/", async () => {
+  const r = await readCaptureByUrl("/uploads/../../etc/passwd");
+  assert.equal(r, null);
+});
+
 console.log(`\n${passed} tests passed`);
