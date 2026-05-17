@@ -76,33 +76,37 @@ export async function processCapture(args: {
 
     const provider = classifierConfig.provider;
 
-    let result: ClassifyResult | null = null;
-    let cacheHit = false;
+    // Always read bytes and compute pHash when possible, even in Phase 0
+    // — the spec requires Phase 0 captures to be stored AND hashed (the
+    // hash is used by future Phase 1 dedupe and by ops tooling). Failure
+    // to fetch bytes is non-fatal; we still record a pass_through verdict.
+    const jpeg: Buffer | null = await readCaptureByUrl(storageUrl);
     let phash: string | null = null;
-    let jpeg: Buffer | null = null;
+    if (jpeg) {
+      try {
+        phash = await computePHash(jpeg);
+      } catch {
+        phash = null;
+      }
+    }
 
     // Phase 0 hard short-circuit: when provider is off / key missing /
     // budget exceeded, every capture MUST resolve to a pass_through
-    // auto_accepted fallback regardless of any prior cached result. Skip
-    // dedupe entirely so a previously Anthropic-labeled pHash can never
-    // leak a non-pass_through verdict into Phase 0 operation.
+    // auto_accepted fallback regardless of any prior cached result. The
+    // pHash is still computed and persisted above, but dedupe LOOKUP is
+    // skipped so a previously Anthropic-labeled pHash can never leak a
+    // non-pass_through verdict into Phase 0 operation.
     const phase0 =
       provider === "off" ||
       !classifierConfig.hasApiKey ||
       (await dailyBudgetExceeded());
 
+    let result: ClassifyResult | null = null;
+    let cacheHit = false;
+
     if (phase0) {
       result = makeFallback("auto_accepted");
     } else {
-      jpeg = await readCaptureByUrl(storageUrl);
-      if (jpeg) {
-        try {
-          phash = await computePHash(jpeg);
-        } catch {
-          phash = null;
-        }
-      }
-
       // pHash dedupe (Phase 1 only): reuse a prior result within TTL.
       if (phash) {
         const prior = await storage.findClassifierResultByPhash(phash, classifierConfig.dedupeHours);
