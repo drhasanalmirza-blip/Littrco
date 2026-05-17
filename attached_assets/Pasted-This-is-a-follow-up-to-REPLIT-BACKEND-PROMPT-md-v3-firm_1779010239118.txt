@@ -1,0 +1,308 @@
+This is a follow-up to REPLIT_BACKEND_PROMPT.md (v3 firmware support — drops table event_id, drop_captures classifier columns, verdict polling, bin config toggles). That prompt scaffolded the API surface and DB schema. This prompt implements the classifier itself and the rollout plan that lets us go live at near-zero AI cost and scale up.
+
+Architectural context (changed since the first prompt)
+The Sensor MCU no longer has an SD card. Captures are POSTed directly to /api/bin-module/drop-capture over the sensor's WiFi. The sensor keeps a PSRAM-backed in-memory queue (~50–100 JPEGs) that drains as uploads succeed, so short WiFi blips don't lose data. The backend doesn't need to do anything different for this — /api/bin-module/drop-capture is already idempotent on event_id. Just confirm that endpoint accepts up to ~200 KB JPEGs without choking and that it returns quickly so the sensor can flush its queue.
+
+Strategy: three-phase rollout
+Phase 0 — "Pass-through" — start here, $0 AI cost
+Classifier worker accepts captures, stores them, computes their SHA-256 + perceptual hash.
+All verdicts default to accepted=true, reason="auto_accepted", verdict_review_needed=true.
+Build a /admin/review page so staff can hand-label the queue.
+Goal: collect ~500–2,000 labeled images from real bins. Validate the pipeline end-to-end without spending on AI.
+Phase 1 — "Cheap vision API" — enable once Phase 0 is stable, ~$0.001 per image
+Use Claude Haiku 4.5 vision (claude-haiku-4-5-20251001) with prompt caching.
+Cache results by perceptual hash (pHash) — re-uses verdicts for re-scans within 24 h.
+Hard budget cap per day (env var) — falls back to Phase 0 behavior if exceeded.
+Phase 2 — "Self-hosted fine-tune" — only if volume justifies, ~$0.0001 per image
+Train a MobileNet/EfficientNet-Lite on the labels accumulated in Phase 0+1.
+Serve via ONNX runtime. Keep Haiku as the fallback for low-confidence cases.
+Don't build Phase 2 yet. The prompt below covers Phases 0 and 1.
+
+1. Schema additions
+ALTER TABLE drops
+  ADD COLUMN verdict_review_needed boolean DEFAULT false NOT NULL;
+
+ALTER TABLE drop_captures
+  ADD COLUMN phash varchar(32),                     -- 16-char hex perceptual hash
+  ADD COLUMN classifier_cost_micros integer;        -- cost in micro-USD ($0.000001), for budget tracking
+
+CREATE INDEX drop_captures_phash_idx ON drop_captures(phash);
+
+CREATE TABLE classifier_corrections (
+  id            serial primary key,
+  drop_id       integer references drops(id),
+  capture_id    integer references drop_captures(id),
+  original_label varchar(32),
+  corrected_label varchar(32) NOT NULL,
+  corrected_by  varchar(120),
+  corrected_at  timestamp DEFAULT NOW()
+);
+
+CREATE TABLE classifier_cost_log (
+  day           date primary key,
+  total_micros  bigint NOT NULL DEFAULT 0,
+  call_count    integer NOT NULL DEFAULT 0
+);
+2. Environment
+# Required for Phase 1
+ANTHROPIC_API_KEY=sk-ant-...
+CLASSIFIER_PROVIDER=anthropic           # 'anthropic' | 'mock' | 'off'
+CLASSIFIER_MODEL=claude-haiku-4-5-20251001
+CLASSIFIER_DAILY_BUDGET_USD=5           # falls back to Phase 0 if exceeded
+CLASSIFIER_DEDUPE_HOURS=24              # how long the pHash cache is valid
+
+# Phase 0: just set CLASSIFIER_PROVIDER=off (or 'mock' for dev)
+3. Classifier worker
+server/classifier/classify.ts:
+
+import Anthropic from '@anthropic-ai/sdk';
+import { imageHash } from 'image-hash';
+
+const anthropic = new Anthropic();
+
+const SYSTEM = `You analyze a single photo of an object dropped into a vape
+recycling bin in a corner store. Output ONLY a JSON object — no prose, no
+markdown:
+
+{ "label": "vape" | "thc_vape" | "not_a_vape" | "uncertain",
+  "confidence": <number 0..1>,
+  "rationale": "<one short sentence>" }
+
+Definitions:
+- "vape": any disposable or rechargeable nicotine vape (Elf Bar, Vuse, Juul, etc.)
+- "thc_vape": cannabis/THC cartridge, pen, or rechargeable battery + cartridge.
+  These are typically darker, often have a glass cartridge with visible oil.
+- "not_a_vape": anything else (lighter, gum, trash, finger, empty frame).
+- "uncertain": visibility poor, partially occluded, motion blur, or genuinely ambiguous.
+
+Err toward "uncertain" rather than guessing. Don't claim high confidence on a
+blurry photo.`;
+
+export type ClassifyResult = {
+  label: 'vape' | 'thc_vape' | 'not_a_vape' | 'uncertain';
+  confidence: number;
+  rationale: string;
+  version: string;
+  costMicros: number;
+};
+
+export async function classifyImage(jpeg: Buffer): Promise<ClassifyResult> {
+  const t0 = Date.now();
+  const resp = await anthropic.messages.create({
+    model: process.env.CLASSIFIER_MODEL!,
+    max_tokens: 200,
+    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg',
+                    data: jpeg.toString('base64') } },
+        { type: 'text', text: 'Classify this image.' },
+      ],
+    }],
+  });
+
+  const text = (resp.content[0] as any).text.trim();
+  const parsed = JSON.parse(text);
+
+  // Cost in micro-USD. Haiku 4.5 pricing (verify current rates):
+  //   input  ~$1.00 / Mtok      cache hit ~$0.10 / Mtok
+  //   output ~$5.00 / Mtok
+  const inTok       = resp.usage.input_tokens;
+  const cachedInTok = (resp.usage as any).cache_read_input_tokens ?? 0;
+  const outTok      = resp.usage.output_tokens;
+  const costMicros  = Math.ceil(
+    ((inTok - cachedInTok) * 1.00 + cachedInTok * 0.10 + outTok * 5.00)
+  );
+
+  return {
+    label: parsed.label,
+    confidence: parsed.confidence,
+    rationale: parsed.rationale,
+    version: `${process.env.CLASSIFIER_MODEL}:1`,
+    costMicros,
+  };
+}
+
+export async function computePHash(jpeg: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    imageHash({ data: jpeg, ext: 'image/jpeg' }, 16, true,
+              (err: any, hash: string) => err ? reject(err) : resolve(hash));
+  });
+}
+The prompt caching on the system block matters — without it you pay full input rate on every call. With it, only the image tokens + output cost real money. Expect ~$0.0008–$0.0012 per image on Haiku 4.5.
+
+4. Worker entry point
+server/classifier/worker.ts:
+
+import { db } from '../db';
+import { classifyImage, computePHash, ClassifyResult } from './classify';
+
+export async function processCapture(captureId: number) {
+  const cap = await db.dropCaptures.findUnique({ where: { id: captureId } });
+  if (!cap || cap.role !== 'after' || cap.classifierRanAt) return;
+
+  const jpeg = await blobRead(cap.blobKey);
+  const phash = await computePHash(jpeg);
+  await db.dropCaptures.update({ where: { id: captureId }, data: { phash } });
+
+  let result: ClassifyResult | null = null;
+  let usedCache = false;
+
+  // 1) pHash cache lookup
+  const cutoff = new Date(Date.now() - Number(process.env.CLASSIFIER_DEDUPE_HOURS ?? 24) * 3600 * 1000);
+  const prior = await db.dropCaptures.findFirst({
+    where: { phash, classifierRanAt: { gte: cutoff }, id: { not: captureId } },
+    orderBy: { classifierRanAt: 'desc' },
+  });
+  if (prior?.classifierLabel) {
+    result = {
+      label: prior.classifierLabel as any,
+      confidence: prior.classifierConfidence ?? 0.5,
+      rationale: 'cached',
+      version: prior.classifierVersion + ':cached',
+      costMicros: 0,
+    };
+    usedCache = true;
+  }
+
+  // 2) Budget guard
+  if (!result) {
+    const provider = process.env.CLASSIFIER_PROVIDER ?? 'off';
+    const budgetUsd = Number(process.env.CLASSIFIER_DAILY_BUDGET_USD ?? 5);
+    const today = new Date().toISOString().slice(0, 10);
+    const usage = await db.classifierCostLog.findUnique({ where: { day: today } });
+    const usedUsd = (usage?.totalMicros ?? 0) / 1_000_000;
+
+    if (provider === 'off' || usedUsd >= budgetUsd) {
+      // Phase 0 behavior — auto-accept, flag for review
+      result = {
+        label: 'uncertain', confidence: 0.5,
+        rationale: provider === 'off' ? 'classifier_disabled' : 'daily_budget_exceeded',
+        version: 'pass_through:1', costMicros: 0,
+      };
+    } else {
+      result = await classifyImage(jpeg);
+    }
+  }
+
+  // 3) Persist classifier output
+  await db.dropCaptures.update({
+    where: { id: captureId },
+    data: {
+      classifierLabel: result.label,
+      classifierConfidence: result.confidence,
+      classifierRanAt: new Date(),
+      classifierVersion: result.version,
+      classifierCostMicros: result.costMicros,
+    },
+  });
+
+  if (result.costMicros > 0 && !usedCache) {
+    await db.classifierCostLog.upsert({
+      where: { day: today },
+      update: { totalMicros: { increment: result.costMicros }, callCount: { increment: 1 } },
+      create: { day: today, totalMicros: result.costMicros, callCount: 1 },
+    });
+  }
+
+  // 4) Compute verdict (rules from REPLIT_BACKEND_PROMPT.md §3.2)
+  const drop = cap.eventId
+    ? await db.drops.findFirst({ where: { eventId: cap.eventId } })
+    : null;
+  if (!drop) return;  // drop row may arrive later; trigger on insert
+
+  const bin = await db.bins.findUnique({ where: { id: drop.binId } });
+  let accepted = true, reason = '';
+  if (result.confidence < 0.55) {
+    accepted = true; reason = 'low_confidence';
+  } else if (result.label === 'not_a_vape' && bin.rejectNonVapes) {
+    accepted = false; reason = 'not_a_vape';
+  } else if (result.label === 'thc_vape' && bin.rejectThcVapes) {
+    accepted = false; reason = 'thc_vape_rejected';
+  }
+
+  const reviewNeeded =
+    result.label === 'uncertain' ||
+    result.confidence < 0.7 ||
+    result.version.startsWith('pass_through');
+
+  await db.drops.update({
+    where: { id: drop.id },
+    data: {
+      verdictReady: true,
+      verdictAccepted: accepted,
+      verdictReason: reason,
+      verdictDecidedAt: new Date(),
+      verdictReviewNeeded: reviewNeeded,
+      pointsAwarded: accepted ? drop.pointsAwarded : 0,
+    },
+  });
+}
+Queue trigger: kick processCapture(id) from the drop_captures insert hook, and re-kick any matching captures when a drops row is inserted with an event_id (covers the "image arrived before drop POST" race).
+
+5. Admin review page
+server/admin/review.ts (or wherever your admin routes live):
+
+GET /admin/review — list drops where verdict_review_needed=true, paginate by 50, newest first.
+Each row: thumbnail, classifier label + confidence, bin + timestamp, four buttons: ✓ Vape / THC / Not a vape / Skip.
+On click: write to classifier_corrections, set verdict_review_needed=false, optionally update the drop's verdict_accepted if the correction would have flipped the decision (and the bin's reward hasn't been claimed).
+Use the existing admin auth/permission system.
+This is your Phase-2 training-data pipeline. Every correction becomes a labeled example.
+
+6. Cost guardrails (recap)
+Guard	Where	Behavior
+pHash dedupe (24 h)	worker step 1	Reuses verdict — $0 cost
+Daily USD budget	worker step 2	Falls back to Phase 0 auto-accept
+CLASSIFIER_PROVIDER=off	worker step 2	Pure Phase 0 — no AI calls
+Prompt caching	classifyImage	~90% input-cost reduction after first call
+7. Sanity tests
+// tests/classifier.test.ts
+it('Phase 0 — provider=off auto-accepts and flags for review', async () => {
+  process.env.CLASSIFIER_PROVIDER = 'off';
+  const drop = await postDrop({ uid: 'TEST-1', event_id: 'evt-1' });
+  await postCapture({ event_id: 'evt-1', image: fixture('vape.jpg') });
+  await waitForVerdict('evt-1');
+  const v = await getVerdict('evt-1');
+  expect(v.accepted).toBe(true);
+  expect(v.reason).toBe('low_confidence');  // or 'auto_accepted', match your impl
+});
+
+it('Phase 1 — classifies a known vape image as accepted', async () => {
+  process.env.CLASSIFIER_PROVIDER = 'anthropic';
+  // ...
+});
+
+it('pHash dedupe — same image twice => one Anthropic call', async () => {
+  const spy = vi.spyOn(anthropic.messages, 'create');
+  await classifyTwice(fixture('vape.jpg'));
+  expect(spy).toHaveBeenCalledTimes(1);
+});
+
+it('Daily budget exhausted — reverts to Phase 0', async () => {
+  process.env.CLASSIFIER_DAILY_BUDGET_USD = '0.001';
+  // ... send enough images to blow the budget
+  // ... confirm next call uses pass_through
+});
+
+it('Manual correction writes to classifier_corrections', async () => { /* ... */ });
+8. Cost estimate (sanity check before deploy)
+Assume the firmware is correct, each accepted drop yields one capture.
+
+Scenario	Drops/day/bin	Bins	Daily calls	Daily cost (Haiku 4.5)
+Pilot (5 stores)	30	5	150	~$0.15
+Small rollout	30	50	1,500	~$1.50
+Mid rollout	30	500	15,000	~$15
+Full deploy	50	5,000	250,000	~$250
+pHash dedupe trims 10–30% typically. Prompt caching already factored in above. Set CLASSIFIER_DAILY_BUDGET_USD to ~3× your expected daily call cost so a malfunctioning bin (stuck-on shutter, 10k frames/hour) can't drain the AWS bill.
+
+9. Deliverables
+When done, report:
+
+Migration file paths.
+Diff against REPLIT_BACKEND_PROMPT.md — what changed, what stayed.
+All 5+ classifier tests passing.
+Phase 0 → Phase 1 rollout runbook: what to flip, in what order, with a 1-bin smoke test before flipping the whole fleet.
+A note on real measured cost per call from the first 100 production classifications (pricing drifts).
+Do not deploy to prod. Push to feature/v3-classifier and open a PR.
