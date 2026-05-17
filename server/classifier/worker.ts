@@ -75,49 +75,59 @@ export async function processCapture(args: {
     if (!bin) return;
 
     const provider = classifierConfig.provider;
-    const jpeg = await readCaptureByUrl(storageUrl);
-
-    let phash: string | null = null;
-    if (jpeg) {
-      try {
-        phash = await computePHash(jpeg);
-      } catch {
-        phash = null;
-      }
-    }
 
     let result: ClassifyResult | null = null;
     let cacheHit = false;
+    let phash: string | null = null;
+    let jpeg: Buffer | null = null;
 
-    // pHash dedupe: if any prior image with same pHash has a classifier result
-    // within the configured TTL, reuse it (no AI call, $0).
-    if (phash) {
-      const prior = await storage.findClassifierResultByPhash(phash, classifierConfig.dedupeHours);
-      if (prior) {
-        result = {
-          label: (prior.classifierLabel as ClassifierLabel) || "uncertain",
-          confidence: prior.classifierConfidence ?? 0.5,
-          rationale: "phash_dedupe",
-          version: prior.classifierVersion || PASS_THROUGH_VERSION,
-          costMicros: 0,
-        };
-        cacheHit = true;
-      }
-    }
+    // Phase 0 hard short-circuit: when provider is off / key missing /
+    // budget exceeded, every capture MUST resolve to a pass_through
+    // auto_accepted fallback regardless of any prior cached result. Skip
+    // dedupe entirely so a previously Anthropic-labeled pHash can never
+    // leak a non-pass_through verdict into Phase 0 operation.
+    const phase0 =
+      provider === "off" ||
+      !classifierConfig.hasApiKey ||
+      (await dailyBudgetExceeded());
 
-    if (!result) {
-      if (provider === "off" || !classifierConfig.hasApiKey) {
-        result = makeFallback("auto_accepted");
-      } else if (await dailyBudgetExceeded()) {
-        result = makeFallback("auto_accepted");
-      } else if (!jpeg) {
-        result = makeFallback("auto_accepted");
-      } else {
+    if (phase0) {
+      result = makeFallback("auto_accepted");
+    } else {
+      jpeg = await readCaptureByUrl(storageUrl);
+      if (jpeg) {
         try {
-          result = await classifyImage(jpeg);
-        } catch (err: any) {
-          console.error("[classifier] classifyImage failed:", err?.message || err);
-          result = makeFallback("classify_error");
+          phash = await computePHash(jpeg);
+        } catch {
+          phash = null;
+        }
+      }
+
+      // pHash dedupe (Phase 1 only): reuse a prior result within TTL.
+      if (phash) {
+        const prior = await storage.findClassifierResultByPhash(phash, classifierConfig.dedupeHours);
+        if (prior) {
+          result = {
+            label: (prior.classifierLabel as ClassifierLabel) || "uncertain",
+            confidence: prior.classifierConfidence ?? 0.5,
+            rationale: "phash_dedupe",
+            version: prior.classifierVersion || PASS_THROUGH_VERSION,
+            costMicros: 0,
+          };
+          cacheHit = true;
+        }
+      }
+
+      if (!result) {
+        if (!jpeg) {
+          result = makeFallback("auto_accepted");
+        } else {
+          try {
+            result = await classifyImage(jpeg);
+          } catch (err: any) {
+            console.error("[classifier] classifyImage failed:", err?.message || err);
+            result = makeFallback("classify_error");
+          }
         }
       }
     }
