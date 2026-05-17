@@ -3749,7 +3749,7 @@ export async function registerRoutes(
 
   // ==================== ADMIN REVIEW (Task #5) ====================
 
-  app.get("/api/admin/review", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  app.get("/api/admin/review", authMiddleware, requireRole("STAFF", "ADMIN"), async (req, res) => {
     try {
       const page = Math.max(1, parseInt((req.query.page as string) || "1") || 1);
       const limit = Math.min(200, Math.max(1, parseInt((req.query.limit as string) || "50") || 50));
@@ -3768,7 +3768,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/review/budget", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+  app.get("/api/admin/review/budget", authMiddleware, requireRole("STAFF", "ADMIN"), async (_req, res) => {
     try {
       const day = new Date().toISOString().slice(0, 10);
       const spentMicros = await storage.getClassifierCostMicrosForDay(day);
@@ -3790,7 +3790,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/review/:dropId/correct", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  app.post("/api/admin/review/:dropId/correct", authMiddleware, requireRole("STAFF", "ADMIN"), async (req, res) => {
     try {
       const dropId = parseInt(req.params.dropId);
       // Spec body: { correctedLabel }. Accept legacy { humanLabel } too.
