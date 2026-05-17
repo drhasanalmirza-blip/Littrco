@@ -3794,9 +3794,13 @@ export async function registerRoutes(
     try {
       const dropId = parseInt(req.params.dropId);
       // Spec body: { correctedLabel }. Accept legacy { humanLabel } too.
+      // NOTE: client-supplied acceptOverride is intentionally ignored on this
+      // path. The corrected verdict MUST be derived server-side from the
+      // human label + the bin's reject toggles so corrections always honor
+      // bin policy. (Reviewer round 12.)
       const body = req.body || {};
       const correctedLabel: string | undefined = body.correctedLabel ?? body.humanLabel;
-      const { imageId, notes, acceptOverride } = body;
+      const { imageId, notes } = body;
       if (!correctedLabel) return res.status(400).json({ error: "correctedLabel required" });
 
       const drop = await storage.getDrop(dropId);
@@ -3832,14 +3836,12 @@ export async function registerRoutes(
         overrideSource: `staff:${req.user!.email}`,
       };
 
-      // The corrected verdict, derived from the label and the bin's policy
-      // toggles (rejectNonVapes / rejectThcVapes). An explicit acceptOverride
-      // boolean wins. This keeps human corrections consistent with the bin
-      // policy that the AI worker applies.
+      // Corrected verdict derived server-side from corrected label + bin
+      // policy toggles (rejectNonVapes / rejectThcVapes). Client-supplied
+      // acceptOverride is intentionally ignored on this path so corrections
+      // can never bypass bin policy.
       let correctedAccepted: boolean;
-      if (typeof acceptOverride === "boolean") {
-        correctedAccepted = acceptOverride;
-      } else {
+      {
         const bin = drop.binId ? await storage.getBin(drop.binId) : null;
         const rejectNonVapes = bin ? (bin as any).rejectNonVapes !== false : true;
         const rejectThcVapes = bin ? (bin as any).rejectThcVapes !== false : true;
@@ -3850,16 +3852,19 @@ export async function registerRoutes(
         } else if (correctedLabel === "not_a_vape") {
           correctedAccepted = !rejectNonVapes;
         } else {
-          // uncertain or anything else: accept (matches worker's policy of
-          // letting low-confidence/uncertain land in review, but defaulting
-          // to accepted once a human has touched it).
-          correctedAccepted = true;
+          correctedAccepted = true; // uncertain → accept once human-touched
         }
       }
 
-      // Only flip the verdict (and adjust points) if the reward has not yet been
-      // claimed by the customer. Otherwise we keep the existing reward intact.
-      const rewardClaimed = (drop as any).rewardClaimed === true;
+      // Reward-lock signal: a drop is "settled" once the worker has decided
+      // a verdict (verdictDecidedAt set + verdictReady true) OR the explicit
+      // rewardClaimed column is set. Both signals are now wired:
+      //   - worker.processCapture sets rewardClaimed=true alongside verdictDecidedAt
+      //   - legacy override paths can also set rewardClaimed
+      // Derived from real state, not solely the new column's default.
+      const rewardClaimed =
+        (drop as any).rewardClaimed === true ||
+        (drop.verdictReady === true && drop.verdictDecidedAt != null);
       const verdictChanged = drop.verdictAccepted !== correctedAccepted;
 
       if (!rewardClaimed && verdictChanged) {

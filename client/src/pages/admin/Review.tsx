@@ -66,14 +66,13 @@ export default function AdminReview() {
   });
 
   const submit = useMutation({
-    mutationFn: async (vars: { dropId: number; imageId: number | null; humanLabel: string; notes: string; acceptOverride: boolean }) => {
+    mutationFn: async (vars: { dropId: number; imageId: number | null; humanLabel: string; notes: string }) => {
       const res = await apiRequest(`/api/admin/review/${vars.dropId}/correct`, {
         method: "POST",
         body: JSON.stringify({
           imageId: vars.imageId,
           correctedLabel: vars.humanLabel,
           notes: vars.notes,
-          acceptOverride: vars.acceptOverride,
         }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -230,7 +229,6 @@ export default function AdminReview() {
                               imageId: primary?.id ?? null,
                               humanLabel: l.value,
                               notes: notesById[drop.id] ?? "",
-                              acceptOverride: l.accept,
                             })
                           }
                           data-testid={`button-label-${l.value}-${drop.id}`}

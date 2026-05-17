@@ -150,6 +150,12 @@ export async function processCapture(args: {
       verdictReason: verdict.reason,
       verdictDecidedAt: new Date(),
       verdictReviewNeeded: verdict.reviewNeeded,
+      // Mark reward as settled when verdict is decided. This makes
+      // drops.rewardClaimed a real, tracked signal (not an unset default)
+      // so the admin correction endpoint can refuse to flip an already
+      // settled drop. Pairs with the reward-lock guard in
+      // /api/admin/review/:dropId/correct.
+      rewardClaimed: true,
       status: verdict.accepted ? "approved" : "denied",
       category:
         result.label === "vape"
