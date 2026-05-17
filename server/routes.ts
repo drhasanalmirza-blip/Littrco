@@ -3134,6 +3134,37 @@ export async function registerRoutes(
       } else {
         await storage.updateDrop(dropId, { status: "approved", category: "Unknown", pointsAwarded: 1 });
       }
+
+      // Task #5 dual-trigger: if a capture (after/crop) arrived via the bin
+      // module BEFORE the drop was submitted, the classifier hasn't run yet.
+      // Re-trigger processCapture for any such pending captures linked by
+      // either dropId or eventId.
+      try {
+        if (drop.eventId) {
+          const linked = await storage.getDropImages(dropId);
+          for (const img of linked) {
+            const pending = (img.imageRole === "after" || img.imageRole === "crop") && !img.classifierRanAt;
+            if (pending) {
+              queueMicrotask(async () => {
+                try {
+                  const { processCapture } = await import("./classifier/worker");
+                  await processCapture({
+                    eventId: drop.eventId!,
+                    binId: drop.binId,
+                    imageId: img.id,
+                    storageUrl: img.storageUrl,
+                  });
+                } catch (err: any) {
+                  console.error("[drops/submit] processCapture trigger failed:", err?.message || err);
+                }
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error("[drops/submit] capture-before-drop sweep failed:", err?.message || err);
+      }
+
       const updated = await storage.getDrop(dropId);
       res.json({ ok: true, data: updated });
     } catch (error) {

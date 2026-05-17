@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique, doublePrecision, real, bigint, date, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique, doublePrecision, real, bigint, date, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -626,7 +626,7 @@ export const dropImages = pgTable("drop_images", {
   imageRole: imageRoleEnum("image_role").notNull(),
   storageUrl: text("storage_url").notNull(),
   hash: text("hash"),
-  phash: varchar("phash", { length: 32 }),
+  phash: varchar("phash", { length: 64 }),
   classifierLabel: text("classifier_label"),
   classifierConfidence: real("classifier_confidence"),
   classifierRanAt: timestamp("classifier_ran_at"),
@@ -636,6 +636,7 @@ export const dropImages = pgTable("drop_images", {
 }, (table) => ({
   phashIdx: index("drop_images_phash_idx").on(table.phash),
   eventIdx: index("drop_images_event_idx").on(table.eventId),
+  eventRoleUniq: uniqueIndex("drop_images_event_role_uniq").on(table.eventId, table.imageRole),
 }));
 
 export const insertDropImageSchema = createInsertSchema(dropImages).omit({
