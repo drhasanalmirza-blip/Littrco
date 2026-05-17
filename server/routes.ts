@@ -3650,10 +3650,29 @@ export async function registerRoutes(
         return res.status(400).json({ error: "eventId and imageRole required" });
       }
 
-      // Fast-path idempotency: if we already have this image, skip writing bytes
+      // Fast-path idempotency: if we already have this image, skip writing bytes.
+      // SECURITY: enforce bin ownership BEFORE returning any data — a module
+      // token for Bin B must not be able to read Bin A's capture by guessing
+      // its eventId (IDOR).
       const existing = await storage.findDropImageByEventAndRole(eventId, imageRole);
       if (existing) {
+        if (existing.binId != null && existing.binId !== cap.binId) {
+          return res.status(403).json({ error: "eventId belongs to a different bin" });
+        }
+        // Defense in depth: also block if a linked drop belongs to another bin.
+        if (existing.dropId != null) {
+          const owningDrop = await storage.getDrop(existing.dropId);
+          if (owningDrop && owningDrop.binId != null && owningDrop.binId !== cap.binId) {
+            return res.status(403).json({ error: "eventId belongs to a different bin" });
+          }
+        }
         return res.json({ ok: true, data: existing, idempotent: true });
+      }
+
+      // Pre-write authz: same check before doing any byte writes or processCapture
+      const preExistingDrop = await storage.getDropByEventId(eventId);
+      if (preExistingDrop && preExistingDrop.binId != null && preExistingDrop.binId !== cap.binId) {
+        return res.status(403).json({ error: "eventId belongs to a different bin" });
       }
 
       // Persist image bytes if provided
