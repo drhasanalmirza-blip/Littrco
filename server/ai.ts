@@ -164,6 +164,10 @@ async function findExistingResultByHash(
   try {
     const image = await storage.getDropImageByHash(hash);
     if (!image) return null;
+    // Task #5 made drop_images.dropId nullable (orphan captures linked
+    // later by eventId). Legacy AI dedupe path only applies once the
+    // image is linked to a drop; skip otherwise.
+    if (image.dropId == null) return null;
 
     const jobs = await storage.getAiJobsByDrop(image.dropId);
     const doneJob = jobs.find(
