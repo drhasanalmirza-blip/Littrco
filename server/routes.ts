@@ -3091,16 +3091,16 @@ export async function registerRoutes(
                     imageId: img.id,
                     storageUrl: img.storageUrl,
                   });
-                } catch (err: any) {
-                  console.error("[drops/start] processCapture trigger failed:", err?.message || err);
+                } catch (err) {
+                  console.error("[drops/start] processCapture trigger failed:", err instanceof Error ? err.message : String(err));
                 }
               });
             } else if (needs && triggerBinId == null) {
               console.error("[drops/start] skipping processCapture: drop has no binId", { dropId: drop.id, eventId });
             }
           }
-        } catch (err: any) {
-          console.error("[drops/start] orphan capture sweep failed:", err?.message || err);
+        } catch (err) {
+          console.error("[drops/start] orphan capture sweep failed:", err instanceof Error ? err.message : String(err));
         }
       } else {
         drop = await storage.createDrop({
@@ -3722,7 +3722,7 @@ export async function registerRoutes(
         imageRole,
         storageUrl,
         hash,
-      } as any);
+      });
 
       // Only trigger classifier when (a) first insert, (b) role is after/crop,
       // AND (c) the drop already exists. If the drop hasn't arrived yet, leave
@@ -3734,15 +3734,17 @@ export async function registerRoutes(
           try {
             const { processCapture } = await import("./classifier/worker");
             await processCapture({ eventId, binId: cap.binId, imageId: createdImage.id, storageUrl: storageUrl! });
-          } catch (err: any) {
-            console.error("[bin-module] processCapture trigger failed:", err?.message || err);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[bin-module] processCapture trigger failed:", msg);
           }
         });
       }
 
       res.json({ ok: true, data: { image: createdImage, drop }, idempotent: !created });
-    } catch (error: any) {
-      console.error("drop-capture error:", error?.message || error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("drop-capture error:", msg);
       res.status(500).json({ ok: false, error: "Failed to store drop capture" });
     }
   });
@@ -3799,9 +3801,20 @@ export async function registerRoutes(
       // human label + the bin's reject toggles so corrections always honor
       // bin policy. (Reviewer round 12.)
       const body = req.body || {};
-      const correctedLabel: string | undefined = body.correctedLabel ?? body.humanLabel;
+      const rawCorrectedLabel: unknown = body.correctedLabel ?? body.humanLabel;
       const { imageId, notes } = body;
-      if (!correctedLabel) return res.status(400).json({ error: "correctedLabel required" });
+      const VALID_CORRECTION_LABELS = ["vape", "thc_vape", "not_a_vape", "uncertain"] as const;
+      type CorrectionLabel = (typeof VALID_CORRECTION_LABELS)[number];
+      if (
+        typeof rawCorrectedLabel !== "string" ||
+        !(VALID_CORRECTION_LABELS as readonly string[]).includes(rawCorrectedLabel)
+      ) {
+        return res.status(400).json({
+          error: "correctedLabel required",
+          allowed: VALID_CORRECTION_LABELS,
+        });
+      }
+      const correctedLabel: CorrectionLabel = rawCorrectedLabel as CorrectionLabel;
 
       const drop = await storage.getDrop(dropId);
       if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
@@ -3831,7 +3844,7 @@ export async function registerRoutes(
       });
 
       // Always clear the review flag.
-      const update: any = {
+      const update: Partial<typeof drop> = {
         verdictReviewNeeded: false,
         overrideSource: `staff:${req.user!.email}`,
       };
@@ -3843,8 +3856,8 @@ export async function registerRoutes(
       let correctedAccepted: boolean;
       {
         const bin = drop.binId ? await storage.getBin(drop.binId) : null;
-        const rejectNonVapes = bin ? (bin as any).rejectNonVapes !== false : true;
-        const rejectThcVapes = bin ? (bin as any).rejectThcVapes !== false : true;
+        const rejectNonVapes = bin ? bin.rejectNonVapes !== false : true;
+        const rejectThcVapes = bin ? bin.rejectThcVapes !== false : true;
         if (correctedLabel === "vape") {
           correctedAccepted = true;
         } else if (correctedLabel === "thc_vape") {
