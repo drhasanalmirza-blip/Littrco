@@ -3856,15 +3856,11 @@ export async function registerRoutes(
         }
       }
 
-      // Reward-lock signal: a drop is "settled" once the worker has decided
-      // a verdict (verdictDecidedAt set + verdictReady true) OR the explicit
-      // rewardClaimed column is set. Both signals are now wired:
-      //   - worker.processCapture sets rewardClaimed=true alongside verdictDecidedAt
-      //   - legacy override paths can also set rewardClaimed
-      // Derived from real state, not solely the new column's default.
-      const rewardClaimed =
-        (drop as any).rewardClaimed === true ||
-        (drop.verdictReady === true && drop.verdictDecidedAt != null);
+      // Reward-lock signal: only true once the customer has actually claimed
+      // the points for this drop. Until a real claim event flips this flag,
+      // staff corrections may freely flip the verdict and adjust points.
+      // Verdict-decided != claimed.
+      const rewardClaimed = (drop as any).rewardClaimed === true;
       const verdictChanged = drop.verdictAccepted !== correctedAccepted;
 
       if (!rewardClaimed && verdictChanged) {
