@@ -1503,14 +1503,28 @@ export class DatabaseStorage implements IStorage {
 
   async getClassifierCostMicrosForDay(day: string): Promise<number> {
     const [row] = await db
-      .select({ total: sql<number>`COALESCE(SUM(${classifierCostLog.costMicros}), 0)::bigint` })
+      .select({ total: classifierCostLog.totalMicros })
       .from(classifierCostLog)
       .where(eq(classifierCostLog.day, day));
-    return Number(row?.total ?? 0);
+    return Number(row?.total || 0);
   }
 
   async recordClassifierCost(data: InsertClassifierCostLog): Promise<ClassifierCostLog> {
-    const [row] = await db.insert(classifierCostLog).values(data).returning();
+    const day = data.day;
+    const addMicros = Number((data as any).totalMicros ?? (data as any).costMicros ?? 0);
+    const addCount = Number((data as any).callCount ?? 1);
+    const [row] = await db
+      .insert(classifierCostLog)
+      .values({ day, totalMicros: addMicros, callCount: addCount })
+      .onConflictDoUpdate({
+        target: classifierCostLog.day,
+        set: {
+          totalMicros: sql`${classifierCostLog.totalMicros} + ${addMicros}`,
+          callCount: sql`${classifierCostLog.callCount} + ${addCount}`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
     return row;
   }
 

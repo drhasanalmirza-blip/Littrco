@@ -754,20 +754,14 @@ export type InsertClassifierCorrection = z.infer<typeof insertClassifierCorrecti
 export type ClassifierCorrection = typeof classifierCorrections.$inferSelect;
 
 export const classifierCostLog = pgTable("classifier_cost_log", {
-  id: serial("id").primaryKey(),
-  day: date("day").notNull(),
-  imageId: integer("image_id").references(() => dropImages.id, { onDelete: "set null" }),
-  version: text("version").notNull(),
-  costMicros: integer("cost_micros").notNull(),
-  cacheHit: boolean("cache_hit").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  dayIdx: index("classifier_cost_day_idx").on(table.day),
-}));
+  day: date("day").primaryKey(),
+  totalMicros: bigint("total_micros", { mode: "number" }).notNull().default(0),
+  callCount: integer("call_count").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 export const insertClassifierCostLogSchema = createInsertSchema(classifierCostLog).omit({
-  id: true,
-  createdAt: true,
+  updatedAt: true,
 });
 export type InsertClassifierCostLog = z.infer<typeof insertClassifierCostLogSchema>;
 export type ClassifierCostLog = typeof classifierCostLog.$inferSelect;

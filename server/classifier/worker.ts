@@ -128,11 +128,9 @@ export async function processCapture(args: {
     if (result.costMicros > 0 || !cacheHit) {
       await storage.recordClassifierCost({
         day: dayKey(),
-        imageId,
-        version: result.version,
-        costMicros: result.costMicros,
-        cacheHit,
-      });
+        totalMicros: result.costMicros,
+        callCount: cacheHit ? 0 : 1,
+      } as any);
     }
 
     const verdict = decideVerdict(result, {

@@ -3145,7 +3145,11 @@ export async function registerRoutes(
       if (!drop) return res.status(404).json({ error: "Drop not found" });
       const images = await storage.getDropImages(dropId);
       const hasClassifiable = images.some(img => img.imageRole === "crop" || img.imageRole === "after");
-      if (hasClassifiable) {
+      // Classifier (Task #5) is the source of truth for any drop with an
+      // eventId. Skip the legacy AI path in that case to avoid divergent
+      // status/category/points writes.
+      const classifierManaged = !!drop.eventId;
+      if (hasClassifiable && !classifierManaged) {
         const job = await storage.createAiJob({ dropId, provider: process.env.OPENAI_API_KEY ? "openai" : "null", status: "queued" });
         await storage.updateDrop(dropId, { status: "awaiting_ai" });
 
@@ -3173,34 +3177,35 @@ export async function registerRoutes(
           console.error("AI classification error:", aiError);
           await storage.updateAiJob(job.id, { status: "failed", finishedAt: new Date(), error: String(aiError) });
         }
-      } else {
+      } else if (!classifierManaged) {
         await storage.updateDrop(dropId, { status: "approved", category: "Unknown", pointsAwarded: 1 });
       }
 
       // Task #5 dual-trigger: if a capture (after/crop) arrived via the bin
       // module BEFORE the drop was submitted, the classifier hasn't run yet.
-      // Re-trigger processCapture for any such pending captures linked by
-      // either dropId or eventId.
+      // Link any orphan captures (dropId null) by eventId, then trigger
+      // processCapture for every after/crop image so the verdict is always
+      // finalized once the drop appears (avoids the race where classifierRanAt
+      // gate would skip needed work).
       try {
         if (drop.eventId) {
+          await storage.linkOrphanCapturesByEventId(drop.eventId, dropId);
           const linked = await storage.getDropImages(dropId);
           for (const img of linked) {
-            const pending = (img.imageRole === "after" || img.imageRole === "crop") && !img.classifierRanAt;
-            if (pending) {
-              queueMicrotask(async () => {
-                try {
-                  const { processCapture } = await import("./classifier/worker");
-                  await processCapture({
-                    eventId: drop.eventId!,
-                    binId: drop.binId,
-                    imageId: img.id,
-                    storageUrl: img.storageUrl,
-                  });
-                } catch (err: any) {
-                  console.error("[drops/submit] processCapture trigger failed:", err?.message || err);
-                }
-              });
-            }
+            if (img.imageRole !== "after" && img.imageRole !== "crop") continue;
+            queueMicrotask(async () => {
+              try {
+                const { processCapture } = await import("./classifier/worker");
+                await processCapture({
+                  eventId: drop.eventId!,
+                  binId: drop.binId,
+                  imageId: img.id,
+                  storageUrl: img.storageUrl,
+                });
+              } catch (err: any) {
+                console.error("[drops/submit] processCapture trigger failed:", err?.message || err);
+              }
+            });
           }
         }
       } catch (err: any) {
@@ -3679,8 +3684,12 @@ export async function registerRoutes(
         hash,
       } as any);
 
-      // Only trigger classifier for the "after"/"crop" role, and only on first insert
-      if (created && (imageRole === "after" || imageRole === "crop")) {
+      // Only trigger classifier when (a) first insert, (b) role is after/crop,
+      // AND (c) the drop already exists. If the drop hasn't arrived yet, leave
+      // classifierRanAt null so the orphan-link sweep in /api/drops/start or
+      // /api/drops/:dropId/submit will trigger processCapture once the drop is
+      // created — guaranteeing verdictReady is set.
+      if (created && existingDrop && (imageRole === "after" || imageRole === "crop")) {
         queueMicrotask(async () => {
           try {
             const { processCapture } = await import("./classifier/worker");
