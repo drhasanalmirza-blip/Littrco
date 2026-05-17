@@ -14,6 +14,13 @@ The frontend utilizes React 18 with TypeScript, built with Vite. Styling is hand
 ### Technical Implementations
 The backend is built with Node.js and Express.js, offering RESTful API endpoints. Authentication employs session-based mechanisms for users and SHA-256 hashed keys for devices, with bcrypt for password hashing and role-based access control (STAFF, PARTNER, CUSTOMER). An AI service, using an adapter pattern for providers like OpenAI Vision, classifies dropped items with cost control and deduplication. Realtime capabilities are planned with an adapter pattern for future MQTT integration.
 
+### Classifier Pipeline (Task #5)
+- Phase 0 (default): pass-through fallback — every capture is "uncertain @ 0.5", hand-labeled via `/admin/review`. Zero AI cost. App runs without `ANTHROPIC_API_KEY`.
+- Phase 1 (opt-in via `CLASSIFIER_PROVIDER=anthropic`): Claude Haiku 4.5 vision with pHash dedupe, prompt caching, and a daily USD budget cap (`CLASSIFIER_DAILY_USD_CAP`, default $0.50). On budget exceed → Phase 0 fallback.
+- Hard rule: classifier is only invoked from `processCapture` in `server/classifier/worker.ts`, triggered exclusively by `POST /api/bin-module/drop-capture` for `after`/`crop` image roles. Never on boot, page load, or cron.
+- Verdict applied per-bin via `bins.rejectNonVapes` / `rejectThcVapes`; ambiguous results land in `classifier_corrections` after staff review.
+- See `docs/CLASSIFIER.md` and `docs/BIN_MODULE_API.md` (Phase 1 section).
+
 ### Feature Specifications
 - **Smart Bin Features**: LITTR One bins include temperature (DS18B20), VOC (MQ135), and ultrasonic fill sensors. They feature an LED light bar for visual fill indication, a QR reward screen, and WiFi connectivity for real-time monitoring and alerts.
 - **Device API (V2)**: Implements UID-based pairing, session stacking for rewards, idempotent drop reporting, and cloud-configurable settings for bins.

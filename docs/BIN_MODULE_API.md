@@ -370,3 +370,59 @@ curl -X POST -H "X-Module-Token: $TOKEN" \
 curl -H "X-Module-Token: $TOKEN" \
   https://littr.co/api/bin-module/pending-drops
 ```
+
+---
+
+## Phase 1 Classifier Extensions (Task #5)
+
+The `drop-capture` route now also supports an event-scoped, idempotent flow that
+auto-creates the `Drop` row and (for `after`/`crop` captures) triggers the
+classifier pipeline. See `docs/CLASSIFIER.md` for the verdict rules and budget
+controls.
+
+### `POST /api/bin-module/drop-capture` — event-scoped
+
+Header: `X-Module-Token: <token>`
+
+Body:
+```json
+{
+  "eventId": "evt_<unique>",
+  "imageRole": "after",          // baseline | after | crop | debug
+  "imageBase64": "<JPEG base64>", // OR "storageUrl": "<URL>"
+  "hash": "<optional content hash>"
+}
+```
+
+Behavior:
+- Find-or-create `Drop` by `eventId` (unique).
+- **Idempotent** on `(eventId, imageRole)` — re-POSTs return the existing row
+  with `idempotent: true`.
+- JPEG bytes (if `imageBase64`) are stored under `uploads/captures/<binId>/`
+  and served at `/uploads/...`.
+- For `imageRole ∈ {after, crop}`: schedules `processCapture` via
+  `queueMicrotask` (response returns immediately). Other roles skip the
+  classifier.
+
+Legacy fast-path: callers that send `{dropId, imageRole, storageUrl}` (no
+`eventId`) keep the prior behavior — image is recorded against `dropId`, no
+classifier is invoked.
+
+### `GET /api/bin-module/drop-verdict?eventId=evt_xxx`
+
+Header: `X-Module-Token: <token>`
+
+Response:
+```json
+{ "ok": true, "data": {
+  "eventId": "evt_xxx",
+  "ready": true,
+  "accepted": true,
+  "reason": "vape",            // or "thc_vape" | "not_a_vape" | "uncertain" | "low_confidence" | "human:<label>"
+  "reviewNeeded": false,
+  "decidedAt": "2026-05-17T09:38:00.000Z"
+}}
+```
+
+Poll every ~500ms for up to a few seconds. The verdict is set once the
+classifier finishes (Phase 0 = instant pass-through; Phase 1 = ~1–3s).

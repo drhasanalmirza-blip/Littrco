@@ -72,6 +72,10 @@ import {
   type InsertVeriscanSession,
   type VeriscanItem,
   type InsertVeriscanItem,
+  type ClassifierCorrection,
+  type InsertClassifierCorrection,
+  type ClassifierCostLog,
+  type InsertClassifierCostLog,
   users,
   contacts,
   volunteers,
@@ -110,6 +114,8 @@ import {
   flavors,
   veriscanSessions,
   veriscanItems,
+  classifierCorrections,
+  classifierCostLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gte, sql, lt, inArray } from "drizzle-orm";
@@ -374,6 +380,19 @@ export interface IStorage {
   getVeriscanItem(id: number): Promise<VeriscanItem | undefined>;
   getVeriscanItemsBySession(sessionId: number): Promise<VeriscanItem[]>;
   updateVeriscanItem(id: number, data: Partial<VeriscanItem>): Promise<VeriscanItem | undefined>;
+
+  // Classifier (Task #5)
+  getDropByEventId(eventId: string): Promise<Drop | undefined>;
+  updateDropByEventId(eventId: string, data: Partial<Drop>): Promise<Drop | undefined>;
+  findDropImageByEventAndRole(eventId: string, imageRole: string): Promise<DropImage | undefined>;
+  findOrCreateDropByEventId(eventId: string, defaults: InsertDrop): Promise<Drop>;
+  createDropImageIdempotent(data: InsertDropImage): Promise<{ image: DropImage; created: boolean }>;
+  updateDropImageClassifier(imageId: number, data: Partial<DropImage>): Promise<DropImage | undefined>;
+  findClassifierResultByPhash(phash: string): Promise<DropImage | undefined>;
+  getClassifierCostMicrosForDay(day: string): Promise<number>;
+  recordClassifierCost(data: InsertClassifierCostLog): Promise<ClassifierCostLog>;
+  createClassifierCorrection(data: InsertClassifierCorrection): Promise<ClassifierCorrection>;
+  getReviewQueue(limit?: number): Promise<Array<Drop & { images: DropImage[] }>>;
 }
 
 export interface ActivityLogEntry {
@@ -1389,6 +1408,104 @@ export class DatabaseStorage implements IStorage {
   async updateVeriscanItem(id: number, data: Partial<VeriscanItem>): Promise<VeriscanItem | undefined> {
     const [updated] = await db.update(veriscanItems).set(data).where(eq(veriscanItems.id, id)).returning();
     return updated;
+  }
+
+  // ==================== Classifier (Task #5) ====================
+
+  async getDropByEventId(eventId: string): Promise<Drop | undefined> {
+    const [drop] = await db.select().from(drops).where(eq(drops.eventId, eventId));
+    return drop;
+  }
+
+  async updateDropByEventId(eventId: string, data: Partial<Drop>): Promise<Drop | undefined> {
+    const [updated] = await db.update(drops).set(data).where(eq(drops.eventId, eventId)).returning();
+    return updated;
+  }
+
+  async findDropImageByEventAndRole(eventId: string, imageRole: string): Promise<DropImage | undefined> {
+    const [img] = await db.select().from(dropImages).where(
+      and(eq(dropImages.eventId, eventId), eq(dropImages.imageRole, imageRole as any)),
+    );
+    return img;
+  }
+
+  async findOrCreateDropByEventId(eventId: string, defaults: InsertDrop): Promise<Drop> {
+    const existing = await this.getDropByEventId(eventId);
+    if (existing) return existing;
+    try {
+      const [created] = await db.insert(drops).values(defaults).returning();
+      return created;
+    } catch (err: any) {
+      // Race: another request created it; re-read
+      const again = await this.getDropByEventId(eventId);
+      if (again) return again;
+      throw err;
+    }
+  }
+
+  async createDropImageIdempotent(data: InsertDropImage): Promise<{ image: DropImage; created: boolean }> {
+    if (data.eventId && data.imageRole) {
+      const existing = await this.findDropImageByEventAndRole(data.eventId, data.imageRole);
+      if (existing) return { image: existing, created: false };
+    }
+    try {
+      const [created] = await db.insert(dropImages).values(data).returning();
+      return { image: created, created: true };
+    } catch (err: any) {
+      if (data.eventId && data.imageRole) {
+        const after = await this.findDropImageByEventAndRole(data.eventId, data.imageRole);
+        if (after) return { image: after, created: false };
+      }
+      throw err;
+    }
+  }
+
+  async updateDropImageClassifier(imageId: number, data: Partial<DropImage>): Promise<DropImage | undefined> {
+    const [updated] = await db.update(dropImages).set(data).where(eq(dropImages.id, imageId)).returning();
+    return updated;
+  }
+
+  async findClassifierResultByPhash(phash: string): Promise<DropImage | undefined> {
+    const [img] = await db
+      .select()
+      .from(dropImages)
+      .where(and(eq(dropImages.phash, phash), sql`${dropImages.classifierLabel} IS NOT NULL`))
+      .orderBy(desc(dropImages.classifierRanAt))
+      .limit(1);
+    return img;
+  }
+
+  async getClassifierCostMicrosForDay(day: string): Promise<number> {
+    const [row] = await db
+      .select({ total: sql<number>`COALESCE(SUM(${classifierCostLog.costMicros}), 0)::bigint` })
+      .from(classifierCostLog)
+      .where(eq(classifierCostLog.day, day));
+    return Number(row?.total ?? 0);
+  }
+
+  async recordClassifierCost(data: InsertClassifierCostLog): Promise<ClassifierCostLog> {
+    const [row] = await db.insert(classifierCostLog).values(data).returning();
+    return row;
+  }
+
+  async createClassifierCorrection(data: InsertClassifierCorrection): Promise<ClassifierCorrection> {
+    const [row] = await db.insert(classifierCorrections).values(data).returning();
+    return row;
+  }
+
+  async getReviewQueue(limit = 50): Promise<Array<Drop & { images: DropImage[] }>> {
+    const rows = await db
+      .select()
+      .from(drops)
+      .where(and(eq(drops.verdictReviewNeeded, true), eq(drops.verdictReady, true)))
+      .orderBy(desc(drops.verdictDecidedAt))
+      .limit(limit);
+    const result: Array<Drop & { images: DropImage[] }> = [];
+    for (const d of rows) {
+      const imgs = await db.select().from(dropImages).where(eq(dropImages.dropId, d.id));
+      result.push({ ...d, images: imgs });
+    }
+    return result;
   }
 }
 

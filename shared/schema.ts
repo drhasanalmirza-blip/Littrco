@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique, doublePrecision, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, pgEnum, unique, doublePrecision, real, bigint, date, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -328,6 +328,8 @@ export const bins = pgTable("bins", {
   lastVocAnalog: integer("last_voc_analog"),
   lastVocDigital: boolean("last_voc_digital"),
   lastSeenAt: timestamp("last_seen_at"),
+  rejectNonVapes: boolean("reject_non_vapes").notNull().default(false),
+  rejectThcVapes: boolean("reject_thc_vapes").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -599,6 +601,13 @@ export const drops = pgTable("drops", {
   aiModelVersion: text("ai_model_version"),
   overrideSource: text("override_source"),
   veriscanItemId: integer("veriscan_item_id"),
+  eventId: text("event_id").unique(),
+  verdictReady: boolean("verdict_ready").notNull().default(false),
+  verdictAccepted: boolean("verdict_accepted"),
+  verdictReason: text("verdict_reason"),
+  verdictDecidedAt: timestamp("verdict_decided_at"),
+  verdictReviewNeeded: boolean("verdict_review_needed").notNull().default(false),
+  rewardClaimed: boolean("reward_claimed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -611,12 +620,23 @@ export type Drop = typeof drops.$inferSelect;
 
 export const dropImages = pgTable("drop_images", {
   id: serial("id").primaryKey(),
-  dropId: integer("drop_id").notNull().references(() => drops.id, { onDelete: "cascade" }),
+  dropId: integer("drop_id").references(() => drops.id, { onDelete: "cascade" }),
+  eventId: text("event_id"),
+  binId: integer("bin_id").references(() => bins.id),
   imageRole: imageRoleEnum("image_role").notNull(),
   storageUrl: text("storage_url").notNull(),
   hash: text("hash"),
+  phash: varchar("phash", { length: 32 }),
+  classifierLabel: text("classifier_label"),
+  classifierConfidence: real("classifier_confidence"),
+  classifierRanAt: timestamp("classifier_ran_at"),
+  classifierVersion: text("classifier_version"),
+  classifierCostMicros: integer("classifier_cost_micros"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  phashIdx: index("drop_images_phash_idx").on(table.phash),
+  eventIdx: index("drop_images_event_idx").on(table.eventId),
+}));
 
 export const insertDropImageSchema = createInsertSchema(dropImages).omit({
   id: true,
@@ -711,6 +731,45 @@ export const insertFlavorSchema = createInsertSchema(flavors).omit({
 });
 export type InsertFlavor = z.infer<typeof insertFlavorSchema>;
 export type Flavor = typeof flavors.$inferSelect;
+
+export const classifierCorrections = pgTable("classifier_corrections", {
+  id: serial("id").primaryKey(),
+  dropId: integer("drop_id").references(() => drops.id, { onDelete: "cascade" }),
+  imageId: integer("image_id").references(() => dropImages.id, { onDelete: "cascade" }),
+  modelLabel: text("model_label"),
+  modelConfidence: real("model_confidence"),
+  modelVersion: text("model_version"),
+  humanLabel: text("human_label").notNull(),
+  reviewerId: varchar("reviewer_id").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertClassifierCorrectionSchema = createInsertSchema(classifierCorrections).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertClassifierCorrection = z.infer<typeof insertClassifierCorrectionSchema>;
+export type ClassifierCorrection = typeof classifierCorrections.$inferSelect;
+
+export const classifierCostLog = pgTable("classifier_cost_log", {
+  id: serial("id").primaryKey(),
+  day: date("day").notNull(),
+  imageId: integer("image_id").references(() => dropImages.id, { onDelete: "set null" }),
+  version: text("version").notNull(),
+  costMicros: integer("cost_micros").notNull(),
+  cacheHit: boolean("cache_hit").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  dayIdx: index("classifier_cost_day_idx").on(table.day),
+}));
+
+export const insertClassifierCostLogSchema = createInsertSchema(classifierCostLog).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertClassifierCostLog = z.infer<typeof insertClassifierCostLogSchema>;
+export type ClassifierCostLog = typeof classifierCostLog.$inferSelect;
 
 export const veriscanSessions = pgTable("veriscan_sessions", {
   id: serial("id").primaryKey(),

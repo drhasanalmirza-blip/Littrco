@@ -3555,12 +3555,182 @@ export async function registerRoutes(
 
   app.post("/api/bin-module/drop-capture", moduleAuth, async (req: any, res) => {
     try {
-      const { dropId, imageRole, storageUrl, hash } = req.body;
-      if (!dropId || !imageRole || !storageUrl) return res.status(400).json({ error: "dropId, imageRole, storageUrl required" });
-      const image = await storage.createDropImage({ dropId, imageRole, storageUrl, hash });
-      res.json({ ok: true, data: image });
-    } catch (error) {
+      const cap = req.binCapabilities;
+      const { eventId, imageRole, imageBase64, storageUrl: providedUrl, hash, dropId: legacyDropId } = req.body;
+
+      // Legacy fast-path (no eventId) — pre-existing behavior, no classifier
+      if (!eventId && legacyDropId && providedUrl) {
+        const image = await storage.createDropImage({
+          dropId: legacyDropId, imageRole, storageUrl: providedUrl, hash, binId: cap.binId,
+        });
+        return res.json({ ok: true, data: image });
+      }
+
+      if (!eventId || !imageRole) {
+        return res.status(400).json({ error: "eventId and imageRole required" });
+      }
+
+      // Fast-path idempotency: if we already have this image, skip writing bytes
+      const existing = await storage.findDropImageByEventAndRole(eventId, imageRole);
+      if (existing) {
+        return res.json({ ok: true, data: existing, idempotent: true });
+      }
+
+      // Persist image bytes if provided
+      let storageUrl = providedUrl;
+      if (imageBase64) {
+        const { writeCaptureJpeg } = await import("./blob");
+        const buf = Buffer.from(imageBase64, "base64");
+        const written = await writeCaptureJpeg(cap.binId, buf);
+        storageUrl = written.url;
+      }
+      if (!storageUrl) {
+        return res.status(400).json({ error: "imageBase64 or storageUrl required" });
+      }
+
+      // Find-or-create drop by eventId (race-safe)
+      const bin = await storage.getBin(cap.binId);
+      const drop = await storage.findOrCreateDropByEventId(eventId, {
+        eventId,
+        binId: cap.binId,
+        shopId: bin?.shopId ?? null,
+        userId: null,
+        status: "awaiting_ai",
+        category: "Unknown",
+        pointsAwarded: 0,
+      } as any);
+
+      const { image, created } = await storage.createDropImageIdempotent({
+        dropId: drop.id,
+        eventId,
+        binId: cap.binId,
+        imageRole,
+        storageUrl,
+        hash,
+      } as any);
+
+      // Only trigger classifier for the "after"/"crop" role, and only on first insert
+      if (created && (imageRole === "after" || imageRole === "crop")) {
+        queueMicrotask(async () => {
+          try {
+            const { processCapture } = await import("./classifier/worker");
+            await processCapture({ eventId, binId: cap.binId, imageId: image.id, storageUrl: storageUrl! });
+          } catch (err: any) {
+            console.error("[bin-module] processCapture trigger failed:", err?.message || err);
+          }
+        });
+      }
+
+      res.json({ ok: true, data: { image, drop }, idempotent: !created });
+    } catch (error: any) {
+      console.error("drop-capture error:", error?.message || error);
       res.status(500).json({ ok: false, error: "Failed to store drop capture" });
+    }
+  });
+
+  // ==================== ADMIN REVIEW (Task #5) ====================
+
+  app.get("/api/admin/review/queue", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const queue = await storage.getReviewQueue(limit);
+      res.json({ ok: true, data: queue });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch review queue" });
+    }
+  });
+
+  app.get("/api/admin/review/budget", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    try {
+      const day = new Date().toISOString().slice(0, 10);
+      const spentMicros = await storage.getClassifierCostMicrosForDay(day);
+      const capUsd = parseFloat(process.env.CLASSIFIER_DAILY_USD_CAP || "0.50");
+      res.json({
+        ok: true,
+        data: {
+          day,
+          spentUsd: spentMicros / 1_000_000,
+          capUsd,
+          provider: process.env.CLASSIFIER_PROVIDER || "off",
+          hasApiKey: !!process.env.ANTHROPIC_API_KEY,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch budget" });
+    }
+  });
+
+  app.post("/api/admin/review/:dropId", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const dropId = parseInt(req.params.dropId);
+      const { imageId, humanLabel, notes, acceptOverride } = req.body || {};
+      if (!humanLabel) return res.status(400).json({ error: "humanLabel required" });
+
+      let modelLabel: string | null = null;
+      let modelConfidence: number | null = null;
+      let modelVersion: string | null = null;
+      if (imageId) {
+        const imgs = await storage.getDropImages(dropId);
+        const img = imgs.find((i) => i.id === imageId);
+        if (img) {
+          modelLabel = img.classifierLabel ?? null;
+          modelConfidence = img.classifierConfidence ?? null;
+          modelVersion = img.classifierVersion ?? null;
+        }
+      }
+
+      const correction = await storage.createClassifierCorrection({
+        dropId,
+        imageId: imageId || null,
+        modelLabel,
+        modelConfidence,
+        modelVersion,
+        humanLabel,
+        reviewerId: req.user!.id,
+        notes: notes || null,
+      } as any);
+
+      const accepted = typeof acceptOverride === "boolean"
+        ? acceptOverride
+        : humanLabel === "vape";
+      await storage.updateDrop(dropId, {
+        verdictReviewNeeded: false,
+        verdictAccepted: accepted,
+        verdictReason: `human:${humanLabel}`,
+        verdictDecidedAt: new Date(),
+        overrideSource: `staff:${req.user!.email}`,
+        status: accepted ? "approved" : "denied",
+      });
+
+      res.json({ ok: true, data: correction });
+    } catch (error: any) {
+      console.error("admin review error:", error?.message || error);
+      res.status(500).json({ ok: false, error: "Failed to submit correction" });
+    }
+  });
+
+  app.get("/api/bin-module/drop-verdict", moduleAuth, async (req: any, res) => {
+    try {
+      const eventId = (req.query.eventId as string) || "";
+      if (!eventId) return res.status(400).json({ error: "eventId required" });
+      const drop = await storage.getDropByEventId(eventId);
+      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
+      if (drop.binId !== req.binCapabilities.binId) {
+        return res.status(403).json({ ok: false, error: "Forbidden" });
+      }
+      res.json({
+        ok: true,
+        data: {
+          eventId,
+          ready: drop.verdictReady,
+          accepted: drop.verdictAccepted,
+          reason: drop.verdictReason,
+          reviewNeeded: drop.verdictReviewNeeded,
+          decidedAt: drop.verdictDecidedAt,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: "Failed to fetch verdict" });
     }
   });
 

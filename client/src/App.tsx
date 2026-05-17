@@ -17,6 +17,7 @@ import { Login } from "@/components/auth/Login";
 import { MobileStickyCTA } from "@/components/MobileStickyCTA";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import AdminDashboard from "@/pages/admin/Dashboard";
+import AdminReview from "@/pages/admin/Review";
 import StaffDashboard from "@/pages/staff/Dashboard";
 import StaffSetup from "@/pages/staff/Setup";
 import PartnerDashboard from "@/pages/partner/Dashboard";
@@ -42,6 +43,7 @@ function withErrorBoundary<P extends object>(Component: React.ComponentType<P>) 
 
 const GuardedVeriScan = withErrorBoundary(VeriScanPage);
 const GuardedAdminDashboard = withErrorBoundary(AdminDashboard);
+const GuardedAdminReview = withErrorBoundary(AdminReview);
 const GuardedStaffSetup = withErrorBoundary(StaffSetup);
 const GuardedStaffDashboard = withErrorBoundary(StaffDashboard);
 const GuardedPartnerDashboard = withErrorBoundary(PartnerDashboard);
@@ -98,6 +100,7 @@ function Router() {
         {/* Auth Portals */}
         <Route path="/admin/login" component={() => <Login type="admin" />} />
         <Route path="/admin/dashboard" component={GuardedAdminDashboard} />
+        <Route path="/admin/review" component={GuardedAdminReview} />
         
         <Route path="/staff/login" component={() => <Login type="staff" />} />
         <Route path="/staff/setup" component={GuardedStaffSetup} />
