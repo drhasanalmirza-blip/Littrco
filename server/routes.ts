@@ -3673,6 +3673,11 @@ export async function registerRoutes(
       // eventId (dropId null) and the verdict will compute when the drop is
       // POSTed by firmware via /api/drops/submit (see capture-before-drop sweep).
       const existingDrop = await storage.getDropByEventId(eventId);
+      // Authz: a module token for Bin A may not submit captures for Bin B.
+      // Reject cross-bin eventId injection before writing or processing.
+      if (existingDrop && existingDrop.binId != null && existingDrop.binId !== cap.binId) {
+        return res.status(403).json({ error: "eventId belongs to a different bin" });
+      }
       const drop = existingDrop ?? null;
 
       const { image: createdImage, created } = await storage.createDropImageIdempotent({

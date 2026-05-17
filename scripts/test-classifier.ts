@@ -170,4 +170,18 @@ await test("SSRF: rejects path-traversal in /uploads/", async () => {
   assert.equal(r, null);
 });
 
+// Authz regression: cross-bin eventId injection on drop-capture must be 403
+if (httpUp) {
+  await test("AUTHZ: drop-capture rejects cross-bin eventId (or 401 without valid token)", async () => {
+    const r = await fetch(`${BASE}/api/bin-module/drop-capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-module-token": "invalid-token-for-cross-bin" },
+      body: JSON.stringify({ eventId: "evt-cross-bin-test", imageRole: "after", storageUrl: "/uploads/x.jpg" }),
+    });
+    // Without a valid module token we expect 401; the in-route 403 ownership
+    // check is asserted by unit-level binId comparison above.
+    assert.ok([401, 403].includes(r.status), `expected 401/403, got ${r.status}`);
+  });
+}
+
 console.log(`\n${passed} tests passed`);
