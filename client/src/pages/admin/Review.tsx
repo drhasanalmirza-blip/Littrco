@@ -41,16 +41,19 @@ export default function AdminReview() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [notesById, setNotesById] = useState<Record<number, string>>({});
+  const [page, setPage] = useState(1);
+  const limit = 50;
 
   const { data: queueResp, isLoading } = useQuery({
-    queryKey: ["admin-review-queue"],
+    queryKey: ["admin-review-queue", page],
     queryFn: async () => {
-      const res = await apiRequest("/api/admin/review");
+      const res = await apiRequest(`/api/admin/review?page=${page}&limit=${limit}`);
       if (!res.ok) throw new Error("Failed to fetch queue");
       return res.json();
     },
     refetchInterval: 30000,
   });
+  const pagination = queueResp?.pagination as { page: number; limit: number; total: number; totalPages: number } | undefined;
 
   const { data: budgetResp } = useQuery({
     queryKey: ["admin-review-budget"],
@@ -126,6 +129,32 @@ export default function AdminReview() {
               Nothing needs review.
             </CardContent>
           </Card>
+        )}
+
+        {pagination && pagination.total > 0 && (
+          <div className="flex items-center justify-between text-sm" data-testid="pagination-controls">
+            <span data-testid="text-pagination-info">
+              Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
+            </span>
+            <div className="flex gap-2">
+              <button
+                className="px-3 py-1 rounded border disabled:opacity-50"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                data-testid="button-prev-page"
+              >
+                Previous
+              </button>
+              <button
+                className="px-3 py-1 rounded border disabled:opacity-50"
+                disabled={page >= (pagination.totalPages || 1)}
+                onClick={() => setPage((p) => p + 1)}
+                data-testid="button-next-page"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
 
         {queue.map((drop) => {

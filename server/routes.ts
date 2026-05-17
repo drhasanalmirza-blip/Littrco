@@ -3711,9 +3711,18 @@ export async function registerRoutes(
 
   app.get("/api/admin/review", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
-      const queue = await storage.getReviewQueue(limit);
-      res.json({ ok: true, data: queue });
+      const page = Math.max(1, parseInt((req.query.page as string) || "1") || 1);
+      const limit = Math.min(200, Math.max(1, parseInt((req.query.limit as string) || "50") || 50));
+      const offset = (page - 1) * limit;
+      const [queue, total] = await Promise.all([
+        storage.getReviewQueue(limit, offset),
+        storage.getReviewQueueCount(),
+      ]);
+      res.json({
+        ok: true,
+        data: queue,
+        pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+      });
     } catch (error) {
       res.status(500).json({ ok: false, error: "Failed to fetch review queue" });
     }

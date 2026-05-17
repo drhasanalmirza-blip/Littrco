@@ -375,10 +375,13 @@ curl -H "X-Module-Token: $TOKEN" \
 
 ## Phase 1 Classifier Extensions (Task #5)
 
-The `drop-capture` route now also supports an event-scoped, idempotent flow that
-auto-creates the `Drop` row and (for `after`/`crop` captures) triggers the
-classifier pipeline. See `docs/CLASSIFIER.md` for the verdict rules and budget
-controls.
+The `drop-capture` route now also supports an event-scoped, idempotent flow.
+Captures are stored and linked to a `Drop` by `eventId`. The route does **not**
+auto-create the `Drop` row — if firmware uploads captures before posting the
+drop, the captures are queued (with `dropId = null` on `drop_images`) and the
+classifier runs once the drop arrives via `POST /api/drops/start` (with
+`eventId`) or `POST /api/drops/:dropId/submit`. See `docs/CLASSIFIER.md` for the
+verdict rules, race handling, and budget controls.
 
 ### `POST /api/bin-module/drop-capture` — event-scoped
 
@@ -395,14 +398,18 @@ Body:
 ```
 
 Behavior:
-- Find-or-create `Drop` by `eventId` (unique).
+- **Does NOT auto-create the drop.** If a `Drop` row with this `eventId`
+  exists, the image is linked to it. Otherwise the image is stored with
+  `dropId = null` and queued by `eventId`.
 - **Idempotent** on `(eventId, imageRole)` — re-POSTs return the existing row
   with `idempotent: true`.
 - JPEG bytes (if `imageBase64`) are stored under `uploads/captures/<binId>/`
   and served at `/uploads/...`.
 - For `imageRole ∈ {after, crop}`: schedules `processCapture` via
-  `queueMicrotask` (response returns immediately). Other roles skip the
-  classifier.
+  `queueMicrotask` **only if the drop already exists**. When the drop
+  arrives later (via `/api/drops/start?eventId=...` or
+  `/api/drops/:dropId/submit`), the server links orphan captures by
+  `eventId` and runs `processCapture` then. Other roles skip the classifier.
 
 Legacy fast-path: callers that send `{dropId, imageRole, storageUrl}` (no
 `eventId`) keep the prior behavior — image is recorded against `dropId`, no

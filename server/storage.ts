@@ -393,7 +393,8 @@ export interface IStorage {
   getClassifierCostMicrosForDay(day: string): Promise<number>;
   recordClassifierCost(data: InsertClassifierCostLog): Promise<ClassifierCostLog>;
   createClassifierCorrection(data: InsertClassifierCorrection): Promise<ClassifierCorrection>;
-  getReviewQueue(limit?: number): Promise<Array<Drop & { images: DropImage[] }>>;
+  getReviewQueue(limit?: number, offset?: number): Promise<Array<Drop & { images: DropImage[] }>>;
+  getReviewQueueCount(): Promise<number>;
 }
 
 export interface ActivityLogEntry {
@@ -1533,13 +1534,22 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getReviewQueue(limit = 50): Promise<Array<Drop & { images: DropImage[] }>> {
+  async getReviewQueueCount(): Promise<number> {
+    const [row] = await db
+      .select({ n: sql<number>`COUNT(*)::int` })
+      .from(drops)
+      .where(and(eq(drops.verdictReviewNeeded, true), eq(drops.verdictReady, true)));
+    return Number(row?.n || 0);
+  }
+
+  async getReviewQueue(limit = 50, offset = 0): Promise<Array<Drop & { images: DropImage[] }>> {
     const rows = await db
       .select()
       .from(drops)
       .where(and(eq(drops.verdictReviewNeeded, true), eq(drops.verdictReady, true)))
       .orderBy(desc(drops.verdictDecidedAt))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
     const result: Array<Drop & { images: DropImage[] }> = [];
     for (const d of rows) {
       const imgs = await db.select().from(dropImages).where(eq(dropImages.dropId, d.id));

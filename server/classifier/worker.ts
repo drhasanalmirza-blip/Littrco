@@ -32,21 +32,27 @@ export function decideVerdict(
   result: ClassifyResult,
   bin: { rejectNonVapes: boolean | null; rejectThcVapes: boolean | null },
 ): Verdict {
-  // Phase 0 / fallback: explicit auto-accept with review flag.
+  // Spec rule (applies uniformly, including to hard-reject outcomes):
+  //   reviewNeeded = (label == "uncertain") || (confidence < 0.7) ||
+  //                  (version startsWith "pass_through")
+  const reviewNeeded =
+    result.label === "uncertain" ||
+    result.confidence < REVIEW_CONF ||
+    result.version.startsWith("pass_through");
+
+  // Phase 0 / fallback: explicit auto-accept with the review flag set.
   if (result.version.startsWith("pass_through")) {
-    return { accepted: true, reason: "auto_accepted", reviewNeeded: true };
+    return { accepted: true, reason: "auto_accepted", reviewNeeded };
   }
   if (result.confidence < LOW_CONF) {
-    return { accepted: true, reason: "low_confidence", reviewNeeded: true };
+    return { accepted: true, reason: "low_confidence", reviewNeeded };
   }
   if (result.label === "not_a_vape" && bin.rejectNonVapes) {
-    return { accepted: false, reason: "not_a_vape", reviewNeeded: true };
+    return { accepted: false, reason: "not_a_vape", reviewNeeded };
   }
   if (result.label === "thc_vape" && bin.rejectThcVapes) {
-    return { accepted: false, reason: "thc_vape", reviewNeeded: true };
+    return { accepted: false, reason: "thc_vape", reviewNeeded };
   }
-  const reviewNeeded =
-    result.label === "uncertain" || result.confidence < REVIEW_CONF;
   return { accepted: true, reason: result.label, reviewNeeded };
 }
 

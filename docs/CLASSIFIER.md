@@ -41,8 +41,9 @@ version = "pass_through:1"
 costMicros = 0
 ```
 
-Verdict: **accepted**, `reviewNeeded=true`, reason = `low_confidence` (because
-0.5 < 0.55). The drop appears in `/admin/review` for human labeling.
+Verdict: **accepted**, `reviewNeeded=true`, `reason = auto_accepted`. The drop
+appears in `/admin/review` for human labeling. (Per spec, `reviewNeeded` is
+always true for pass-through versions regardless of confidence.)
 
 ## Phase 1 — Anthropic vision
 
@@ -93,10 +94,16 @@ Body (preferred):
 }
 ```
 
-- Find-or-create drop by `eventId` (unique).
+- Does **not** auto-create the drop. If a `drops` row with this `eventId`
+  exists, the capture is linked to it; otherwise the capture is stored with
+  `dropId = null` and queued by `eventId` until the drop arrives.
 - Idempotent on `(eventId, imageRole)` — re-POSTs return the existing image.
 - For `imageRole` in `{after, crop}`, schedules `processCapture` via
-  `queueMicrotask`. Other roles (`baseline`, `debug`) skip the classifier.
+  `queueMicrotask` **only when the drop already exists**. When firmware
+  later POSTs the drop via `/api/drops/start` (with `eventId`) or
+  `/api/drops/:dropId/submit`, the server links the orphan captures and
+  triggers `processCapture` then — guaranteeing `verdictReady` is set.
+  Other roles (`baseline`, `debug`) skip the classifier.
 
 ### `GET /api/bin-module/drop-verdict?eventId=evt_abc123`
 
@@ -113,12 +120,16 @@ The bin module polls this until `ready=true`, then displays the verdict.
 
 ## Admin review
 
-`GET /api/admin/review/queue` — drops with `verdictReviewNeeded=true`.
-`POST /api/admin/review/:dropId` — submit `{ imageId, humanLabel, notes, acceptOverride }`.
-Recorded in `classifier_corrections`; clears the review flag and updates the
-drop status.
+`GET /api/admin/review?page=1&limit=50` — paginated list of drops with
+`verdictReviewNeeded=true`, newest first. Response includes
+`pagination: { page, limit, total, totalPages }`.
+`POST /api/admin/review/:dropId/correct` — submit
+`{ correctedLabel, notes?, imageId? }`. Recorded in `classifier_corrections`;
+clears the review flag and, if reward not yet claimed, adjusts the drop's
+verdict + `pointsAwarded`.
 
-Frontend: `/admin/review` (staff role).
+Frontend: `/admin/review` (staff role) — accessible from the Drop Review tab in
+the staff dashboard.
 
 `GET /api/admin/review/budget` — today's spend, cap, provider, key presence.
 
