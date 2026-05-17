@@ -3193,6 +3193,10 @@ export async function registerRoutes(
           const linked = await storage.getDropImages(dropId);
           for (const img of linked) {
             if (img.imageRole !== "after" && img.imageRole !== "crop") continue;
+            // Skip images the worker has already classified to avoid
+            // duplicate runs / churn on resubmits. Worker still dedupes by
+            // pHash, but this is a cheaper short-circuit.
+            if ((img as any).classifierRanAt) continue;
             queueMicrotask(async () => {
               try {
                 const { processCapture } = await import("./classifier/worker");
@@ -3816,10 +3820,30 @@ export async function registerRoutes(
         overrideSource: `staff:${req.user!.email}`,
       };
 
-      // The corrected verdict, derived from the label (or explicit override).
-      const correctedAccepted = typeof acceptOverride === "boolean"
-        ? acceptOverride
-        : correctedLabel === "vape" || correctedLabel === "uncertain";
+      // The corrected verdict, derived from the label and the bin's policy
+      // toggles (rejectNonVapes / rejectThcVapes). An explicit acceptOverride
+      // boolean wins. This keeps human corrections consistent with the bin
+      // policy that the AI worker applies.
+      let correctedAccepted: boolean;
+      if (typeof acceptOverride === "boolean") {
+        correctedAccepted = acceptOverride;
+      } else {
+        const bin = drop.binId ? await storage.getBin(drop.binId) : null;
+        const rejectNonVapes = bin ? (bin as any).rejectNonVapes !== false : true;
+        const rejectThcVapes = bin ? (bin as any).rejectThcVapes !== false : true;
+        if (correctedLabel === "vape") {
+          correctedAccepted = true;
+        } else if (correctedLabel === "thc_vape") {
+          correctedAccepted = !rejectThcVapes;
+        } else if (correctedLabel === "not_a_vape") {
+          correctedAccepted = !rejectNonVapes;
+        } else {
+          // uncertain or anything else: accept (matches worker's policy of
+          // letting low-confidence/uncertain land in review, but defaulting
+          // to accepted once a human has touched it).
+          correctedAccepted = true;
+        }
+      }
 
       // Only flip the verdict (and adjust points) if the reward has not yet been
       // claimed by the customer. Otherwise we keep the existing reward intact.
