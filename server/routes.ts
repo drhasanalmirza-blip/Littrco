@@ -3074,15 +3074,20 @@ export async function registerRoutes(
         // and trigger the classifier for ones that haven't run yet.
         try {
           const linked = await storage.linkOrphanCapturesByEventId(eventId, drop.id);
+          // Guard: processCapture needs a concrete binId to load bin policy.
+          // drops.binId is NOT NULL at the schema level, but defensively skip
+          // if it is somehow missing so the trigger never silently no-ops on
+          // a wrong/null bin.
+          const triggerBinId: number | null = (drop.binId ?? null) as number | null;
           for (const img of linked) {
             const needs = (img.imageRole === "after" || img.imageRole === "crop") && !img.classifierRanAt;
-            if (needs) {
+            if (needs && triggerBinId != null) {
               queueMicrotask(async () => {
                 try {
                   const { processCapture } = await import("./classifier/worker");
                   await processCapture({
                     eventId,
-                    binId: drop.binId,
+                    binId: triggerBinId,
                     imageId: img.id,
                     storageUrl: img.storageUrl,
                   });
@@ -3090,6 +3095,8 @@ export async function registerRoutes(
                   console.error("[drops/start] processCapture trigger failed:", err?.message || err);
                 }
               });
+            } else if (needs && triggerBinId == null) {
+              console.error("[drops/start] skipping processCapture: drop has no binId", { dropId: drop.id, eventId });
             }
           }
         } catch (err: any) {
@@ -3191,25 +3198,30 @@ export async function registerRoutes(
         if (drop.eventId) {
           await storage.linkOrphanCapturesByEventId(drop.eventId, dropId);
           const linked = await storage.getDropImages(dropId);
-          for (const img of linked) {
-            if (img.imageRole !== "after" && img.imageRole !== "crop") continue;
-            // Skip images the worker has already classified to avoid
-            // duplicate runs / churn on resubmits. Worker still dedupes by
-            // pHash, but this is a cheaper short-circuit.
-            if ((img as any).classifierRanAt) continue;
-            queueMicrotask(async () => {
-              try {
-                const { processCapture } = await import("./classifier/worker");
-                await processCapture({
-                  eventId: drop.eventId!,
-                  binId: drop.binId,
-                  imageId: img.id,
-                  storageUrl: img.storageUrl,
-                });
-              } catch (err: any) {
-                console.error("[drops/submit] processCapture trigger failed:", err?.message || err);
-              }
-            });
+          const triggerBinId: number | null = (drop.binId ?? null) as number | null;
+          if (triggerBinId == null) {
+            console.error("[drops/submit] skipping processCapture: drop has no binId", { dropId, eventId: drop.eventId });
+          } else {
+            for (const img of linked) {
+              if (img.imageRole !== "after" && img.imageRole !== "crop") continue;
+              // Skip images the worker has already classified to avoid
+              // duplicate runs / churn on resubmits. Worker still dedupes by
+              // pHash, but this is a cheaper short-circuit.
+              if ((img as any).classifierRanAt) continue;
+              queueMicrotask(async () => {
+                try {
+                  const { processCapture } = await import("./classifier/worker");
+                  await processCapture({
+                    eventId: drop.eventId!,
+                    binId: triggerBinId,
+                    imageId: img.id,
+                    storageUrl: img.storageUrl,
+                  });
+                } catch (err: any) {
+                  console.error("[drops/submit] processCapture trigger failed:", err?.message || err);
+                }
+              });
+            }
           }
         }
       } catch (err: any) {
