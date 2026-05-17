@@ -84,4 +84,53 @@ await test("dailyBudgetExceeded: 0 budget → true", async () => {
   assert.equal(exceeded, true);
 });
 
+// HTTP-level smoke tests against the running server (skip if not reachable)
+const BASE = process.env.TEST_BASE_URL || "http://localhost:5000";
+async function reachable(): Promise<boolean> {
+  try {
+    const r = await fetch(`${BASE}/api/admin/review`, { method: "GET" });
+    return r.status === 401 || r.status === 403 || r.status === 200;
+  } catch {
+    return false;
+  }
+}
+const httpUp = await reachable();
+if (!httpUp) {
+  console.log("\n  (HTTP tests skipped — server not reachable at " + BASE + ")");
+} else {
+  await test("HTTP: GET /api/admin/review requires staff auth → 401/403", async () => {
+    const r = await fetch(`${BASE}/api/admin/review`);
+    assert.ok([401, 403].includes(r.status), `expected 401/403, got ${r.status}`);
+  });
+  await test("HTTP: POST /api/admin/review/:id/correct requires staff auth → 401/403", async () => {
+    const r = await fetch(`${BASE}/api/admin/review/1/correct`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ correctedLabel: "vape" }),
+    });
+    assert.ok([401, 403].includes(r.status), `expected 401/403, got ${r.status}`);
+  });
+  await test("HTTP: POST /api/bin-module/drop-capture requires module token → 401", async () => {
+    const r = await fetch(`${BASE}/api/bin-module/drop-capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ eventId: "evt-test", imageRole: "after", image: "x" }),
+    });
+    assert.equal(r.status, 401);
+  });
+  await test("HTTP: POST /api/bin-module/drop-verdict requires module token → 401", async () => {
+    const r = await fetch(`${BASE}/api/bin-module/drop-verdict?eventId=evt-test`);
+    assert.equal(r.status, 401);
+  });
+  await test("HTTP: POST /api/admin/review/:id/correct rejects missing correctedLabel (with bogus auth)", async () => {
+    // Even with bogus session cookie the body validation should be consistent — we just check no 500
+    const r = await fetch(`${BASE}/api/admin/review/999999/correct`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.ok(r.status >= 400 && r.status < 500, `expected 4xx, got ${r.status}`);
+  });
+}
+
 console.log(`\n${passed} tests passed`);

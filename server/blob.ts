@@ -16,17 +16,31 @@ export async function writeCaptureJpeg(binId: number | null, jpeg: Buffer): Prom
 }
 
 export async function readCaptureByUrl(url: string): Promise<Buffer | null> {
-  if (!url.startsWith("/uploads/")) return null;
-  const rel = url.slice("/uploads/".length);
-  const abs = path.resolve(ROOT, rel);
-  // Prevent path traversal: resolved path must remain inside ROOT
-  const rootWithSep = ROOT.endsWith(path.sep) ? ROOT : ROOT + path.sep;
-  if (abs !== ROOT && !abs.startsWith(rootWithSep)) return null;
-  try {
-    return await fs.readFile(abs);
-  } catch {
-    return null;
+  // Local /uploads/... path
+  if (url.startsWith("/uploads/")) {
+    const rel = url.slice("/uploads/".length);
+    const abs = path.resolve(ROOT, rel);
+    // Prevent path traversal: resolved path must remain inside ROOT
+    const rootWithSep = ROOT.endsWith(path.sep) ? ROOT : ROOT + path.sep;
+    if (abs !== ROOT && !abs.startsWith(rootWithSep)) return null;
+    try {
+      return await fs.readFile(abs);
+    } catch {
+      return null;
+    }
   }
+  // Remote http(s) URL — fetch and return bytes
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const ab = await resp.arrayBuffer();
+      return Buffer.from(ab);
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export function uploadsRoot(): string {

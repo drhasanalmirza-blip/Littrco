@@ -3053,16 +3053,58 @@ export async function registerRoutes(
 
   app.post("/api/drops/start", optionalAuthMiddleware, async (req, res) => {
     try {
-      const { binId, shopId } = req.body;
+      const { binId, shopId, eventId } = req.body;
       if (!shopId) return res.status(400).json({ error: "shopId required" });
-      const drop = await storage.createDrop({
-        binId: binId || null,
-        shopId,
-        userId: req.user?.id || null,
-        status: "awaiting_ai",
-        category: "Unknown",
-        pointsAwarded: 0,
-      });
+
+      // If an eventId is supplied and captures arrived first, prefer the
+      // pre-existing drop row (race-safe) instead of creating a duplicate.
+      let drop: any;
+      if (eventId) {
+        drop = await storage.findOrCreateDropByEventId(eventId, {
+          eventId,
+          binId: binId || null,
+          shopId,
+          userId: req.user?.id || null,
+          status: "awaiting_ai",
+          category: "Unknown",
+          pointsAwarded: 0,
+        } as any);
+
+        // Backfill any captures queued under this eventId without a dropId,
+        // and trigger the classifier for ones that haven't run yet.
+        try {
+          const linked = await storage.linkOrphanCapturesByEventId(eventId, drop.id);
+          for (const img of linked) {
+            const needs = (img.imageRole === "after" || img.imageRole === "crop") && !img.classifierRanAt;
+            if (needs) {
+              queueMicrotask(async () => {
+                try {
+                  const { processCapture } = await import("./classifier/worker");
+                  await processCapture({
+                    eventId,
+                    binId: drop.binId,
+                    imageId: img.id,
+                    storageUrl: img.storageUrl,
+                  });
+                } catch (err: any) {
+                  console.error("[drops/start] processCapture trigger failed:", err?.message || err);
+                }
+              });
+            }
+          }
+        } catch (err: any) {
+          console.error("[drops/start] orphan capture sweep failed:", err?.message || err);
+        }
+      } else {
+        drop = await storage.createDrop({
+          binId: binId || null,
+          shopId,
+          userId: req.user?.id || null,
+          status: "awaiting_ai",
+          category: "Unknown",
+          pointsAwarded: 0,
+        });
+      }
       res.json({ ok: true, data: drop });
     } catch (error) {
       res.status(500).json({ ok: false, error: "Failed to start drop" });
@@ -3621,20 +3663,15 @@ export async function registerRoutes(
         return res.status(400).json({ error: "image or storageUrl required" });
       }
 
-      // Find-or-create drop by eventId (race-safe)
-      const bin = await storage.getBin(cap.binId);
-      const drop = await storage.findOrCreateDropByEventId(eventId, {
-        eventId,
-        binId: cap.binId,
-        shopId: bin?.shopId ?? null,
-        userId: null,
-        status: "awaiting_ai",
-        category: "Unknown",
-        pointsAwarded: 0,
-      } as any);
+      // Per spec: do NOT implicitly create a drop. If a drop already exists
+      // by eventId, link the capture to it. Otherwise queue the capture by
+      // eventId (dropId null) and the verdict will compute when the drop is
+      // POSTed by firmware via /api/drops/submit (see capture-before-drop sweep).
+      const existingDrop = await storage.getDropByEventId(eventId);
+      const drop = existingDrop ?? null;
 
       const { image: createdImage, created } = await storage.createDropImageIdempotent({
-        dropId: drop.id,
+        dropId: existingDrop?.id ?? null,
         eventId,
         binId: cap.binId,
         imageRole,

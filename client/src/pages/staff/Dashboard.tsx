@@ -2193,6 +2193,13 @@ function DropReviewTab() {
               Drop Review
             </CardTitle>
             <CardDescription>Review AI-classified drops, override classifications, and manage appeals</CardDescription>
+            <a
+              href="/admin/review"
+              className="inline-block mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              data-testid="link-classifier-review"
+            >
+              → Open Classifier Review Queue (Task #5)
+            </a>
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[180px]" data-testid="select-drop-status-filter">

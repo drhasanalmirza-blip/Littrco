@@ -387,6 +387,7 @@ export interface IStorage {
   findDropImageByEventAndRole(eventId: string, imageRole: string): Promise<DropImage | undefined>;
   findOrCreateDropByEventId(eventId: string, defaults: InsertDrop): Promise<Drop>;
   createDropImageIdempotent(data: InsertDropImage): Promise<{ image: DropImage; created: boolean }>;
+  linkOrphanCapturesByEventId(eventId: string, dropId: number): Promise<DropImage[]>;
   updateDropImageClassifier(imageId: number, data: Partial<DropImage>): Promise<DropImage | undefined>;
   findClassifierResultByPhash(phash: string, withinHours?: number): Promise<DropImage | undefined>;
   getClassifierCostMicrosForDay(day: string): Promise<number>;
@@ -1458,6 +1459,24 @@ export class DatabaseStorage implements IStorage {
       }
       throw err;
     }
+  }
+
+  async linkOrphanCapturesByEventId(eventId: string, dropId: number): Promise<DropImage[]> {
+    const rows = await db.select().from(dropImages).where(eq(dropImages.eventId, eventId));
+    const updated: DropImage[] = [];
+    for (const r of rows) {
+      if (r.dropId === dropId) {
+        updated.push(r);
+        continue;
+      }
+      if (r.dropId == null) {
+        const [u] = await db.update(dropImages).set({ dropId }).where(eq(dropImages.id, r.id)).returning();
+        updated.push(u);
+      } else {
+        updated.push(r);
+      }
+    }
+    return updated;
   }
 
   async updateDropImageClassifier(imageId: number, data: Partial<DropImage>): Promise<DropImage | undefined> {
