@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { setRealtimeAdapter } from "./realtime";
+import { tryBootstrapMqttAdapter } from "./realtime-mqtt";
 
 const app = express();
 const httpServer = createServer(app);
@@ -66,6 +68,22 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Opt-in MQTT realtime: only activates when MQTT_BROKER_URL is set.
+  // Otherwise the default noOpAdapter (server/realtime.ts) stays in place.
+  // Fire-and-forget so a slow/down broker never delays HTTP boot.
+  if (process.env.MQTT_BROKER_URL) {
+    void tryBootstrapMqttAdapter().then((adapter) => {
+      if (adapter) {
+        setRealtimeAdapter(adapter);
+        log("MQTT realtime adapter active", "realtime");
+      } else {
+        log("MQTT bootstrap returned null — staying on noOp adapter", "realtime");
+      }
+    });
+  } else {
+    log("MQTT not configured — using noOp realtime adapter", "realtime");
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

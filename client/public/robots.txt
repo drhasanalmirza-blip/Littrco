@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /staff/
+Disallow: /partner/
+Disallow: /app/
+
+Sitemap: https://littr.co/sitemap.xml

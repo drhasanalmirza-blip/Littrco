@@ -395,6 +395,9 @@ export interface IStorage {
   createClassifierCorrection(data: InsertClassifierCorrection): Promise<ClassifierCorrection>;
   getReviewQueue(limit?: number, offset?: number): Promise<Array<Drop & { images: DropImage[] }>>;
   getReviewQueueCount(): Promise<number>;
+  markDropsClaimedByDropEventId(dropEventId: number): Promise<number>;
+  markDropsClaimedByRewardSessionId(sessionId: number): Promise<number>;
+  markDropClaimedById(dropId: number): Promise<boolean>;
 }
 
 export interface ActivityLogEntry {
@@ -1532,6 +1535,49 @@ export class DatabaseStorage implements IStorage {
   async createClassifierCorrection(data: InsertClassifierCorrection): Promise<ClassifierCorrection> {
     const [row] = await db.insert(classifierCorrections).values(data).returning();
     return row;
+  }
+
+  // Reward-lock writer: flip rewardClaimed=true on every drop linked to a
+  // claimed dropEvent. Returns row count. Idempotent — safe to call twice.
+  // The Task #5 reward-lock in /api/admin/review/:dropId/correct refuses to
+  // flip the verdict once rewardClaimed=true, so this MUST be called from
+  // every successful customer claim path (v1/legacy) for the lock to engage.
+  async markDropsClaimedByDropEventId(dropEventId: number): Promise<number> {
+    const rows = await db
+      .update(drops)
+      .set({ rewardClaimed: true })
+      .where(and(eq(drops.dropEventId, dropEventId), eq(drops.rewardClaimed, false)))
+      .returning({ id: drops.id });
+    return rows.length;
+  }
+
+  // v2/rewardSession claim path: a rewardSession aggregates N dropEvents
+  // (dropEvents.sessionId = session.id). Flip rewardClaimed on every Task #5
+  // drop linked (via drops.dropEventId) to any of those dropEvents. Returns
+  // the count flipped. Idempotent and race-free — uses a single UPDATE with a
+  // correlated subquery so any dropEvent inserted concurrently with the same
+  // sessionId is still covered (no stale id snapshot).
+  async markDropsClaimedByRewardSessionId(sessionId: number): Promise<number> {
+    const rows = await db
+      .update(drops)
+      .set({ rewardClaimed: true })
+      .where(
+        and(
+          eq(drops.rewardClaimed, false),
+          sql`${drops.dropEventId} IN (SELECT ${dropEvents.id} FROM ${dropEvents} WHERE ${dropEvents.sessionId} = ${sessionId})`,
+        ),
+      )
+      .returning({ id: drops.id });
+    return rows.length;
+  }
+
+  async markDropClaimedById(dropId: number): Promise<boolean> {
+    const rows = await db
+      .update(drops)
+      .set({ rewardClaimed: true })
+      .where(and(eq(drops.id, dropId), eq(drops.rewardClaimed, false)))
+      .returning({ id: drops.id });
+    return rows.length > 0;
   }
 
   async getReviewQueueCount(): Promise<number> {

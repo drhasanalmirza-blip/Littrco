@@ -943,7 +943,16 @@ export async function registerRoutes(
         type: "EARN",
         description: "Vape drop reward",
       });
-      
+
+      // Engage Task #5 reward-lock: flip drops.rewardClaimed for any Task #5
+      // drop linked back to this dropEvent, so staff corrections after this
+      // point can no longer change the verdict (see /api/admin/review/:id/correct).
+      try {
+        await storage.markDropsClaimedByDropEventId(dropEvent.id);
+      } catch (err) {
+        console.error('[Claim] markDropsClaimedByDropEventId failed for dropEvent', dropEvent.id, err);
+      }
+
       // Send email
       sendPointsClaimedEmail(user.email, dropEvent.pointsAwarded).catch(err => console.error('Email error:', err));
       
@@ -1572,7 +1581,14 @@ export async function registerRoutes(
         type: "EARN",
         description: `Recycling reward at ${shop?.name || 'LITTR location'}`,
       });
-      
+
+      // Engage Task #5 reward-lock (see /api/claim for rationale).
+      try {
+        await storage.markDropsClaimedByDropEventId(dropEvent.id);
+      } catch (err) {
+        console.error('[V1 Claim] markDropsClaimedByDropEventId failed for dropEvent', dropEvent.id, err);
+      }
+
       const newBalance = wallet.pointsBalance + dropEvent.pointsAwarded;
       
       // Send email
@@ -2766,6 +2782,14 @@ export async function registerRoutes(
         claimedByUserId: user!.id,
         claimedAt: new Date(),
       });
+
+      // Engage Task #5 reward-lock for every drop linked to this session
+      // (drops.dropEventId → dropEvents.sessionId = session.id).
+      try {
+        await storage.markDropsClaimedByRewardSessionId(session.id);
+      } catch (err) {
+        console.error('[V2 Claim] markDropsClaimedByRewardSessionId failed for session', session.id, err);
+      }
 
       const updatedWallet = await storage.getWallet(customer.id);
 

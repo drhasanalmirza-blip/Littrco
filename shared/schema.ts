@@ -608,6 +608,15 @@ export const drops = pgTable("drops", {
   verdictDecidedAt: timestamp("verdict_decided_at"),
   verdictReviewNeeded: boolean("verdict_review_needed").notNull().default(false),
   rewardClaimed: boolean("reward_claimed").notNull().default(false),
+  // Optional back-link to the legacy dropEvents table. Populated when a
+  // Task #5 drop is created alongside a v1/v2 dropEvent so customer claims
+  // (claim_tokens.drop_event_id → drops.drop_event_id) can flip rewardClaimed
+  // on the correct Task #5 row and engage the staff-correction reward lock.
+  // NOTE: writer side (populating this column at drop creation) is intentionally
+  // deferred — the bin-module/drop-capture pipeline is not yet unified with the
+  // v2/device/drop pipeline. Until that unification lands, lock methods will
+  // safely no-op on rows where this column is null.
+  dropEventId: integer("drop_event_id").references(() => dropEvents.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

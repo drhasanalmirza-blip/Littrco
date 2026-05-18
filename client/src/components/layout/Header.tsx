@@ -64,7 +64,7 @@ export function Header() {
               <Moon className="h-4 w-4 text-gray-600" />
             )}
           </button>
-          <Link href={user ? "/app" : "/app/login"}>
+          <Link href={user ? "/app" : "/app/login"} aria-label={user ? "Open my wallet" : "Log in to your LITTR account"}>
             <Button variant="outline" size="sm" className={cn(
               "transition-colors duration-500",
               user 
@@ -74,7 +74,7 @@ export function Header() {
               {user ? "My Wallet" : "Login"}
             </Button>
           </Link>
-          <Link href="/business">
+          <Link href="/business" aria-label="Request a free recycling bin for your business">
             <Button size="sm" className={cn(
               "font-semibold transition-colors duration-500",
               user 
@@ -128,7 +128,7 @@ export function Header() {
             </Link>
           ))}
           <div className="pt-2 border-t dark:border-gray-800 mt-2 space-y-2">
-            <Link href={user ? "/app" : "/app/login"} onClick={() => setIsOpen(false)}>
+            <Link href={user ? "/app" : "/app/login"} onClick={() => setIsOpen(false)} aria-label={user ? "Open my wallet" : "Log in to your LITTR account"}>
               <Button variant="outline" className={cn(
                 "w-full transition-colors duration-500",
                 user 
@@ -138,7 +138,7 @@ export function Header() {
                 {user ? "My Wallet" : "Login"}
               </Button>
             </Link>
-            <Link href="/business" onClick={() => setIsOpen(false)}>
+            <Link href="/business" onClick={() => setIsOpen(false)} aria-label="Request a free recycling bin for your business">
               <Button className={cn(
                 "w-full transition-colors duration-500",
                 user 
