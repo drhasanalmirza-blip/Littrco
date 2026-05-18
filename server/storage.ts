@@ -701,11 +701,11 @@ export class DatabaseStorage implements IStorage {
         const [updated] = await tx
           .update(rewardSessions)
           .set({
-            pointsTotal: sql`${rewardSessions.pointsTotal} + ${args.points}`,
-            dropCount: sql`${rewardSessions.dropCount} + 1`,
+            pointsTotal: sql<number>`${rewardSessions.pointsTotal} + ${args.points}`,
+            dropCount: sql<number>`${rewardSessions.dropCount} + 1`,
             lastDropAt: new Date(),
             expiresAt: newExpiry,
-          } as any)
+          })
           .where(eq(rewardSessions.id, active.id))
           .returning();
         session = updated;
