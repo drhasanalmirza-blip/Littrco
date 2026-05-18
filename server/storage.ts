@@ -184,6 +184,7 @@ export interface IStorage {
     generateToken: () => string;
   }): Promise<{ duplicate: boolean; dropEvent: DropEvent; session: RewardSession }>;
   getDropEventsByShop(shopId: number): Promise<DropEvent[]>;
+  getDropEventsWithVerdictByShop(shopId: number): Promise<(DropEvent & { verdictAccepted: boolean | null; verdictReason: string | null })[]>;
   getTodayDropEventsByDevice(deviceId: number): Promise<DropEvent[]>;
   getDropEvent(id: number): Promise<DropEvent | undefined>;
   
@@ -763,6 +764,31 @@ export class DatabaseStorage implements IStorage {
   
   async getDropEventsByShop(shopId: number): Promise<DropEvent[]> {
     return await db.select().from(dropEvents).where(eq(dropEvents.shopId, shopId)).orderBy(desc(dropEvents.createdAt));
+  }
+
+  async getDropEventsWithVerdictByShop(shopId: number): Promise<(DropEvent & { verdictAccepted: boolean | null; verdictReason: string | null })[]> {
+    const rows = await db
+      .select({
+        id: dropEvents.id,
+        shopId: dropEvents.shopId,
+        deviceId: dropEvents.deviceId,
+        deviceEventId: dropEvents.deviceEventId,
+        sessionId: dropEvents.sessionId,
+        pointsAwarded: dropEvents.pointsAwarded,
+        createdAt: dropEvents.createdAt,
+        verdictAccepted: drops.verdictAccepted,
+        verdictReason: drops.verdictReason,
+      })
+      .from(dropEvents)
+      .leftJoin(drops, eq(drops.dropEventId, dropEvents.id))
+      .where(eq(dropEvents.shopId, shopId))
+      .orderBy(desc(dropEvents.createdAt));
+    const seen = new Set<number>();
+    return rows.filter(row => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
   }
   
   async getTodayDropEventsByDevice(deviceId: number): Promise<DropEvent[]> {

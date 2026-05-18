@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins, Gift, Sun, Moon } from "lucide-react";
+import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins, Gift, Sun, Moon, CheckCircle, XCircle, Filter } from "lucide-react";
 import littrOneImage from "@/assets/images/littr-one-official.png";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -143,6 +143,7 @@ export default function PartnerDashboard() {
   const queryClient = useQueryClient();
   const [pairCode, setPairCode] = useState("");
   const [pairResult, setPairResult] = useState<any | null>(null);
+  const [activityFilter, setActivityFilter] = useState<"all" | "accepted" | "rejected">("all");
 
   const { data: shops = [], isLoading: shopsLoading, isError: shopsError, error: shopsErrorObj } = useQuery({
     queryKey: ['partner-shops'],
@@ -199,6 +200,7 @@ export default function PartnerDashboard() {
       return res.json();
     },
     enabled: !!shop,
+    refetchInterval: 15000,
   });
 
   const { data: shopBins = [] } = useQuery({
@@ -545,33 +547,100 @@ export default function PartnerDashboard() {
           <TabsContent value="activity">
             <Card>
               <CardHeader>
-                <CardTitle>Recent Activity</CardTitle>
-                <CardDescription>Vape drops at your location</CardDescription>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <CardTitle>Recent Activity</CardTitle>
+                    <CardDescription>Vape drops at your location</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1" data-testid="filter-activity">
+                    <Filter className="h-3 w-3 text-gray-400 mx-1" />
+                    {(["all", "accepted", "rejected"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setActivityFilter(f)}
+                        data-testid={`button-filter-${f}`}
+                        className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
+                          activityFilter === f
+                            ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm"
+                            : "text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white"
+                        }`}
+                      >
+                        {f === "all" ? "All" : f === "accepted" ? "Accepted" : "Rejected"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Points Awarded</TableHead>
-                      <TableHead>Time</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dropEvents.slice(0, 20).map((event: any) => (
-                      <TableRow key={event.id}>
-                        <TableCell className="font-medium">+{event.pointsAwarded}</TableCell>
-                        <TableCell>{new Date(event.createdAt).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {dropEvents.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={2} className="text-center text-gray-400">
-                          No drops yet. When customers recycle, activity will appear here.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                {(() => {
+                  const filteredEvents = (dropEvents as any[]).filter((event) => {
+                    const isRejected = event.verdictAccepted === false;
+                    const isAccepted = event.verdictAccepted === true;
+                    if (activityFilter === "rejected") return isRejected;
+                    if (activityFilter === "accepted") return isAccepted;
+                    return true;
+                  });
+                  return (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Points Awarded</TableHead>
+                          <TableHead>Time</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredEvents.slice(0, 20).map((event: any) => {
+                          const isRejected = event.verdictAccepted === false;
+                          const isAccepted = event.verdictAccepted === true;
+                          const rejectionLabel =
+                            event.verdictReason === "thc_vape" ? "THC Vape" :
+                            event.verdictReason === "not_a_vape" ? "Not a Vape" :
+                            event.verdictReason ?? "Rejected";
+                          return (
+                            <TableRow key={event.id} data-testid={`row-drop-${event.id}`}>
+                              <TableCell>
+                                {isRejected ? (
+                                  <div className="flex items-center gap-2" data-testid={`status-drop-rejected-${event.id}`}>
+                                    <Badge variant="destructive" className="flex items-center gap-1">
+                                      <XCircle className="h-3 w-3" />
+                                      Rejected
+                                    </Badge>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400" data-testid={`text-rejection-reason-${event.id}`}>
+                                      {rejectionLabel}
+                                    </span>
+                                  </div>
+                                ) : isAccepted ? (
+                                  <Badge variant="outline" className="flex items-center gap-1 text-green-600 border-green-300 dark:border-green-700" data-testid={`status-drop-accepted-${event.id}`}>
+                                    <CheckCircle className="h-3 w-3" />
+                                    Accepted
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-gray-500" data-testid={`status-drop-pending-${event.id}`}>
+                                    Pending
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium" data-testid={`text-points-${event.id}`}>
+                                {isRejected ? <span className="text-gray-400 line-through">+{event.pointsAwarded}</span> : `+${event.pointsAwarded}`}
+                              </TableCell>
+                              <TableCell className="text-gray-500 dark:text-gray-400">{new Date(event.createdAt).toLocaleString()}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {filteredEvents.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center text-gray-400 py-8" data-testid="text-no-activity">
+                              {activityFilter === "all"
+                                ? "No drops yet. When customers recycle, activity will appear here."
+                                : `No ${activityFilter} drops yet.`}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  );
+                })()}
               </CardContent>
             </Card>
           </TabsContent>

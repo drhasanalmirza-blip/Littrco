@@ -557,7 +557,7 @@ export async function registerRoutes(
   
   app.get("/api/partner/shops/:shopId/drop-events", authMiddleware, requireRole("PARTNER"), async (req, res) => {
     try {
-      const events = await storage.getDropEventsByShop(parseInt(req.params.shopId));
+      const events = await storage.getDropEventsWithVerdictByShop(parseInt(req.params.shopId));
       res.json(events);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch drop events" });
