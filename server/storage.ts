@@ -343,6 +343,7 @@ export interface IStorage {
   getDropsByUser(userId: string, limit?: number): Promise<Drop[]>;
   getAllDrops(limit?: number): Promise<Drop[]>;
   updateDrop(id: number, data: Partial<Drop>): Promise<Drop | undefined>;
+  applyStaffCorrectionAtomic(dropId: number, update: Partial<Drop>, reversePoints: boolean): Promise<{ drop: Drop | undefined; ledgerReversed: boolean; sessionAdjusted: boolean; sessionVoided: boolean }>;
 
   // Drop Images
   createDropImage(data: InsertDropImage): Promise<DropImage>;
@@ -1441,6 +1442,91 @@ export class DatabaseStorage implements IStorage {
   async updateDrop(id: number, data: Partial<Drop>): Promise<Drop | undefined> {
     const [updated] = await db.update(drops).set(data).where(eq(drops.id, id)).returning();
     return updated;
+  }
+
+  async applyStaffCorrectionAtomic(
+    dropId: number,
+    update: Partial<Drop>,
+    reversePoints: boolean,
+  ): Promise<{ drop: Drop | undefined; ledgerReversed: boolean; sessionAdjusted: boolean; sessionVoided: boolean }> {
+    return await db.transaction(async (tx) => {
+      const [updatedDrop] = await tx.update(drops).set(update).where(eq(drops.id, dropId)).returning();
+
+      let ledgerReversed = false;
+      let sessionAdjusted = false;
+      let sessionVoided = false;
+
+      if (reversePoints && updatedDrop?.dropEventId) {
+        const [dropEvent] = await tx.select().from(dropEvents).where(eq(dropEvents.id, updatedDrop.dropEventId));
+
+        if (dropEvent) {
+          // Idempotency guard: only insert a reversal row if one doesn't already
+          // exist for this dropEventId. Prevents double-reversal when corrections
+          // are toggled back and forth (accepted→denied→accepted→denied).
+          const [existing] = await tx.select({ id: partnerPointsLedger.id })
+            .from(partnerPointsLedger)
+            .where(
+              and(
+                eq(partnerPointsLedger.dropEventId, dropEvent.id),
+                eq(partnerPointsLedger.reason, "correction_reversal"),
+              ),
+            )
+            .limit(1);
+
+          if (!existing) {
+            // Derive the reversal amount from the original credit row so the
+            // reversal is always the exact inverse of what was credited, even
+            // if partner credit amounts change in the future.
+            const [originalCredit] = await tx.select({ points: partnerPointsLedger.points })
+              .from(partnerPointsLedger)
+              .where(
+                and(
+                  eq(partnerPointsLedger.dropEventId, dropEvent.id),
+                  eq(partnerPointsLedger.reason, "drop"),
+                ),
+              )
+              .limit(1);
+            const reversalPoints = originalCredit ? -originalCredit.points : -1;
+
+            await tx.insert(partnerPointsLedger).values({
+              shopId: dropEvent.shopId,
+              deviceId: dropEvent.deviceId,
+              points: reversalPoints,
+              reason: "correction_reversal",
+              dropEventId: dropEvent.id,
+            });
+            ledgerReversed = true;
+
+            if (dropEvent.sessionId) {
+              const [session] = await tx.select().from(rewardSessions)
+                .where(eq(rewardSessions.id, dropEvent.sessionId))
+                .for("update");
+
+              if (session && session.status === "PENDING" && !session.voided) {
+                const pointsToDeduct = dropEvent.pointsAwarded || 1;
+                const newPoints = session.pointsTotal - pointsToDeduct;
+                const newCount = session.dropCount - 1;
+
+                const sessionStatus: "PENDING" | "CLAIMED" | "EXPIRED" = "EXPIRED";
+                if (newCount <= 0 || newPoints <= 0) {
+                  await tx.update(rewardSessions)
+                    .set({ voided: true, status: sessionStatus, pointsTotal: 0, dropCount: 0 })
+                    .where(eq(rewardSessions.id, session.id));
+                  sessionVoided = true;
+                } else {
+                  await tx.update(rewardSessions)
+                    .set({ pointsTotal: newPoints, dropCount: newCount })
+                    .where(eq(rewardSessions.id, session.id));
+                  sessionAdjusted = true;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return { drop: updatedDrop, ledgerReversed, sessionAdjusted, sessionVoided };
+    });
   }
 
   async createDropImage(data: InsertDropImage): Promise<DropImage> {

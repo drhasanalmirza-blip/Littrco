@@ -4087,7 +4087,18 @@ export async function registerRoutes(
         }
       }
 
-      await storage.updateDrop(dropId, update);
+      // Reverse partner ledger credit and adjust/void the reward session when
+      // the correction denies a previously accepted drop that had points awarded.
+      // Only triggered when rewardClaimed is false (not yet locked) and the drop
+      // had points to reverse. Drop update + reversal execute in one transaction.
+      const shouldReversePoints =
+        !rewardClaimed &&
+        verdictChanged &&
+        !correctedAccepted &&
+        (drop.pointsAwarded ?? 0) > 0;
+
+      const { ledgerReversed, sessionAdjusted, sessionVoided } =
+        await storage.applyStaffCorrectionAtomic(dropId, update, shouldReversePoints);
 
       res.json({
         ok: true,
@@ -4095,6 +4106,9 @@ export async function registerRoutes(
           correction,
           verdictChanged: !rewardClaimed && verdictChanged,
           rewardLocked: rewardClaimed,
+          pointsReversed: ledgerReversed,
+          sessionAdjusted,
+          sessionVoided,
         },
       });
     } catch (error: any) {
