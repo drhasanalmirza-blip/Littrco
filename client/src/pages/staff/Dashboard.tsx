@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo, useEffect } from "react";
 import { Building, Users, Cpu, Gift, Package, Mail, HandHeart, TrendingUp, Flame, Trash2, AlertTriangle, Thermometer, Wind, CheckCircle, Recycle, LogOut, Info, X, Phone, Send, FileText, Inbox, Link2, Search, Activity, ShieldAlert, Trash, Sun, Moon, UserCog, Plus, Key, Eye, EyeOff, ClipboardList, Tags, Settings2, Image, RefreshCw, Edit, Save, ChevronRight, Camera, Wifi, WifiOff, Zap, ArrowLeft } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MailboxManager } from "@/components/staff/MailboxManager";
 import { InboxPortal } from "@/components/staff/InboxPortal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -343,9 +344,7 @@ export default function StaffDashboard() {
       items: [
         { id: "leads", label: "Leads", desc: "Business inquiries", icon: Package, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950", count: stats.totalLeads },
         { id: "shops", label: "Shops", desc: "Partner locations", icon: Building, color: "text-green-500", bg: "bg-green-50 dark:bg-green-950", count: stats.activeShops },
-        { id: "devices", label: "Devices & Bins", desc: "Smart bin hardware", icon: Cpu, color: "text-teal-500", bg: "bg-teal-50 dark:bg-teal-950", count: stats.totalBins, badge: pendingPairCount > 0 ? pendingPairCount : undefined },
-        { id: "pending-setup", label: "Pending Setup", desc: "Newly paired bins awaiting config", icon: Cpu, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950", badge: pendingSetupCount > 0 ? pendingSetupCount : undefined },
-        { id: "modules", label: "Camera Modules", desc: "AI camera setup & pairing", icon: Camera, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950" },
+        { id: "bins", label: "Bins", desc: "Hardware, setup & camera modules", icon: Cpu, color: "text-teal-500", bg: "bg-teal-50 dark:bg-teal-950", count: stats.totalBins, badge: (pendingPairCount + pendingSetupCount) > 0 ? (pendingPairCount + pendingSetupCount) : undefined },
       ],
     },
     {
@@ -378,9 +377,11 @@ export default function StaffDashboard() {
     switch (section) {
       case "leads": return renderLeads();
       case "shops": return renderShops();
-      case "devices": return renderDevices();
-      case "modules": return <ModulesTab bins={bins} shops={shops} />;
-      case "pending-setup": return <PendingSetupTab />;
+      case "bins":
+      case "devices":
+      case "modules":
+      case "pending-setup":
+        return renderDevices();
       case "drop-review": return <DropReviewTab />;
       case "taxonomy": return <TaxonomyTab />;
       case "activity": return renderActivity();
@@ -552,128 +553,225 @@ export default function StaffDashboard() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Cpu className="h-5 w-5" />
-              Smart Bins
-            </CardTitle>
-            <CardDescription>All ESP32 recycling bins with sensors</CardDescription>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="bin-lifecycle-pipeline">
+        <div className="p-4 rounded-2xl border border-blue-100 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/40">
+          <div className="flex items-center gap-2 mb-1">
+            <Link2 className="h-4 w-4 text-blue-500" />
+            <span className="text-[11px] uppercase tracking-wide text-blue-700 dark:text-blue-300">Awaiting Pair</span>
           </div>
-          <CreateDeviceDialog shops={shops} />
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Shop</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Fill</TableHead>
-                <TableHead>Temp</TableHead>
-                <TableHead>VOC</TableHead>
-                <TableHead>Last Seen</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {bins.map((bin: any) => (
-                <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <TableCell className="font-mono text-xs">{bin.deviceId || bin.id}</TableCell>
-                  <TableCell className="font-medium">{bin.name}</TableCell>
-                  <TableCell>{bin.shop?.name || 'Unknown'}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={bin.status === 'ONLINE' ? 'default' : bin.status === 'FIRE_ALERT' ? 'destructive' : bin.status === 'MAINTENANCE' ? 'secondary' : 'outline'}
-                      className={bin.status === 'FIRE_ALERT' ? 'animate-pulse' : ''}
-                      data-testid={`bin-status-${bin.id}`}
-                    >
-                      {bin.status === 'FIRE_ALERT' && <Flame className="h-3 w-3 mr-1" />}
-                      {bin.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${bin.fillLevel >= 80 ? 'bg-red-500' : bin.fillLevel >= 50 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${bin.fillLevel || 0}%` }} />
-                      </div>
-                      <span className="text-sm">{bin.fillLevel != null ? `${bin.fillLevel}%` : <span className="text-orange-600 text-xs">N/A</span>}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {bin.lastTemperature != null ? (
-                      <span className={bin.lastTemperature >= 45 ? 'text-red-600 font-semibold' : ''}>{bin.lastTemperature?.toFixed(1)}°C</span>
-                    ) : <span className="text-gray-400 text-xs">--</span>}
-                  </TableCell>
-                  <TableCell>
-                    {bin.lastVocAnalog != null ? (
-                      <span className={bin.lastVocDigital ? 'text-red-600 font-semibold' : ''}>{bin.lastVocAnalog}</span>
-                    ) : <span className="text-gray-400 text-xs">--</span>}
-                  </TableCell>
-                  <TableCell>
-                    {bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : <span className="text-gray-400 text-xs">Never</span>}
-                  </TableCell>
-                  <TableCell>
-                    <BinDetailDialog bin={bin} shops={shops} />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {bins.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center text-gray-400">No bins yet. Add a device to get started.</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+          <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-awaiting-pair">{pendingPairCount}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">ESP32 boards requesting a shop</p>
+        </div>
+        <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/40">
+          <div className="flex items-center gap-2 mb-1">
+            <Settings2 className="h-4 w-4 text-amber-500" />
+            <span className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-300">Pending Setup</span>
+          </div>
+          <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-pending-setup">{pendingSetupCount}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Paired, need name &amp; mode</p>
+        </div>
+        <div className="p-4 rounded-2xl border border-green-200 dark:border-green-900 bg-green-50/60 dark:bg-green-950/40">
+          <div className="flex items-center gap-2 mb-1">
+            <Wifi className="h-4 w-4 text-green-500" />
+            <span className="text-[11px] uppercase tracking-wide text-green-700 dark:text-green-300">Active</span>
+          </div>
+          <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-active-bins">{bins.filter((b: any) => b.status === 'ONLINE').length}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Online and reporting</p>
+        </div>
+        <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40">
+          <div className="flex items-center gap-2 mb-1">
+            <WifiOff className="h-4 w-4 text-gray-500" />
+            <span className="text-[11px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Offline / Other</span>
+          </div>
+          <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-offline-bins">{bins.filter((b: any) => b.status !== 'ONLINE' && b.status !== 'PENDING_SETUP').length}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Offline, maintenance, alerts</p>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5" />
-            Pair Requests
-          </CardTitle>
-          <CardDescription>ESP32 devices requesting to be paired with a shop</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table data-testid="table-pair-requests">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pair Code</TableHead>
-                <TableHead>Device UID</TableHead>
-                <TableHead>Firmware</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Shop</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pairRequests.map((pr: any) => (
-                <TableRow key={pr.id} data-testid={`pair-request-row-${pr.id}`}>
-                  <TableCell><Badge variant="outline" className="font-mono">{pr.pairCode}</Badge></TableCell>
-                  <TableCell className="font-mono text-xs">...{pr.uid?.slice(-8)}</TableCell>
-                  <TableCell>{pr.firmwareVersion || 'Unknown'}</TableCell>
-                  <TableCell>
-                    {pr.claimed ? <Badge className="bg-green-600">Claimed</Badge> :
-                     new Date(pr.expiresAt) < new Date() ? <Badge className="bg-red-600">Expired</Badge> :
-                     <Badge className="bg-yellow-600 text-black">Pending</Badge>}
-                  </TableCell>
-                  <TableCell>{pr.shopId ? shops.find((s: any) => s.id === pr.shopId)?.name || 'Unknown' : '—'}</TableCell>
-                  <TableCell>{new Date(pr.createdAt).toLocaleString()}</TableCell>
-                </TableRow>
-              ))}
-              {pairRequests.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-gray-400">No pair requests yet</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue={pendingSetupCount > 0 ? 'pending' : 'fleet'} className="space-y-4" data-testid="bins-subtabs">
+        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+          <TabsTrigger value="fleet" data-testid="subtab-fleet">
+            <Cpu className="h-3.5 w-3.5 mr-1.5" />
+            Fleet
+          </TabsTrigger>
+          <TabsTrigger value="pending" data-testid="subtab-pending-setup">
+            <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+            Pending Setup
+            {pendingSetupCount > 0 && (
+              <Badge className="ml-1.5 h-4 px-1.5 text-[10px] bg-amber-500 text-white">{pendingSetupCount}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="modules" data-testid="subtab-modules">
+            <Camera className="h-3.5 w-3.5 mr-1.5" />
+            Camera Modules
+          </TabsTrigger>
+          <TabsTrigger value="capabilities" data-testid="subtab-capabilities">
+            <Zap className="h-3.5 w-3.5 mr-1.5" />
+            Capabilities
+          </TabsTrigger>
+        </TabsList>
 
-      <BinCapabilitiesTab bins={bins} />
+        <TabsContent value="fleet" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Cpu className="h-5 w-5" />
+                  Smart Bins
+                </CardTitle>
+                <CardDescription>All ESP32 recycling bins with sensors. Click a row for full details.</CardDescription>
+              </div>
+              <CreateDeviceDialog shops={shops} />
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Shop</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Camera</TableHead>
+                    <TableHead>Fill</TableHead>
+                    <TableHead>Temp</TableHead>
+                    <TableHead>Last Seen</TableHead>
+                    <TableHead className="text-right">Manage</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bins.map((bin: any) => (
+                    <TableRow key={bin.id} data-testid={`bin-row-${bin.id}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <TableCell className="font-mono text-xs">{bin.deviceId || bin.id}</TableCell>
+                      <TableCell className="font-medium">{bin.name || <span className="text-amber-600 italic text-xs">unnamed</span>}</TableCell>
+                      <TableCell>{bin.shop?.name || <span className="text-gray-400 text-xs">—</span>}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={bin.status === 'ONLINE' ? 'default' : bin.status === 'FIRE_ALERT' ? 'destructive' : bin.status === 'MAINTENANCE' ? 'secondary' : 'outline'}
+                          className={
+                            bin.status === 'FIRE_ALERT' ? 'animate-pulse' :
+                            bin.status === 'PENDING_SETUP' ? 'border-amber-400 text-amber-600' : ''
+                          }
+                          data-testid={`bin-status-${bin.id}`}
+                        >
+                          {bin.status === 'FIRE_ALERT' && <Flame className="h-3 w-3 mr-1" />}
+                          {bin.status === 'PENDING_SETUP' ? 'PENDING SETUP' : bin.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {bin.mode ? (
+                          <Badge variant="outline" className={bin.mode === 'demo' ? 'border-blue-300 text-blue-600' : 'border-green-300 text-green-600'}>
+                            {bin.mode}
+                          </Badge>
+                        ) : <span className="text-gray-400 text-xs">—</span>}
+                      </TableCell>
+                      <TableCell>
+                        {bin.cameraModel && bin.cameraModel !== 'none' ? (
+                          <Badge variant="outline" className="border-violet-300 text-violet-600 text-xs">
+                            {bin.cameraModel === 's3cam' ? <Cpu className="h-3 w-3 mr-1" /> : <Phone className="h-3 w-3 mr-1" />}
+                            {bin.cameraModel === 's3cam' ? 'S3-CAM' : 'Android'}
+                          </Badge>
+                        ) : <span className="text-gray-400 text-xs">none</span>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="w-14 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${bin.fillLevel >= 80 ? 'bg-red-500' : bin.fillLevel >= 50 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${bin.fillLevel || 0}%` }} />
+                          </div>
+                          <span className="text-xs">{bin.fillLevel != null ? `${bin.fillLevel}%` : <span className="text-gray-400">—</span>}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {bin.lastTemperature != null ? (
+                          <span className={bin.lastTemperature >= 45 ? 'text-red-600 font-semibold text-xs' : 'text-xs'}>{bin.lastTemperature?.toFixed(1)}°C</span>
+                        ) : <span className="text-gray-400 text-xs">--</span>}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {bin.lastSeenAt ? new Date(bin.lastSeenAt).toLocaleString() : <span className="text-gray-400">Never</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <BinDetailDialog bin={bin} shops={shops} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {bins.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center text-gray-400 py-8">No bins yet. Add a device to get started.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Link2 className="h-4 w-4" />
+                Pair Requests
+                {pendingPairCount > 0 && <Badge className="bg-blue-500">{pendingPairCount} open</Badge>}
+              </CardTitle>
+              <CardDescription>ESP32 devices waiting to be claimed by a shop</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table data-testid="table-pair-requests">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pair Code</TableHead>
+                    <TableHead>Device UID</TableHead>
+                    <TableHead>Firmware</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Shop</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pairRequests.map((pr: any) => (
+                    <TableRow key={pr.id} data-testid={`pair-request-row-${pr.id}`}>
+                      <TableCell><Badge variant="outline" className="font-mono">{pr.pairCode}</Badge></TableCell>
+                      <TableCell className="font-mono text-xs">...{pr.uid?.slice(-8)}</TableCell>
+                      <TableCell>{pr.firmwareVersion || 'Unknown'}</TableCell>
+                      <TableCell>
+                        {pr.claimed ? <Badge className="bg-green-600">Claimed</Badge> :
+                         new Date(pr.expiresAt) < new Date() ? <Badge className="bg-red-600">Expired</Badge> :
+                         <Badge className="bg-yellow-600 text-black">Pending</Badge>}
+                      </TableCell>
+                      <TableCell>{pr.shopId ? shops.find((s: any) => s.id === pr.shopId)?.name || 'Unknown' : '—'}</TableCell>
+                      <TableCell className="text-xs">{new Date(pr.createdAt).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                  {pairRequests.length === 0 && (
+                    <TableRow><TableCell colSpan={6} className="text-center text-gray-400 py-4">No pair requests yet</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="pending">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Settings2 className="h-4 w-4 text-amber-500" />
+                Pending Setup
+              </CardTitle>
+              <CardDescription>Newly paired bins need a name, mode, and camera model before they go live.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <PendingSetupTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="modules">
+          <ModulesTab bins={bins} shops={shops} />
+        </TabsContent>
+
+        <TabsContent value="capabilities">
+          <BinCapabilitiesTab bins={bins} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 
@@ -914,7 +1012,7 @@ export default function StaffDashboard() {
         {!section ? (
           <div className="space-y-6">
             {stats.activeFireAlerts > 0 && (
-              <button onClick={() => setSection('devices')} className="w-full text-left" data-testid="button-fire-alert-banner">
+              <button onClick={() => setSection('bins')} className="w-full text-left" data-testid="button-fire-alert-banner">
                 <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 hover:shadow-md transition-shadow">
                   <div className="p-2 rounded-full bg-red-500/10">
                     <Flame className="h-6 w-6 text-red-500 animate-pulse" />
@@ -3051,7 +3149,6 @@ function ModulesTab({ bins, shops }: { bins: any[]; shops: any[] }) {
         </CardContent>
       </Card>
 
-      <BinCapabilitiesTab bins={bins} />
     </div>
   );
 }
