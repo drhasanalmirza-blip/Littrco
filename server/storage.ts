@@ -227,6 +227,8 @@ export interface IStorage {
   getAllBinsWithDevice(): Promise<(Bin & { device?: { id: number; name: string; status: string; lastSeenAt: Date | null } })[]>;
   updateBinStatus(id: number, status: string): Promise<Bin | undefined>;
   updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; lastVocAnalog?: number; lastVocDigital?: boolean; vapeCount?: number }): Promise<Bin | undefined>;
+  updateBinSetup(id: number, data: { mode?: "demo" | "normal"; cameraModel?: "none" | "s3cam" | "android_cam"; name?: string; status?: string }): Promise<Bin | undefined>;
+  listPendingSetupBins(): Promise<Bin[]>;
   deleteBin(id: number): Promise<boolean>;
   
   // Bin Readings
@@ -795,8 +797,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateBinSensorData(id: number, data: { fillLevel?: number; lastTemperature?: number; lastAirQuality?: number; lastVocAnalog?: number; lastVocDigital?: boolean; vapeCount?: number }): Promise<Bin | undefined> {
-    const [bin] = await db.update(bins).set({ ...data, lastSeenAt: new Date(), status: 'ONLINE' as any }).where(eq(bins.id, id)).returning();
+    // Preserve PENDING_SETUP — telemetry from an unconfigured bin should not auto-activate it.
+    const current = await this.getBin(id);
+    const nextStatus = current?.status === 'PENDING_SETUP' ? 'PENDING_SETUP' : 'ONLINE';
+    const [bin] = await db.update(bins).set({ ...data, lastSeenAt: new Date(), status: nextStatus as Bin["status"] }).where(eq(bins.id, id)).returning();
     return bin;
+  }
+
+  async updateBinSetup(id: number, data: { mode?: "demo" | "normal"; cameraModel?: "none" | "s3cam" | "android_cam"; name?: string; status?: string }): Promise<Bin | undefined> {
+    const patch: Partial<typeof bins.$inferInsert> = { setupCompletedAt: new Date() };
+    if (data.mode) patch.mode = data.mode;
+    if (data.cameraModel) patch.cameraModel = data.cameraModel;
+    if (data.name) patch.name = data.name;
+    if (data.status) patch.status = data.status as Bin["status"];
+    const [bin] = await db.update(bins).set(patch).where(eq(bins.id, id)).returning();
+    return bin;
+  }
+
+  async listPendingSetupBins(): Promise<Bin[]> {
+    return await db.select().from(bins).where(eq(bins.status, 'PENDING_SETUP')).orderBy(desc(bins.createdAt));
   }
 
   async getBinByDeviceId(deviceId: number): Promise<Bin | undefined> {

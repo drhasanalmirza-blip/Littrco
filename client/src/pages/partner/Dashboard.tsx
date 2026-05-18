@@ -631,17 +631,38 @@ export default function PartnerDashboard() {
                           key={bin.id} 
                           className={`p-4 rounded-lg border ${
                             bin.status === 'FIRE_ALERT' ? 'border-red-500 bg-red-50 dark:bg-red-950' :
+                            bin.status === 'PENDING_SETUP' ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950' :
                             bin.status === 'ONLINE' ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950' :
                             'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800'
                           }`}
                           data-testid={`partner-bin-${bin.id}`}
                         >
                           <div className="flex justify-between items-start mb-3">
-                            <div>
+                            <div className="space-y-1">
                               <h4 className="font-semibold text-black dark:text-white">{bin.name}</h4>
-                              <Badge variant={bin.status === 'ONLINE' ? 'default' : bin.status === 'FIRE_ALERT' ? 'destructive' : 'secondary'}>
-                                {bin.status}
-                              </Badge>
+                              <div className="flex flex-wrap gap-2">
+                                <Badge
+                                  variant={
+                                    bin.status === 'ONLINE' ? 'default' :
+                                    bin.status === 'FIRE_ALERT' ? 'destructive' :
+                                    bin.status === 'PENDING_SETUP' ? 'outline' :
+                                    'secondary'
+                                  }
+                                  data-testid={`status-bin-${bin.id}`}
+                                >
+                                  {bin.status === 'PENDING_SETUP' ? 'Pending Setup' : bin.status}
+                                </Badge>
+                                {bin.mode && bin.status !== 'PENDING_SETUP' && (
+                                  <Badge variant="outline" data-testid={`mode-bin-${bin.id}`}>
+                                    {bin.mode === 'demo' ? 'Demo mode' : 'Normal mode'}
+                                  </Badge>
+                                )}
+                              </div>
+                              {bin.status === 'PENDING_SETUP' && (
+                                <p className="text-xs text-amber-700 dark:text-amber-300" data-testid={`text-pending-setup-${bin.id}`}>
+                                  Waiting for LITTR staff to confirm camera setup. No rewards until configured.
+                                </p>
+                              )}
                             </div>
                             <div className="text-right text-sm">
                               <div className="font-bold text-lg text-green-600">{bin.vapeCount || 0}</div>

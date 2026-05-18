@@ -9,7 +9,9 @@ export const shopStatusEnum = pgEnum("shop_status", ["PENDING", "VERIFIED", "SUS
 export const shopMemberRoleEnum = pgEnum("shop_member_role", ["OWNER", "MANAGER"]);
 export const leadStatusEnum = pgEnum("lead_status", ["NEW", "CONTACTED", "CONVERTED", "REJECTED"]);
 export const deviceStatusEnum = pgEnum("device_status", ["ACTIVE", "INACTIVE", "MAINTENANCE"]);
-export const binStatusEnum = pgEnum("bin_status", ["ONLINE", "OFFLINE", "FIRE_ALERT", "MAINTENANCE"]);
+export const binStatusEnum = pgEnum("bin_status", ["ONLINE", "OFFLINE", "FIRE_ALERT", "MAINTENANCE", "PENDING_SETUP"]);
+export const binModeEnum = pgEnum("bin_mode", ["demo", "normal"]);
+export const binCameraModelEnum = pgEnum("bin_camera_model", ["none", "s3cam", "android_cam"]);
 export const alertSeverityEnum = pgEnum("alert_severity", ["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["EARN", "REDEEM", "ADJUST"]);
 export const redemptionStatusEnum = pgEnum("redemption_status", ["PENDING", "APPROVED", "FULFILLED", "REJECTED"]);
@@ -330,6 +332,9 @@ export const bins = pgTable("bins", {
   lastSeenAt: timestamp("last_seen_at"),
   rejectNonVapes: boolean("reject_non_vapes").notNull().default(false),
   rejectThcVapes: boolean("reject_thc_vapes").notNull().default(false),
+  mode: binModeEnum("mode").notNull().default("demo"),
+  cameraModel: binCameraModelEnum("camera_model").notNull().default("none"),
+  setupCompletedAt: timestamp("setup_completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -337,6 +342,7 @@ export const insertBinSchema = createInsertSchema(bins).omit({
   id: true,
   createdAt: true,
   lastSeenAt: true,
+  setupCompletedAt: true,
 });
 export type InsertBin = z.infer<typeof insertBinSchema>;
 export type Bin = typeof bins.$inferSelect;

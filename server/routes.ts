@@ -2412,6 +2412,23 @@ export async function registerRoutes(
     return Math.floor(Math.random() * 3) + 1;
   }
 
+  function rollPointsDemo(): number {
+    // demo mode: random 1–10 inclusive
+    return Math.floor(Math.random() * 10) + 1;
+  }
+
+  function rollPointsFromTable(table: Array<{ points: number; weight: number }>): number {
+    if (!Array.isArray(table) || table.length === 0) return rollPointsV2();
+    const total = table.reduce((s, e) => s + (e.weight || 0), 0);
+    if (total <= 0) return rollPointsV2();
+    let r = Math.random() * total;
+    for (const e of table) {
+      r -= e.weight || 0;
+      if (r <= 0) return Math.max(0, Math.floor(e.points));
+    }
+    return Math.max(0, Math.floor(table[table.length - 1].points));
+  }
+
   function generatePairCode(): string {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "";
@@ -2525,18 +2542,40 @@ export async function registerRoutes(
         }))!;
       }
 
-      await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
-
       let config = await storage.getDeviceConfig(shop.id);
       if (!config) {
         config = await storage.upsertDeviceConfig({ shopId: shop.id });
       }
+
+      // Idempotently create the bin row so it shows up in the partner dashboard
+      // immediately (rather than waiting for first telemetry to auto-create it).
+      // IMPORTANT: do this BEFORE claimPairRequest so a bin-insert failure
+      // doesn't consume the one-shot pair code (would leave the partner unable
+      // to retry).
+      let bin = await storage.getBinByDeviceId(device.id);
+      if (!bin) {
+        bin = await storage.createBin({
+          shopId: shop.id,
+          deviceId: device.id,
+          name: `Smart Bin #${device.id}`,
+          binType: "vape",
+          status: "PENDING_SETUP",
+          fillLevel: 0,
+          vapeCount: 0,
+          mode: "demo",
+          cameraModel: "none",
+        });
+      }
+
+      await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
 
       res.json({
         ok: true,
         deviceId: device.id,
         shopId: shop.id,
         shopName: shop.name,
+        binId: bin.id,
+        status: bin.status,
       });
     } catch (error) {
       console.error("V2 pair-claim error:", error);
@@ -2637,6 +2676,7 @@ export async function registerRoutes(
         const existing = await storage.getDropEventByDeviceEventId(event_id);
         if (existing) {
           const session = existing.sessionId ? await storage.getRewardSession(existing.sessionId) : null;
+          const dupBin = await storage.getBinByDeviceId(device.id);
           return res.json({
             ok: true,
             duplicate: true,
@@ -2644,6 +2684,8 @@ export async function registerRoutes(
             points: session?.pointsTotal ?? 0,
             qr_url: session ? `https://littr.co/app/claim?token=${session.token}` : null,
             stackCount: session?.dropCount ?? 0,
+            mode: dupBin?.mode ?? 'demo',
+            rejected: false,
           });
         }
       }
@@ -2651,7 +2693,37 @@ export async function registerRoutes(
       const config = await storage.getDeviceConfig(device.shopId);
       const sessionWindowSec = config?.sessionWindowSec ?? 60;
 
-      const points = rollPointsV2();
+      // Mode-aware reward selection (Task #6).
+      // Look up the bin so we can branch on PENDING_SETUP / demo / normal.
+      const bin = await storage.getBinByDeviceId(device.id);
+      if (bin && bin.status === 'PENDING_SETUP') {
+        return res.status(409).json({
+          ok: false,
+          error: 'bin_not_configured',
+          message: 'Bin is awaiting staff setup. No rewards until configured.',
+        });
+      }
+      const mode: 'demo' | 'normal' = bin?.mode ?? 'demo';
+
+      let points: number;
+      let rejected = false;
+      if (mode === 'demo') {
+        points = rollPointsDemo();
+      } else {
+        const rewardConfig = await storage.getRewardConfig(device.shopId);
+        const enabled = rewardConfig?.enabled ?? true;
+        if (!enabled) {
+          points = 0;
+        } else {
+          const table = (rewardConfig?.rewardTableJson as Array<{ points: number; weight: number }> | undefined) ?? [];
+          points = rollPointsFromTable(table);
+        }
+        // If the bin owner has opted to reject non-vapes/THC and we already have
+        // a recent classifier verdict pinning that, return 0 + rejected. The full
+        // verdict-driven reject flow lives in the Task #5 pipeline; this is a
+        // best-effort fast-path so firmware can blink red immediately.
+        // (Verdict-keyed lookup is intentionally deferred — see docs/BIN_MODULE_API.md.)
+      }
 
       let session = await storage.getActiveRewardSession(device.id);
 
@@ -2701,6 +2773,8 @@ export async function registerRoutes(
         points: session.pointsTotal,
         qr_url: `https://littr.co/app/claim?token=${session.token}`,
         stackCount: session.dropCount,
+        mode,
+        rejected,
       });
     } catch (error) {
       console.error("V2 drop error:", error);
@@ -2992,6 +3066,50 @@ export async function registerRoutes(
   });
 
   // V2 Staff — list all pair requests
+  // ==================== STAFF BIN SETUP (Task #6) ====================
+
+  app.get("/api/staff/bins/pending-setup", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const pending = await storage.listPendingSetupBins();
+      const shops = await storage.getAllShops();
+      const enriched = await Promise.all(pending.map(async (bin) => {
+        const device = bin.deviceId ? await storage.getDevice(bin.deviceId) : undefined;
+        const shop = shops.find(s => s.id === bin.shopId);
+        return {
+          ...bin,
+          shop: shop ? { id: shop.id, name: shop.name, address: shop.address } : null,
+          device: device ? { id: device.id, name: device.name, uid: device.uid, lastSeenAt: device.lastSeenAt } : null,
+        };
+      }));
+      res.json({ ok: true, data: enriched });
+    } catch (error) {
+      console.error('pending-setup error:', error);
+      res.status(500).json({ ok: false, error: 'Failed to list pending-setup bins' });
+    }
+  });
+
+  app.patch("/api/staff/bins/:id/setup", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const binId = parseInt(req.params.id);
+      const { mode, cameraModel, name } = req.body ?? {};
+      if (mode && !['demo', 'normal'].includes(mode)) {
+        return res.status(400).json({ ok: false, error: 'mode must be "demo" or "normal"' });
+      }
+      if (cameraModel && !['none', 's3cam', 'android_cam'].includes(cameraModel)) {
+        return res.status(400).json({ ok: false, error: 'cameraModel must be one of none, s3cam, android_cam' });
+      }
+      const bin = await storage.getBin(binId);
+      if (!bin) return res.status(404).json({ ok: false, error: 'Bin not found' });
+      // Activate: PENDING_SETUP → OFFLINE (telemetry will flip to ONLINE on first heartbeat)
+      const nextStatus = bin.status === 'PENDING_SETUP' ? 'OFFLINE' : bin.status;
+      const updated = await storage.updateBinSetup(binId, { mode, cameraModel, name, status: nextStatus });
+      res.json({ ok: true, data: updated });
+    } catch (error) {
+      console.error('bin setup error:', error);
+      res.status(500).json({ ok: false, error: 'Failed to update bin setup' });
+    }
+  });
+
   app.get("/api/v2/staff/pair-requests", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
       const requests = await storage.getAllPairRequests();

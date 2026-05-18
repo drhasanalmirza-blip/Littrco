@@ -433,3 +433,265 @@ Response:
 
 Poll every ~500ms for up to a few seconds. The verdict is set once the
 classifier finishes (Phase 0 = instant pass-through; Phase 1 = ~1–3s).
+
+---
+
+# Unified Bin Lifecycle (v3) — Task #6
+
+This section is the canonical, end-to-end reference for everything a smart bin
+(ESP32 main controller + optional camera module) talks to. It supersedes the
+"Pairing & registration" notes scattered above.
+
+## 1. State Machine
+
+```
+                  +------------------------+
+   (boot, no UID  |                        |
+    pair record)  |   pair_request         |
+        ----->    |   /api/v2/device/      |
+                  |   pair-request         |
+                  +-----------+------------+
+                              | partner/staff redeems code
+                              v
+                  +------------------------+
+                  |   PENDING_SETUP        |
+                  |   (bin row created,    |
+                  |    no rewards yet)     |
+                  +-----------+------------+
+                              | staff PATCH /api/staff/bins/:id/setup
+                              v
+                  +------------------------+   first telemetry      +-----------+
+                  |   OFFLINE (configured) |  -------------------> |  ONLINE   |
+                  +-----------+------------+                       +-----+-----+
+                              ^                                          |
+                              | (no telemetry for >N min)                |
+                              +------------------------------------------+
+
+  Any state above ONLINE can transition to FIRE_ALERT when
+  /api/device/telemetry detects a fire condition.
+```
+
+Bins have two orthogonal properties set by staff during setup:
+
+| Field         | Values                            | Meaning |
+|---------------|-----------------------------------|---------|
+| `mode`        | `demo`, `normal`                  | How `/api/v2/device/drop` decides reward points |
+| `cameraModel` | `none`, `s3cam`, `android_cam`    | Which (if any) camera module talks to `/api/bin-module/*` |
+
+## 2. Pairing & Registration (bin's POV)
+
+1. **First boot** — bin generates its own stable `uid` (e.g. MAC-derived) and
+   POSTs to `/api/v2/device/pair-request` with that `uid`.
+2. **Display the pair code** — server returns `{ pairCode, expiresAt }`. Show
+   it on the bin's screen. Re-call this endpoint on a slow loop (~30s) until
+   redeemed.
+3. **Partner/staff redeems** the code in the LITTR dashboard.
+4. **Poll `/api/v2/device/pair-status?uid=<uid>`** until `paired: true`. The
+   response carries the bin's permanent `deviceId`, `shopId`, and the cloud
+   config block.
+5. **Save** the `deviceId` to NVS. From here on, the bin is identified by
+   `uid` on all endpoints below.
+6. **Bin status is `PENDING_SETUP`** at this point — `/api/v2/device/drop`
+   will reject with HTTP 409 `bin_not_configured` until staff completes setup
+   in the admin panel. The bin should display "Awaiting staff setup".
+
+### Example
+
+```http
+POST /api/v2/device/pair-request
+Content-Type: application/json
+
+{ "uid": "ESP32-AA:BB:CC:DD:EE:FF", "firmwareVersion": "v3.0.1" }
+```
+
+```json
+{
+  "ok": true,
+  "status": "pending",
+  "pairCode": "TPJWFU",
+  "expiresAt": "2026-05-18T02:24:13.791Z"
+}
+```
+
+```http
+GET /api/v2/device/pair-status?uid=ESP32-AA:BB:CC:DD:EE:FF
+```
+
+```json
+{
+  "ok": true,
+  "paired": true,
+  "deviceId": 42,
+  "shopId": 7,
+  "shopName": "Albany Smoke Shop",
+  "config": {
+    "sessionWindowSec": 60,
+    "acceptedHoldMs": 6000,
+    "telemetryPeriodSec": 60,
+    "warnTempC": 55,
+    "warnVocAnalog": 850,
+    "warnVocDigital": -1
+  }
+}
+```
+
+## 3. Config Fetch
+
+### `GET /api/v2/device/config?uid=<uid>`
+
+Bin should call this on boot (after pairing) and on a slow refresh cadence
+(every few minutes). The server uses this call to update `lastSeenAt`.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "deviceId": 42,
+  "shopId": 7,
+  "config": {
+    "sessionWindowSec": 60,
+    "acceptedHoldMs": 6000,
+    "telemetryPeriodSec": 60,
+    "warnTempC": 55,
+    "warnVocAnalog": 850,
+    "warnVocDigital": -1
+  },
+  "rewards_enabled": true
+}
+```
+
+> The per-bin `mode` and `cameraModel` are not yet returned by this endpoint
+> for backwards compatibility. The bin learns its `mode` implicitly from the
+> `mode` field in every `/api/v2/device/drop` response.
+
+## 4. Drop Reporting — **MUST wait for server response before lighting reward**
+
+### `POST /api/v2/device/drop`
+
+This is the most important endpoint. The bin **must** call it on every
+physical drop and **must** wait for the response before showing the user any
+reward (lighting, beep, QR display). Do not pre-compute or guess points
+on-device.
+
+**Request:**
+```json
+{
+  "uid": "ESP32-AA:BB:CC:DD:EE:FF",
+  "event_id": "evt_2026051800001"
+}
+```
+
+| Field      | Type   | Required | Notes |
+|------------|--------|----------|-------|
+| `uid`      | string | Yes      | Bin's UID from pairing |
+| `event_id` | string | No, but strongly recommended | Unique per drop; the server uses it for idempotency. If you retry, send the same `event_id` and you'll get the same response back (with `duplicate: true`). |
+
+**Success response (HTTP 200):**
+```json
+{
+  "ok": true,
+  "sessionId": 813,
+  "points": 4,
+  "qr_url": "https://littr.co/app/claim?token=abc123...",
+  "stackCount": 1,
+  "mode": "demo",
+  "rejected": false
+}
+```
+
+| Field        | Meaning |
+|--------------|---------|
+| `points`     | Cumulative session points to display (NOT just this drop) |
+| `qr_url`     | Render this as the QR code on the bin's screen |
+| `stackCount` | How many drops in the current claim session |
+| `mode`       | `"demo"` or `"normal"` — informational; bin can log/show it |
+| `rejected`   | If `true`, light the rejection LED; `points` will be 0 |
+| `duplicate`  | (Only on retried `event_id`) — replay the original UI state |
+
+**Per-mode behavior:**
+
+| Mode      | Reward source                                              | Range |
+|-----------|------------------------------------------------------------|-------|
+| `demo`    | Server rolls random 1–10 inclusive. Classifier is skipped. | 1–10  |
+| `normal`  | Server uses the shop's `reward_configs.rewardTableJson` (weighted random). | Per config; default 1–10 |
+
+**Error responses:**
+
+| HTTP | `error` value          | When                                                | Firmware action |
+|------|------------------------|-----------------------------------------------------|-----------------|
+| 400  | `uid required`         | UID missing from body                               | Fix request and retry |
+| 400  | `Device not paired or inactive` | Bin's UID is unknown, unpaired, or marked INACTIVE | Re-run pair flow |
+| 409  | `bin_not_configured`   | Bin row exists but `status = PENDING_SETUP`         | Display "Awaiting staff setup". Do **not** light any reward. Retry on next drop. |
+| 500  | `Drop failed`          | Server-side exception                                | Exponential backoff; safe to retry with same `event_id` (idempotent) |
+
+## 5. Telemetry
+
+### `POST /api/device/telemetry`
+
+Headers: `X-Device-Id: <deviceId>`, `X-Device-Key: <deviceKey>`
+
+Rate-limited to one call per `telemetryPeriodSec` seconds (default 60). The
+server returns HTTP 429 with a `waitSeconds` field if you exceed it.
+
+**Request:**
+```json
+{
+  "temperatureC": 24.5,
+  "vocAnalog": 320,
+  "vocDigital": false,
+  "fillPercent": 47
+}
+```
+
+When the bin is still in `PENDING_SETUP`, telemetry is accepted and stored
+but **does not** flip the status to `ONLINE` — the bin stays pending until
+staff completes setup.
+
+## 6. Camera / Image Upload (`/api/bin-module/*`)
+
+Camera modules are a **separate** auth domain from the main ESP32. See
+sections "Authentication", "Registration", "Heartbeat", and "Drop Captures"
+above for the full module-token flow.
+
+Per-`cameraModel` guidance:
+
+| `cameraModel`   | Behavior                                                                 |
+|-----------------|--------------------------------------------------------------------------|
+| `none`          | No module talks to `/api/bin-module/*`. Classifier runs in pass-through. |
+| `s3cam`         | ESP32-S3-CAM module registers, uploads `after`/`crop` images on drop.    |
+| `android_cam`   | Android companion app registers as `android_cam`, uploads higher-quality `after`/`crop` images. |
+
+The verdict for any drop image is reachable via
+`GET /api/bin-module/drop-verdict?eventId=evt_xxx` (see earlier section).
+In `demo` mode the bin should ignore the verdict (the server already paid
+out random points and the classifier output is for training only).
+
+## 7. Claim / Reward QR
+
+The `qr_url` returned by `/api/v2/device/drop` is a pre-built URL that
+deep-links into the customer mobile app/web flow. The bin's only job is to
+render the QR code; the customer scans it and the app calls
+`POST /api/v2/claim { token }` to settle the points into a wallet.
+
+## 8. Staff Setup Endpoints (for reference)
+
+These are the endpoints the LITTR dashboard calls — not the bin. They are
+documented here so firmware devs understand what flips a bin out of
+`PENDING_SETUP`.
+
+| Method | Path                              | Body / Notes |
+|--------|-----------------------------------|--------------|
+| GET    | `/api/staff/bins/pending-setup`   | Lists every bin in `PENDING_SETUP` with shop + device info. |
+| PATCH  | `/api/staff/bins/:id/setup`       | `{ mode: "demo"\|"normal", cameraModel: "none"\|"s3cam"\|"android_cam", name?: string }` — stamps `setupCompletedAt`, flips `status` to `OFFLINE` (telemetry will lift it to `ONLINE`). |
+
+## 9. Error Code Catalogue
+
+| `error` string         | HTTP | Endpoint              | Firmware response                                       |
+|------------------------|------|-----------------------|---------------------------------------------------------|
+| `uid required`         | 400  | pair / drop / config  | Fix and retry                                            |
+| `Device not paired or inactive` | 400 | drop / config | Re-run `/pair-request` → `/pair-status` flow            |
+| `bin_not_configured`   | 409  | drop                  | Hold; show "Awaiting staff setup"; do not light reward  |
+| `Too fast` (`waitSeconds`) | 429 | telemetry          | Sleep `waitSeconds`; resume                              |
+| `Invalid device credentials` | 401 | telemetry        | Wipe and re-pair                                         |
+| `Drop failed`          | 500  | drop                  | Backoff + retry with same `event_id`                     |
+
