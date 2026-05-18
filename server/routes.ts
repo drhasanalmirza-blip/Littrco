@@ -2636,11 +2636,18 @@ export async function registerRoutes(
 
       const config = await storage.getDeviceConfig(device.shopId);
       const rewardConfig = await storage.getRewardConfig(device.shopId);
+      const bin = await storage.getBinByDeviceId(device.id);
 
       res.json({
         ok: true,
         deviceId: device.id,
         shopId: device.shopId,
+        binId: bin?.id ?? null,
+        binStatus: bin?.status ?? null,
+        mode: bin?.mode ?? "demo",
+        cameraModel: bin?.cameraModel ?? "none",
+        rejectNonVapes: bin?.rejectNonVapes ?? false,
+        rejectThcVapes: bin?.rejectThcVapes ?? false,
         config: {
           sessionWindowSec: config?.sessionWindowSec ?? 60,
           acceptedHoldMs: config?.acceptedHoldMs ?? 6000,
@@ -2677,6 +2684,18 @@ export async function registerRoutes(
         if (existing) {
           const session = existing.sessionId ? await storage.getRewardSession(existing.sessionId) : null;
           const dupBin = await storage.getBinByDeviceId(device.id);
+          // Preserve original rejection state on retry so firmware can re-blink
+          // red. Recompute from the drop verdict + current bin reject toggles.
+          let dupRejected = false;
+          let dupRejectionReason: string | null = null;
+          const dupDrop = await storage.getDropByEventId(event_id);
+          if (dupDrop?.verdictReady && dupDrop.verdictAccepted === false && dupBin) {
+            const reason = dupDrop.verdictReason ?? '';
+            if ((reason === 'thc_vape' && dupBin.rejectThcVapes) || (reason === 'not_a_vape' && dupBin.rejectNonVapes)) {
+              dupRejected = true;
+              dupRejectionReason = reason;
+            }
+          }
           return res.json({
             ok: true,
             duplicate: true,
@@ -2685,7 +2704,8 @@ export async function registerRoutes(
             qr_url: session ? `https://littr.co/app/claim?token=${session.token}` : null,
             stackCount: session?.dropCount ?? 0,
             mode: dupBin?.mode ?? 'demo',
-            rejected: false,
+            rejected: dupRejected,
+            rejectionReason: dupRejectionReason,
           });
         }
       }
@@ -2707,6 +2727,7 @@ export async function registerRoutes(
 
       let points: number;
       let rejected = false;
+      let rejectionReason: string | null = null;
       if (mode === 'demo') {
         points = rollPointsDemo();
       } else {
@@ -2718,11 +2739,26 @@ export async function registerRoutes(
           const table = (rewardConfig?.rewardTableJson as Array<{ points: number; weight: number }> | undefined) ?? [];
           points = rollPointsFromTable(table);
         }
-        // If the bin owner has opted to reject non-vapes/THC and we already have
-        // a recent classifier verdict pinning that, return 0 + rejected. The full
-        // verdict-driven reject flow lives in the Task #5 pipeline; this is a
-        // best-effort fast-path so firmware can blink red immediately.
-        // (Verdict-keyed lookup is intentionally deferred — see docs/BIN_MODULE_API.md.)
+
+        // Classifier-gated rejection: if a Task #5 drop row already exists for
+        // this event_id with a ready verdict that matches the bin owner's
+        // reject toggles, return 0 + rejected so firmware can blink red
+        // immediately. If the verdict isn't in yet, fall through to the
+        // weighted reward; the staff-correction reward-lock will reconcile
+        // post-hoc.
+        if (event_id && bin) {
+          const existingDrop = await storage.getDropByEventId(event_id);
+          if (existingDrop?.verdictReady && existingDrop.verdictAccepted === false) {
+            const reason = existingDrop.verdictReason ?? '';
+            const isThc = reason === 'thc_vape';
+            const isNonVape = reason === 'not_a_vape';
+            if ((isThc && bin.rejectThcVapes) || (isNonVape && bin.rejectNonVapes)) {
+              points = 0;
+              rejected = true;
+              rejectionReason = reason;
+            }
+          }
+        }
       }
 
       let session = await storage.getActiveRewardSession(device.id);
@@ -2775,6 +2811,7 @@ export async function registerRoutes(
         stackCount: session.dropCount,
         mode,
         rejected,
+        rejectionReason,
       });
     } catch (error) {
       console.error("V2 drop error:", error);
@@ -3081,7 +3118,7 @@ export async function registerRoutes(
           device: device ? { id: device.id, name: device.name, uid: device.uid, lastSeenAt: device.lastSeenAt } : null,
         };
       }));
-      res.json({ ok: true, data: enriched });
+      res.json(enriched);
     } catch (error) {
       console.error('pending-setup error:', error);
       res.status(500).json({ ok: false, error: 'Failed to list pending-setup bins' });

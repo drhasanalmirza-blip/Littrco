@@ -175,6 +175,16 @@ export default function StaffDashboard() {
     refetchInterval: 10000,
   });
 
+  const { data: pendingSetupBins = [] } = useQuery({
+    queryKey: ['pending-setup-bins'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/bins/pending-setup');
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 15000,
+  });
+
   const { data: allPartnerPoints = [] } = useQuery({
     queryKey: ['all-partner-points'],
     queryFn: async () => {
@@ -324,6 +334,7 @@ export default function StaffDashboard() {
   };
 
   const pendingPairCount = pairRequests.filter((pr: any) => !pr.claimed && new Date(pr.expiresAt) >= new Date()).length;
+  const pendingSetupCount = pendingSetupBins.length;
   const unreadInboxCount = myMailbox?.unreadCount || 0;
 
   const navGroups = [
@@ -333,6 +344,7 @@ export default function StaffDashboard() {
         { id: "leads", label: "Leads", desc: "Business inquiries", icon: Package, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950", count: stats.totalLeads },
         { id: "shops", label: "Shops", desc: "Partner locations", icon: Building, color: "text-green-500", bg: "bg-green-50 dark:bg-green-950", count: stats.activeShops },
         { id: "devices", label: "Devices & Bins", desc: "Smart bin hardware", icon: Cpu, color: "text-teal-500", bg: "bg-teal-50 dark:bg-teal-950", count: stats.totalBins, badge: pendingPairCount > 0 ? pendingPairCount : undefined },
+        { id: "pending-setup", label: "Pending Setup", desc: "Newly paired bins awaiting config", icon: Cpu, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950", badge: pendingSetupCount > 0 ? pendingSetupCount : undefined },
         { id: "modules", label: "Camera Modules", desc: "AI camera setup & pairing", icon: Camera, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950" },
       ],
     },
@@ -368,6 +380,7 @@ export default function StaffDashboard() {
       case "shops": return renderShops();
       case "devices": return renderDevices();
       case "modules": return <ModulesTab bins={bins} shops={shops} />;
+      case "pending-setup": return <PendingSetupTab />;
       case "drop-review": return <DropReviewTab />;
       case "taxonomy": return <TaxonomyTab />;
       case "activity": return renderActivity();
@@ -3246,5 +3259,108 @@ function BinCapabilitiesTab({ bins }: { bins: any[] }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PendingSetupTab() {
+  const queryClient = useQueryClient();
+  const { data: bins = [], isLoading } = useQuery<any[]>({
+    queryKey: ['pending-setup-bins'],
+    queryFn: async () => {
+      const res = await apiRequest('/api/staff/bins/pending-setup');
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 15000,
+  });
+
+  const [forms, setForms] = useState<Record<number, { name: string; mode: 'demo' | 'normal'; cameraModel: 'none' | 's3cam' | 'android_cam' }>>({});
+
+  const getForm = (bin: any) =>
+    forms[bin.id] ?? { name: bin.name || '', mode: (bin.mode as any) || 'demo', cameraModel: (bin.cameraModel as any) || 'none' };
+  const setForm = (id: number, patch: Partial<{ name: string; mode: 'demo' | 'normal'; cameraModel: 'none' | 's3cam' | 'android_cam' }>) =>
+    setForms(prev => ({ ...prev, [id]: { ...getForm({ id, ...(prev[id] || {}) } as any), ...patch } }));
+
+  const setupMutation = useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: any }) => {
+      const res = await apiRequest(`/api/staff/bins/${id}/setup`, { method: 'PATCH', body: JSON.stringify(body) });
+      if (!res.ok) throw new Error('Setup failed');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-setup-bins'] });
+      queryClient.invalidateQueries({ queryKey: ['bins'] });
+    },
+  });
+
+  if (isLoading) return <div className="p-6 text-sm text-gray-500">Loading…</div>;
+  if (bins.length === 0) {
+    return (
+      <div className="p-6 text-center text-sm text-gray-500" data-testid="text-no-pending-setup">
+        No bins awaiting setup. Newly paired bins will appear here.
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-3" data-testid="list-pending-setup">
+      {bins.map((bin: any) => {
+        const f = getForm(bin);
+        return (
+          <Card key={bin.id} className="border-amber-400" data-testid={`card-pending-bin-${bin.id}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center justify-between">
+                <span>Bin #{bin.id}{bin.uid ? ` · ${bin.uid}` : ''}</span>
+                <Badge variant="outline" className="border-amber-400 text-amber-600">Pending Setup</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-xs text-gray-500">Shop ID: {bin.shopId ?? '—'} · Paired: {bin.createdAt ? new Date(bin.createdAt).toLocaleString() : '—'}</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Bin Name</label>
+                  <Input
+                    value={f.name}
+                    onChange={(e) => setForm(bin.id, { name: e.target.value })}
+                    placeholder="e.g. Front counter"
+                    data-testid={`input-bin-name-${bin.id}`}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Mode</label>
+                  <Select value={f.mode} onValueChange={(v) => setForm(bin.id, { mode: v as any })}>
+                    <SelectTrigger data-testid={`select-bin-mode-${bin.id}`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="demo">Demo (random 1–10 pts)</SelectItem>
+                      <SelectItem value="normal">Normal (reward table)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Camera Model</label>
+                  <Select value={f.cameraModel} onValueChange={(v) => setForm(bin.id, { cameraModel: v as any })}>
+                    <SelectTrigger data-testid={`select-bin-camera-${bin.id}`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="s3cam">ESP32-S3-CAM</SelectItem>
+                      <SelectItem value="android_cam">Android Camera</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => setupMutation.mutate({ id: bin.id, body: f })}
+                  disabled={setupMutation.isPending}
+                  data-testid={`button-complete-setup-${bin.id}`}
+                >
+                  {setupMutation.isPending ? 'Saving…' : 'Complete Setup & Activate'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
   );
 }

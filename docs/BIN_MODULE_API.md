@@ -556,13 +556,22 @@ Bin should call this on boot (after pairing) and on a slow refresh cadence
     "warnVocAnalog": 850,
     "warnVocDigital": -1
   },
-  "rewards_enabled": true
+  "rewards_enabled": true,
+  "binId": 42,
+  "binStatus": "ONLINE",
+  "mode": "demo",
+  "cameraModel": "none",
+  "rejectNonVapes": false,
+  "rejectThcVapes": false
 }
 ```
 
-> The per-bin `mode` and `cameraModel` are not yet returned by this endpoint
-> for backwards compatibility. The bin learns its `mode` implicitly from the
-> `mode` field in every `/api/v2/device/drop` response.
+The per-bin `binId`, `binStatus`, `mode`, `cameraModel`, `rejectNonVapes`, and
+`rejectThcVapes` fields are returned alongside the shop-level `config` so the
+firmware can configure itself on boot. If the device hasn't been claimed to a
+bin yet, `binId`/`binStatus` are `null` and `mode`/`cameraModel` default to
+`"demo"`/`"none"` respectively. The authoritative `mode` is also echoed in
+every `/api/v2/device/drop` response.
 
 ## 4. Drop Reporting — **MUST wait for server response before lighting reward**
 
@@ -606,7 +615,8 @@ on-device.
 | `stackCount` | How many drops in the current claim session |
 | `mode`       | `"demo"` or `"normal"` — informational; bin can log/show it |
 | `rejected`   | If `true`, light the rejection LED; `points` will be 0 |
-| `duplicate`  | (Only on retried `event_id`) — replay the original UI state |
+| `rejectionReason` | `"thc_vape"` or `"not_a_vape"` when `rejected: true`, else `null`. Use it for the local log line. |
+| `duplicate`  | (Only on retried `event_id`) — replay the original UI state. `rejected`/`rejectionReason` are recomputed from the stored verdict so retries are consistent. |
 
 **Per-mode behavior:**
 
