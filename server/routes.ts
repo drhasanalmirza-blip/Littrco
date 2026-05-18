@@ -2781,6 +2781,30 @@ export async function registerRoutes(
         }
       }
 
+      // Rejected drops (classifier verdict matched bin's reject toggles):
+      // Persist a minimal dropEvent row (0 points, no session, no ledger)
+      // so that retries with the same event_id hit the duplicate-check
+      // path above and never bypass the rejection. Then return immediately.
+      if (rejected) {
+        await storage.createDropEventIdempotent({
+          shopId: device.shopId,
+          deviceId: device.id,
+          deviceEventId: event_id || null,
+          sessionId: null,
+          pointsAwarded: 0,
+        });
+        return res.json({
+          ok: true,
+          sessionId: null,
+          points: 0,
+          qr_url: null,
+          stackCount: 0,
+          mode,
+          rejected: true,
+          rejectionReason,
+        });
+      }
+
       // Atomicity: dropEvent insert (idempotency key) + session upsert +
       // partner-ledger credit run in a single DB transaction. Concurrent
       // retries with the same event_id block on the unique deviceEventId

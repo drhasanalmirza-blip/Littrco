@@ -618,6 +618,39 @@ on-device.
 | `rejectionReason` | `"thc_vape"` or `"not_a_vape"` when `rejected: true`, else `null`. Use it for the local log line. |
 | `duplicate`  | (Only on retried `event_id`) — replay the original UI state. `rejected`/`rejectionReason` are recomputed from the stored verdict so retries are consistent. |
 
+**Rejection response (HTTP 200) — bin owner's filter matched the classifier verdict:**
+
+When the bin is in `normal` mode AND the classifier has determined that the
+dropped item matches a reject toggle set by the bin owner
+(`rejectThcVapes` or `rejectNonVapes`), the server returns a rejection
+immediately. **No reward session is created and no points are credited.**
+
+```json
+{
+  "ok": true,
+  "sessionId": null,
+  "points": 0,
+  "qr_url": null,
+  "stackCount": 0,
+  "mode": "normal",
+  "rejected": true,
+  "rejectionReason": "thc_vape"
+}
+```
+
+`rejectionReason` is one of:
+
+| Value         | Meaning |
+|---------------|---------|
+| `"thc_vape"`  | Item identified as a THC/cannabis vape; bin has `rejectThcVapes: true` |
+| `"not_a_vape"`| Item is not a vape at all; bin has `rejectNonVapes: true` |
+
+When `rejected: true`:
+- Light the **rejection LED** immediately.
+- Do **not** display a QR code (`qr_url` is `null`).
+- Do **not** show any points (`points` is `0`).
+- Retrying with the same `event_id` is fully idempotent — the server stores a zero-point drop event record as an idempotency marker so all retries return `duplicate: true` with the same rejection payload. No reward session or partner ledger entry is written for rejected drops.
+
 **Pending response (HTTP 200) — normal mode, classifier verdict not yet in:**
 
 When the bin is in `normal` mode AND has `rejectThcVapes` or `rejectNonVapes`

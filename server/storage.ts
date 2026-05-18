@@ -174,6 +174,7 @@ export interface IStorage {
   
   // Drop Events
   createDropEvent(event: InsertDropEvent): Promise<DropEvent>;
+  createDropEventIdempotent(event: InsertDropEvent): Promise<DropEvent | null>;
   processDropAtomic(args: {
     deviceId: number;
     shopId: number;
@@ -607,6 +608,19 @@ export class DatabaseStorage implements IStorage {
   async createDropEvent(event: InsertDropEvent): Promise<DropEvent> {
     const [dropEvent] = await db.insert(dropEvents).values(event).returning();
     return dropEvent;
+  }
+
+  async createDropEventIdempotent(event: InsertDropEvent): Promise<DropEvent | null> {
+    if (!event.deviceEventId) {
+      const [created] = await db.insert(dropEvents).values(event).returning();
+      return created ?? null;
+    }
+    const result = await db
+      .insert(dropEvents)
+      .values(event)
+      .onConflictDoNothing({ target: dropEvents.deviceEventId })
+      .returning();
+    return result[0] ?? null;
   }
 
   // Fully transactional drop processing (Task #6 atomicity).
