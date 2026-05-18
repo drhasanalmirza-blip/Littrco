@@ -3262,27 +3262,55 @@ function BinCapabilitiesTab({ bins }: { bins: any[] }) {
   );
 }
 
+type BinMode = 'demo' | 'normal';
+type CameraModel = 'none' | 's3cam' | 'android_cam';
+
+interface PendingSetupBin {
+  id: number;
+  name?: string | null;
+  uid?: string | null;
+  shopId?: number | null;
+  mode?: BinMode | null;
+  cameraModel?: CameraModel | null;
+  status?: string | null;
+  createdAt?: string | null;
+  shop?: { id: number; name: string; address?: string | null } | null;
+  device?: { id: number; name?: string | null; uid?: string | null; lastSeenAt?: string | null } | null;
+}
+
+interface SetupForm {
+  name: string;
+  mode: BinMode;
+  cameraModel: CameraModel;
+}
+
+interface SetupPayload extends SetupForm {}
+
 function PendingSetupTab() {
   const queryClient = useQueryClient();
-  const { data: bins = [], isLoading } = useQuery<any[]>({
+  const { data: bins = [], isLoading } = useQuery<PendingSetupBin[]>({
     queryKey: ['pending-setup-bins'],
     queryFn: async () => {
       const res = await apiRequest('/api/staff/bins/pending-setup');
       if (!res.ok) return [];
-      return res.json();
+      return res.json() as Promise<PendingSetupBin[]>;
     },
     refetchInterval: 15000,
   });
 
-  const [forms, setForms] = useState<Record<number, { name: string; mode: 'demo' | 'normal'; cameraModel: 'none' | 's3cam' | 'android_cam' }>>({});
+  const [forms, setForms] = useState<Record<number, SetupForm>>({});
 
-  const getForm = (bin: any) =>
-    forms[bin.id] ?? { name: bin.name || '', mode: (bin.mode as any) || 'demo', cameraModel: (bin.cameraModel as any) || 'none' };
-  const setForm = (id: number, patch: Partial<{ name: string; mode: 'demo' | 'normal'; cameraModel: 'none' | 's3cam' | 'android_cam' }>) =>
-    setForms(prev => ({ ...prev, [id]: { ...getForm({ id, ...(prev[id] || {}) } as any), ...patch } }));
+  const getForm = (bin: PendingSetupBin): SetupForm =>
+    forms[bin.id] ?? {
+      name: bin.name ?? '',
+      mode: bin.mode ?? 'demo',
+      cameraModel: bin.cameraModel ?? 'none',
+    };
+  const setForm = (bin: PendingSetupBin, patch: Partial<SetupForm>) =>
+    setForms(prev => ({ ...prev, [bin.id]: { ...getForm(bin), ...prev[bin.id], ...patch } }));
 
   const setupMutation = useMutation({
-    mutationFn: async ({ id, body }: { id: number; body: any }) => {
+    mutationFn: async ({ id, body }: { id: number; body: SetupPayload }) => {
       const res = await apiRequest(`/api/staff/bins/${id}/setup`, { method: 'PATCH', body: JSON.stringify(body) });
       if (!res.ok) throw new Error('Setup failed');
       return res.json();
@@ -3304,7 +3332,7 @@ function PendingSetupTab() {
 
   return (
     <div className="p-4 space-y-3" data-testid="list-pending-setup">
-      {bins.map((bin: any) => {
+      {bins.map((bin) => {
         const f = getForm(bin);
         return (
           <Card key={bin.id} className="border-amber-400" data-testid={`card-pending-bin-${bin.id}`}>
@@ -3321,14 +3349,14 @@ function PendingSetupTab() {
                   <label className="text-xs font-medium block mb-1">Bin Name</label>
                   <Input
                     value={f.name}
-                    onChange={(e) => setForm(bin.id, { name: e.target.value })}
+                    onChange={(e) => setForm(bin, { name: e.target.value })}
                     placeholder="e.g. Front counter"
                     data-testid={`input-bin-name-${bin.id}`}
                   />
                 </div>
                 <div>
                   <label className="text-xs font-medium block mb-1">Mode</label>
-                  <Select value={f.mode} onValueChange={(v) => setForm(bin.id, { mode: v as any })}>
+                  <Select value={f.mode} onValueChange={(v) => setForm(bin, { mode: v === 'normal' ? 'normal' : 'demo' })}>
                     <SelectTrigger data-testid={`select-bin-mode-${bin.id}`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="demo">Demo (random 1–10 pts)</SelectItem>
@@ -3338,7 +3366,10 @@ function PendingSetupTab() {
                 </div>
                 <div>
                   <label className="text-xs font-medium block mb-1">Camera Model</label>
-                  <Select value={f.cameraModel} onValueChange={(v) => setForm(bin.id, { cameraModel: v as any })}>
+                  <Select
+                    value={f.cameraModel}
+                    onValueChange={(v) => setForm(bin, { cameraModel: v === 's3cam' || v === 'android_cam' ? v : 'none' })}
+                  >
                     <SelectTrigger data-testid={`select-bin-camera-${bin.id}`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>

@@ -2679,15 +2679,15 @@ export async function registerRoutes(
 
       await storage.updateDeviceLastSeen(device.id);
 
-      if (event_id) {
-        const existing = await storage.getDropEventByDeviceEventId(event_id);
-        if (existing) {
-          const session = existing.sessionId ? await storage.getRewardSession(existing.sessionId) : null;
-          const dupBin = await storage.getBinByDeviceId(device.id);
-          // Preserve original rejection state on retry so firmware can re-blink
-          // red. Recompute from the drop verdict + current bin reject toggles.
-          let dupRejected = false;
-          let dupRejectionReason: string | null = null;
+      // Helper: render the canonical "duplicate replay" response for a
+      // dropEvent that already exists (i.e. either an old request, or a
+      // concurrent retry that lost the idempotent-insert race below).
+      const replayDuplicate = async (existing: typeof import("@shared/schema").dropEvents.$inferSelect) => {
+        const session = existing.sessionId ? await storage.getRewardSession(existing.sessionId) : null;
+        const dupBin = await storage.getBinByDeviceId(device.id);
+        let dupRejected = false;
+        let dupRejectionReason: string | null = null;
+        if (event_id) {
           const dupDrop = await storage.getDropByEventId(event_id);
           if (dupDrop?.verdictReady && dupDrop.verdictAccepted === false && dupBin) {
             const reason = dupDrop.verdictReason ?? '';
@@ -2696,17 +2696,24 @@ export async function registerRoutes(
               dupRejectionReason = reason;
             }
           }
-          return res.json({
-            ok: true,
-            duplicate: true,
-            sessionId: session?.id ?? null,
-            points: session?.pointsTotal ?? 0,
-            qr_url: session ? `https://littr.co/app/claim?token=${session.token}` : null,
-            stackCount: session?.dropCount ?? 0,
-            mode: dupBin?.mode ?? 'demo',
-            rejected: dupRejected,
-            rejectionReason: dupRejectionReason,
-          });
+        }
+        return res.json({
+          ok: true,
+          duplicate: true,
+          sessionId: session?.id ?? null,
+          points: session?.pointsTotal ?? 0,
+          qr_url: session ? `https://littr.co/app/claim?token=${session.token}` : null,
+          stackCount: session?.dropCount ?? 0,
+          mode: dupBin?.mode ?? 'demo',
+          rejected: dupRejected,
+          rejectionReason: dupRejectionReason,
+        });
+      };
+
+      if (event_id) {
+        const existing = await storage.getDropEventByDeviceEventId(event_id);
+        if (existing) {
+          return await replayDuplicate(existing);
         }
       }
 
@@ -2731,77 +2738,65 @@ export async function registerRoutes(
       if (mode === 'demo') {
         points = rollPointsDemo();
       } else {
-        const rewardConfig = await storage.getRewardConfig(device.shopId);
-        const enabled = rewardConfig?.enabled ?? true;
-        if (!enabled) {
-          points = 0;
-        } else {
-          const table = (rewardConfig?.rewardTableJson as Array<{ points: number; weight: number }> | undefined) ?? [];
-          points = rollPointsFromTable(table);
+        // Normal mode is classifier-gated when the bin has any reject toggle
+        // enabled. The reward outcome is decided *after* the classifier
+        // verdict — never optimistically. Until the verdict is ready we
+        // return an explicit pending/retry contract so the bin re-polls with
+        // the same event_id and the firmware never lights a reward it might
+        // have to take back.
+        const gatingEnabled = !!(bin && (bin.rejectThcVapes || bin.rejectNonVapes));
+        const existingDrop = event_id ? await storage.getDropByEventId(event_id) : undefined;
+
+        if (gatingEnabled && (!existingDrop || !existingDrop.verdictReady)) {
+          return res.json({
+            ok: true,
+            pending: true,
+            reason: 'awaiting_classifier_verdict',
+            mode,
+            retryAfterMs: 1000,
+          });
         }
 
-        // Classifier-gated rejection: if a Task #5 drop row already exists for
-        // this event_id with a ready verdict that matches the bin owner's
-        // reject toggles, return 0 + rejected so firmware can blink red
-        // immediately. If the verdict isn't in yet, fall through to the
-        // weighted reward; the staff-correction reward-lock will reconcile
-        // post-hoc.
-        if (event_id && bin) {
-          const existingDrop = await storage.getDropByEventId(event_id);
-          if (existingDrop?.verdictReady && existingDrop.verdictAccepted === false) {
-            const reason = existingDrop.verdictReason ?? '';
-            const isThc = reason === 'thc_vape';
-            const isNonVape = reason === 'not_a_vape';
-            if ((isThc && bin.rejectThcVapes) || (isNonVape && bin.rejectNonVapes)) {
-              points = 0;
-              rejected = true;
-              rejectionReason = reason;
-            }
+        if (existingDrop?.verdictReady && existingDrop.verdictAccepted === false && bin) {
+          const reason = existingDrop.verdictReason ?? '';
+          const isThc = reason === 'thc_vape';
+          const isNonVape = reason === 'not_a_vape';
+          if ((isThc && bin.rejectThcVapes) || (isNonVape && bin.rejectNonVapes)) {
+            points = 0;
+            rejected = true;
+            rejectionReason = reason;
+          } else {
+            // Verdict says rejected for a different reason the bin owner
+            // isn't filtering on — pay the configured reward.
+            const rewardConfig = await storage.getRewardConfig(device.shopId);
+            const table = (rewardConfig?.rewardTableJson as Array<{ points: number; weight: number }> | undefined) ?? [];
+            points = (rewardConfig?.enabled ?? true) ? rollPointsFromTable(table) : 0;
           }
+        } else {
+          // Either gating disabled, or verdict ready & accepted → pay
+          // configured reward.
+          const rewardConfig = await storage.getRewardConfig(device.shopId);
+          const table = (rewardConfig?.rewardTableJson as Array<{ points: number; weight: number }> | undefined) ?? [];
+          points = (rewardConfig?.enabled ?? true) ? rollPointsFromTable(table) : 0;
         }
       }
 
-      let session = await storage.getActiveRewardSession(device.id);
+      // Atomicity: dropEvent insert (idempotency key) + session upsert +
+      // partner-ledger credit run in a single DB transaction. Concurrent
+      // retries with the same event_id block on the unique deviceEventId
+      // row lock and observe the finalized, committed state.
+      const { duplicate, dropEvent, session } = await storage.processDropAtomic({
+        deviceId: device.id,
+        shopId: device.shopId,
+        eventId: event_id || null,
+        points,
+        sessionWindowSec,
+        generateToken: generateClaimToken,
+      });
 
-      if (session) {
-        const newTotal = session.pointsTotal + points;
-        const newCount = session.dropCount + 1;
-        const newExpiry = new Date(Date.now() + sessionWindowSec * 1000);
-        session = (await storage.updateRewardSession(session.id, {
-          pointsTotal: newTotal,
-          dropCount: newCount,
-          lastDropAt: new Date(),
-          expiresAt: newExpiry,
-        }))!;
-      } else {
-        const token = generateClaimToken();
-        const expiresAt = new Date(Date.now() + sessionWindowSec * 1000);
-        session = await storage.createRewardSession({
-          deviceId: device.id,
-          shopId: device.shopId,
-          token,
-          pointsTotal: points,
-          dropCount: 1,
-          lastDropAt: new Date(),
-          expiresAt,
-        });
+      if (duplicate) {
+        return await replayDuplicate(dropEvent);
       }
-
-      const dropEvent = await storage.createDropEvent({
-        shopId: device.shopId,
-        deviceId: device.id,
-        deviceEventId: event_id || null,
-        sessionId: session.id,
-        pointsAwarded: points,
-      });
-
-      await storage.creditPartnerPoints({
-        shopId: device.shopId,
-        deviceId: device.id,
-        points: 1,
-        reason: "drop",
-        dropEventId: dropEvent.id,
-      });
 
       res.json({
         ok: true,

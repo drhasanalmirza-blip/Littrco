@@ -174,6 +174,14 @@ export interface IStorage {
   
   // Drop Events
   createDropEvent(event: InsertDropEvent): Promise<DropEvent>;
+  processDropAtomic(args: {
+    deviceId: number;
+    shopId: number;
+    eventId: string | null;
+    points: number;
+    sessionWindowSec: number;
+    generateToken: () => string;
+  }): Promise<{ duplicate: boolean; dropEvent: DropEvent; session: RewardSession }>;
   getDropEventsByShop(shopId: number): Promise<DropEvent[]>;
   getTodayDropEventsByDevice(deviceId: number): Promise<DropEvent[]>;
   getDropEvent(id: number): Promise<DropEvent | undefined>;
@@ -599,6 +607,142 @@ export class DatabaseStorage implements IStorage {
   async createDropEvent(event: InsertDropEvent): Promise<DropEvent> {
     const [dropEvent] = await db.insert(dropEvents).values(event).returning();
     return dropEvent;
+  }
+
+  // Fully transactional drop processing (Task #6 atomicity).
+  //
+  // All of: dropEvent insert (idempotency key), session upsert, dropEvent
+  // sessionId attach, partner-points ledger credit — happen in a single DB
+  // transaction. PostgreSQL's row-level lock on the unique deviceEventId
+  // index means concurrent retries with the same event_id will block on the
+  // winner's transaction; when the loser unblocks it sees the committed,
+  // finalized row and gets the canonical duplicate response.
+  async processDropAtomic(args: {
+    deviceId: number;
+    shopId: number;
+    eventId: string | null;
+    points: number;
+    sessionWindowSec: number;
+    generateToken: () => string;
+  }): Promise<{ duplicate: boolean; dropEvent: DropEvent; session: RewardSession }> {
+    return await db.transaction(async (tx) => {
+      // 0. Device-scoped advisory lock to serialize the cold-start session
+      // creation race. Without this, two concurrent distinct-event requests
+      // with no prior active session could both find `active=null` and
+      // INSERT separate PENDING sessions (split-stack). The lock is
+      // released automatically at transaction commit/rollback.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${args.deviceId})`);
+
+      // 1. Insert dropEvent as idempotency key (if eventId provided).
+      let dropEvent: DropEvent | undefined;
+      let isDuplicate = false;
+      if (args.eventId) {
+        const inserted = await tx
+          .insert(dropEvents)
+          .values({
+            shopId: args.shopId,
+            deviceId: args.deviceId,
+            deviceEventId: args.eventId,
+            sessionId: null,
+            pointsAwarded: args.points,
+          })
+          .onConflictDoNothing({ target: dropEvents.deviceEventId })
+          .returning();
+        if (inserted.length === 0) {
+          isDuplicate = true;
+          const [existing] = await tx
+            .select()
+            .from(dropEvents)
+            .where(eq(dropEvents.deviceEventId, args.eventId));
+          if (!existing) throw new Error("drop_idempotency_failed");
+          dropEvent = existing;
+        } else {
+          dropEvent = inserted[0];
+        }
+      } else {
+        const [created] = await tx
+          .insert(dropEvents)
+          .values({
+            shopId: args.shopId,
+            deviceId: args.deviceId,
+            deviceEventId: null,
+            sessionId: null,
+            pointsAwarded: args.points,
+          })
+          .returning();
+        dropEvent = created;
+      }
+
+      if (isDuplicate) {
+        const [session] = dropEvent.sessionId
+          ? await tx.select().from(rewardSessions).where(eq(rewardSessions.id, dropEvent.sessionId))
+          : [];
+        if (!session) throw new Error("drop_duplicate_missing_session");
+        return { duplicate: true, dropEvent, session };
+      }
+
+      // 2. Upsert active session. Use SELECT ... FOR UPDATE to lock the row
+      // so two concurrent transactions on the same device can't both read
+      // the same pre-image and clobber each other; the UPDATE itself also
+      // uses an atomic SQL increment (`points_total + $`) so even without
+      // the lock there is no lost-update window.
+      const [active] = await tx.select().from(rewardSessions).where(
+        and(
+          eq(rewardSessions.deviceId, args.deviceId),
+          eq(rewardSessions.status, "PENDING"),
+          eq(rewardSessions.voided, false),
+          gte(rewardSessions.expiresAt, new Date())
+        )
+      ).orderBy(desc(rewardSessions.createdAt)).limit(1).for("update");
+
+      let session: RewardSession;
+      const newExpiry = new Date(Date.now() + args.sessionWindowSec * 1000);
+      if (active) {
+        const [updated] = await tx
+          .update(rewardSessions)
+          .set({
+            pointsTotal: sql`${rewardSessions.pointsTotal} + ${args.points}`,
+            dropCount: sql`${rewardSessions.dropCount} + 1`,
+            lastDropAt: new Date(),
+            expiresAt: newExpiry,
+          } as any)
+          .where(eq(rewardSessions.id, active.id))
+          .returning();
+        session = updated;
+      } else {
+        const [created] = await tx
+          .insert(rewardSessions)
+          .values({
+            deviceId: args.deviceId,
+            shopId: args.shopId,
+            token: args.generateToken(),
+            pointsTotal: args.points,
+            dropCount: 1,
+            lastDropAt: new Date(),
+            expiresAt: newExpiry,
+          })
+          .returning();
+        session = created;
+      }
+
+      // 3. Attach session to dropEvent.
+      const [finalDropEvent] = await tx
+        .update(dropEvents)
+        .set({ sessionId: session.id, pointsAwarded: args.points })
+        .where(eq(dropEvents.id, dropEvent.id))
+        .returning();
+
+      // 4. Credit partner ledger.
+      await tx.insert(partnerPointsLedger).values({
+        shopId: args.shopId,
+        deviceId: args.deviceId,
+        points: 1,
+        reason: "drop",
+        dropEventId: finalDropEvent.id,
+      });
+
+      return { duplicate: false, dropEvent: finalDropEvent, session };
+    });
   }
   
   async getDropEventsByShop(shopId: number): Promise<DropEvent[]> {

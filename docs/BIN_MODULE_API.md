@@ -618,6 +618,28 @@ on-device.
 | `rejectionReason` | `"thc_vape"` or `"not_a_vape"` when `rejected: true`, else `null`. Use it for the local log line. |
 | `duplicate`  | (Only on retried `event_id`) — replay the original UI state. `rejected`/`rejectionReason` are recomputed from the stored verdict so retries are consistent. |
 
+**Pending response (HTTP 200) — normal mode, classifier verdict not yet in:**
+
+When the bin is in `normal` mode AND has `rejectThcVapes` or `rejectNonVapes`
+enabled, the server gates the reward on the classifier verdict and will
+never pay optimistically. If the verdict for `event_id` isn't ready yet
+the response is:
+```json
+{
+  "ok": true,
+  "pending": true,
+  "reason": "awaiting_classifier_verdict",
+  "mode": "normal",
+  "retryAfterMs": 1000
+}
+```
+The bin must keep the user-facing UI in a "thinking" state and retry the
+same `POST /api/v2/device/drop` with the same `event_id` after
+`retryAfterMs` milliseconds. No session is created and no points are
+awarded until the verdict resolves. The drop event itself (with images)
+is uploaded separately via `POST /api/bin-module/drop-capture`, which is
+what triggers the classifier in the first place.
+
 **Per-mode behavior:**
 
 | Mode      | Reward source                                              | Range |
