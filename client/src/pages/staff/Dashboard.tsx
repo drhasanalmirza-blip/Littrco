@@ -557,18 +557,18 @@ export default function StaffDashboard() {
         <div className="p-4 rounded-2xl border border-blue-100 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/40">
           <div className="flex items-center gap-2 mb-1">
             <Link2 className="h-4 w-4 text-blue-500" />
-            <span className="text-[11px] uppercase tracking-wide text-blue-700 dark:text-blue-300">Awaiting Pair</span>
+            <span className="text-[11px] uppercase tracking-wide text-blue-700 dark:text-blue-300">Awaiting Assignment</span>
           </div>
           <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-awaiting-pair">{pendingPairCount}</p>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">ESP32 boards requesting a shop</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">New hardware to assign to a bin</p>
         </div>
-        <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/40">
+        <div className={`p-4 rounded-2xl border ${pendingSetupCount > 0 ? 'border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/40' : 'border-gray-100 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/20'}`}>
           <div className="flex items-center gap-2 mb-1">
-            <Settings2 className="h-4 w-4 text-amber-500" />
-            <span className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-300">Pending Setup</span>
+            <Settings2 className={`h-4 w-4 ${pendingSetupCount > 0 ? 'text-amber-500' : 'text-gray-400'}`} />
+            <span className={`text-[11px] uppercase tracking-wide ${pendingSetupCount > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500'}`}>Legacy Pending</span>
           </div>
           <p className="text-2xl font-bold text-black dark:text-white" data-testid="stat-pending-setup">{pendingSetupCount}</p>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Paired, need name &amp; mode</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{pendingSetupCount > 0 ? 'Older bins still needing setup' : 'None — assign on pair'}</p>
         </div>
         <div className="p-4 rounded-2xl border border-green-200 dark:border-green-900 bg-green-50/60 dark:bg-green-950/40">
           <div className="flex items-center gap-2 mb-1">
@@ -588,19 +588,19 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      <Tabs defaultValue={pendingSetupCount > 0 ? 'pending' : 'fleet'} className="space-y-4" data-testid="bins-subtabs">
-        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+      <Tabs defaultValue={pendingPairCount > 0 ? 'fleet' : (pendingSetupCount > 0 ? 'pending' : 'fleet')} className="space-y-4" data-testid="bins-subtabs">
+        <TabsList className={`grid ${pendingSetupCount > 0 ? 'grid-cols-4' : 'grid-cols-3'} w-full max-w-2xl`}>
           <TabsTrigger value="fleet" data-testid="subtab-fleet">
             <Cpu className="h-3.5 w-3.5 mr-1.5" />
             Fleet
           </TabsTrigger>
-          <TabsTrigger value="pending" data-testid="subtab-pending-setup">
-            <Settings2 className="h-3.5 w-3.5 mr-1.5" />
-            Pending Setup
-            {pendingSetupCount > 0 && (
+          {pendingSetupCount > 0 && (
+            <TabsTrigger value="pending" data-testid="subtab-pending-setup">
+              <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+              Legacy Setup
               <Badge className="ml-1.5 h-4 px-1.5 text-[10px] bg-amber-500 text-white">{pendingSetupCount}</Badge>
-            )}
-          </TabsTrigger>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="modules" data-testid="subtab-modules">
             <Camera className="h-3.5 w-3.5 mr-1.5" />
             Camera Modules
@@ -723,25 +723,36 @@ export default function StaffDashboard() {
                     <TableHead>Status</TableHead>
                     <TableHead>Shop</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pairRequests.map((pr: any) => (
-                    <TableRow key={pr.id} data-testid={`pair-request-row-${pr.id}`}>
-                      <TableCell><Badge variant="outline" className="font-mono">{pr.pairCode}</Badge></TableCell>
-                      <TableCell className="font-mono text-xs">...{pr.uid?.slice(-8)}</TableCell>
-                      <TableCell>{pr.firmwareVersion || 'Unknown'}</TableCell>
-                      <TableCell>
-                        {pr.claimed ? <Badge className="bg-green-600">Claimed</Badge> :
-                         new Date(pr.expiresAt) < new Date() ? <Badge className="bg-red-600">Expired</Badge> :
-                         <Badge className="bg-yellow-600 text-black">Pending</Badge>}
-                      </TableCell>
-                      <TableCell>{pr.shopId ? shops.find((s: any) => s.id === pr.shopId)?.name || 'Unknown' : '—'}</TableCell>
-                      <TableCell className="text-xs">{new Date(pr.createdAt).toLocaleString()}</TableCell>
-                    </TableRow>
-                  ))}
+                  {pairRequests.map((pr: any) => {
+                    const isPending = !pr.claimed && new Date(pr.expiresAt) >= new Date();
+                    return (
+                      <TableRow key={pr.id} data-testid={`pair-request-row-${pr.id}`}>
+                        <TableCell><Badge variant="outline" className="font-mono">{pr.pairCode}</Badge></TableCell>
+                        <TableCell className="font-mono text-xs">...{pr.uid?.slice(-8)}</TableCell>
+                        <TableCell>{pr.firmwareVersion || 'Unknown'}</TableCell>
+                        <TableCell>
+                          {pr.claimed ? <Badge className="bg-green-600">Assigned</Badge> :
+                           new Date(pr.expiresAt) < new Date() ? <Badge className="bg-red-600">Expired</Badge> :
+                           <Badge className="bg-yellow-600 text-black">Awaiting</Badge>}
+                        </TableCell>
+                        <TableCell>{pr.shopId ? shops.find((s: any) => s.id === pr.shopId)?.name || 'Unknown' : '—'}</TableCell>
+                        <TableCell className="text-xs">{new Date(pr.createdAt).toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          {isPending ? (
+                            <AssignPairRequestDialog pairRequest={pr} shops={shops} />
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {pairRequests.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-gray-400 py-4">No pair requests yet</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center text-gray-400 py-4">No pair requests yet</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -1885,6 +1896,118 @@ function BinDetailDialog({ bin, shops }: { bin: any; shops: any[] }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function AssignPairRequestDialog({ pairRequest, shops }: { pairRequest: any; shops: any[] }) {
+  const [open, setOpen] = useState(false);
+  const [shopId, setShopId] = useState('');
+  const [name, setName] = useState(`Bin ${pairRequest.uid?.slice(-4)?.toUpperCase() ?? ''}`);
+  const [mode, setMode] = useState<'demo' | 'normal'>('demo');
+  const [cameraModel, setCameraModel] = useState<'none' | 's3cam' | 'android_cam'>('none');
+  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const assign = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(`/api/v2/staff/pair-requests/${pairRequest.id}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ shopId: parseInt(shopId), name, mode, cameraModel }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Assign failed');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pair-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['bins'] });
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-setup-bins'] });
+      setOpen(false);
+      setError(null);
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const verifiedShops = shops.filter((s: any) => s.status === 'VERIFIED');
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" data-testid={`button-assign-pair-${pairRequest.id}`}>
+          Assign
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign Pair Request to Smart Bin</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-xs">
+            <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Pair Code</span><span className="font-mono font-bold">{pairRequest.pairCode}</span></div>
+            <div className="flex justify-between mt-1"><span className="text-gray-600 dark:text-gray-400">Device UID</span><span className="font-mono">{pairRequest.uid}</span></div>
+            <div className="flex justify-between mt-1"><span className="text-gray-600 dark:text-gray-400">Firmware</span><span>{pairRequest.firmwareVersion || 'Unknown'}</span></div>
+          </div>
+
+          <div>
+            <Label>Assign to Shop</Label>
+            <Select value={shopId} onValueChange={setShopId}>
+              <SelectTrigger data-testid="select-assign-shop"><SelectValue placeholder="Select a verified shop" /></SelectTrigger>
+              <SelectContent>
+                {verifiedShops.map((shop: any) => (
+                  <SelectItem key={shop.id} value={shop.id.toString()}>{shop.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {verifiedShops.length === 0 && <p className="text-xs text-amber-600 mt-1">No verified shops available.</p>}
+          </div>
+
+          <div>
+            <Label>Bin Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Front Counter Bin" data-testid="input-assign-name" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Mode</Label>
+              <Select value={mode} onValueChange={(v) => setMode(v as 'demo' | 'normal')}>
+                <SelectTrigger data-testid="select-assign-mode"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="demo">Demo (random 1–10)</SelectItem>
+                  <SelectItem value="normal">Normal (reward config)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Camera Module</Label>
+              <Select value={cameraModel} onValueChange={(v) => setCameraModel(v as 'none' | 's3cam' | 'android_cam')}>
+                <SelectTrigger data-testid="select-assign-camera"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="s3cam">ESP32-S3-CAM</SelectItem>
+                  <SelectItem value="android_cam">Android Cam</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            The bin will be created in <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">OFFLINE</code> and lift to <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">ONLINE</code> on first telemetry.
+          </p>
+
+          {error && <p className="text-xs text-red-600" data-testid="text-assign-error">{error}</p>}
+
+          <Button
+            onClick={() => assign.mutate()}
+            disabled={assign.isPending || !shopId || !name}
+            className="w-full"
+            data-testid="button-assign-submit"
+          >
+            {assign.isPending ? 'Assigning…' : 'Assign & Activate'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -285,6 +285,7 @@ export interface IStorage {
 
   // Pair Requests
   createPairRequest(request: InsertPairRequest): Promise<PairRequest>;
+  getPairRequest(id: number): Promise<PairRequest | undefined>;
   getPairRequestByCode(code: string): Promise<PairRequest | undefined>;
   getPairRequestByUid(uid: string): Promise<PairRequest | undefined>;
   getActivePairRequestByUid(uid: string): Promise<PairRequest | undefined>;
@@ -1138,6 +1139,11 @@ export class DatabaseStorage implements IStorage {
     return pr;
   }
 
+  async getPairRequest(id: number): Promise<PairRequest | undefined> {
+    const [pr] = await db.select().from(pairRequests).where(eq(pairRequests.id, id));
+    return pr;
+  }
+
   async getPairRequestByCode(code: string): Promise<PairRequest | undefined> {
     const [pr] = await db.select().from(pairRequests).where(eq(pairRequests.pairCode, code));
     return pr;
@@ -1160,12 +1166,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async claimPairRequest(id: number, userId: string, shopId: number, deviceId: number): Promise<PairRequest | undefined> {
+    // Race-safe: only claim if not already claimed. Concurrent staff assigns
+    // will see one row updated and the other get `undefined`.
     const [pr] = await db.update(pairRequests).set({
       claimed: true,
       claimedByUserId: userId,
       shopId,
       deviceId,
-    }).where(eq(pairRequests.id, id)).returning();
+    }).where(and(eq(pairRequests.id, id), eq(pairRequests.claimed, false))).returning();
     return pr;
   }
 

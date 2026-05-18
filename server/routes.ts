@@ -2550,24 +2550,49 @@ export async function registerRoutes(
       // Idempotently create the bin row so it shows up in the partner dashboard
       // immediately (rather than waiting for first telemetry to auto-create it).
       // IMPORTANT: do this BEFORE claimPairRequest so a bin-insert failure
-      // doesn't consume the one-shot pair code (would leave the partner unable
-      // to retry).
+      // doesn't consume the one-shot pair code.
+      // If the caller passes name/mode/cameraModel inline, the bin is created
+      // directly in OFFLINE (skipping PENDING_SETUP). This matches the
+      // unified staff assign flow.
+      const { name: claimName, mode: claimMode, cameraModel: claimCameraModel } = req.body ?? {};
+      const anyInline = claimName || claimMode || claimCameraModel;
+      const hasInlineConfig = !!(claimName && claimMode && claimCameraModel);
+      if (anyInline && !hasInlineConfig) {
+        // Reject partial inline config — all-or-none. Prevents silent fallback
+        // to PENDING_SETUP for v3 callers that only sent some fields.
+        return res.status(400).json({ ok: false, error: 'name, mode, and cameraModel must be supplied together (or all omitted for legacy pairing)' });
+      }
+      if (hasInlineConfig) {
+        if (!['demo', 'normal'].includes(claimMode)) {
+          return res.status(400).json({ ok: false, error: 'mode must be "demo" or "normal"' });
+        }
+        if (!['none', 's3cam', 'android_cam'].includes(claimCameraModel)) {
+          return res.status(400).json({ ok: false, error: 'cameraModel must be one of none, s3cam, android_cam' });
+        }
+      }
+
       let bin = await storage.getBinByDeviceId(device.id);
       if (!bin) {
         bin = await storage.createBin({
           shopId: shop.id,
           deviceId: device.id,
-          name: `Smart Bin #${device.id}`,
+          name: hasInlineConfig ? claimName : `Smart Bin #${device.id}`,
           binType: "vape",
-          status: "PENDING_SETUP",
+          status: hasInlineConfig ? "OFFLINE" : "PENDING_SETUP",
           fillLevel: 0,
           vapeCount: 0,
-          mode: "demo",
-          cameraModel: "none",
+          mode: hasInlineConfig ? claimMode : "demo",
+          cameraModel: hasInlineConfig ? claimCameraModel : "none",
         });
+        if (hasInlineConfig) {
+          await storage.updateBinSetup(bin.id, { name: claimName, mode: claimMode, cameraModel: claimCameraModel, status: "OFFLINE" });
+        }
       }
 
-      await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
+      const claimed = await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
+      if (!claimed) {
+        return res.status(409).json({ ok: false, error: "Pair code already claimed; retry pairing" });
+      }
 
       res.json({
         ok: true,
@@ -3173,6 +3198,101 @@ export async function registerRoutes(
     } catch (error) {
       console.error("V2 staff pair-requests error:", error);
       res.status(500).json({ error: "Failed to fetch pair requests" });
+    }
+  });
+
+  // V2 Staff — assign a pending pair request to a shop AND configure the bin
+  // in one atomic step. This is the canonical way to bring a new bin online:
+  // the pair request, the device, and the fully-configured bin row are all
+  // created/updated together. The bin lands in OFFLINE (not PENDING_SETUP);
+  // telemetry will flip it to ONLINE on first heartbeat.
+  app.post("/api/v2/staff/pair-requests/:id/assign", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    try {
+      const user = req.user!;
+      const prId = parseInt(req.params.id);
+      const { shopId, name, mode, cameraModel } = req.body ?? {};
+
+      if (!shopId || !name || !mode || !cameraModel) {
+        return res.status(400).json({ ok: false, error: "shopId, name, mode, and cameraModel are required" });
+      }
+      if (!['demo', 'normal'].includes(mode)) {
+        return res.status(400).json({ ok: false, error: 'mode must be "demo" or "normal"' });
+      }
+      if (!['none', 's3cam', 'android_cam'].includes(cameraModel)) {
+        return res.status(400).json({ ok: false, error: 'cameraModel must be one of none, s3cam, android_cam' });
+      }
+
+      const shop = await storage.getShop(parseInt(shopId));
+      if (!shop || shop.status !== "VERIFIED") {
+        return res.status(400).json({ ok: false, error: "Shop not found or not verified" });
+      }
+
+      const pr = await storage.getPairRequest(prId);
+      if (!pr) return res.status(404).json({ ok: false, error: "Pair request not found" });
+      if (pr.claimed) return res.status(400).json({ ok: false, error: "Pair request already claimed" });
+      if (new Date(pr.expiresAt) < new Date()) {
+        return res.status(400).json({ ok: false, error: "Pair request expired" });
+      }
+
+      // 1. Device: create or update
+      let device = await storage.getDeviceByUid(pr.uid);
+      if (!device) {
+        const deviceKey = generateDeviceKey();
+        const deviceKeyHash = hashDeviceKey(deviceKey);
+        device = await storage.createDevice({
+          shopId: shop.id,
+          name,
+          deviceKeyHash,
+          uid: pr.uid,
+          status: "ACTIVE",
+        });
+      } else {
+        device = (await storage.updateDevice(device.id, { shopId: shop.id, status: "ACTIVE", name }))!;
+      }
+
+      // 2. Shop device config (created on demand for downstream endpoints)
+      const existingConfig = await storage.getDeviceConfig(shop.id);
+      if (!existingConfig) await storage.upsertDeviceConfig({ shopId: shop.id });
+
+      // 3. Bin: create directly in OFFLINE with full config — skip PENDING_SETUP entirely
+      let bin = await storage.getBinByDeviceId(device.id);
+      if (!bin) {
+        bin = await storage.createBin({
+          shopId: shop.id,
+          deviceId: device.id,
+          name,
+          binType: "vape",
+          status: "OFFLINE",
+          fillLevel: 0,
+          vapeCount: 0,
+          mode,
+          cameraModel,
+        });
+        await storage.updateBinSetup(bin.id, { name, mode, cameraModel, status: "OFFLINE" });
+      } else {
+        await storage.updateBinSetup(bin.id, { name, mode, cameraModel, status: "OFFLINE" });
+      }
+
+      // 4. Claim pair request last — race-safe (conditional WHERE claimed=false).
+      // If another staff member won the race, abort with 409 so the UI can refresh.
+      const claimed = await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
+      if (!claimed) {
+        return res.status(409).json({ ok: false, error: "Pair request was claimed by another staff member; refresh and retry" });
+      }
+
+      const finalBin = await storage.getBin(bin.id);
+      res.json({
+        ok: true,
+        data: {
+          deviceId: device.id,
+          shopId: shop.id,
+          shopName: shop.name,
+          bin: finalBin,
+        },
+      });
+    } catch (error) {
+      console.error("V2 staff pair-request assign error:", error);
+      res.status(500).json({ ok: false, error: "Pair request assignment failed" });
     }
   });
 
