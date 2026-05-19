@@ -425,13 +425,13 @@ export default function PartnerDashboard() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
                 <TrendingUp className="h-8 w-8 text-green-500" />
                 <div>
-                  <p className="text-2xl font-bold">{stats?.totalDrops || 0}</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-drops">{stats?.totalDrops || 0}</p>
                   <p className="text-xs text-gray-400">Total Drops</p>
                 </div>
               </div>
@@ -442,7 +442,7 @@ export default function PartnerDashboard() {
               <div className="flex items-center gap-3">
                 <Calendar className="h-8 w-8 text-blue-500" />
                 <div>
-                  <p className="text-2xl font-bold">{stats?.todayDrops || 0}</p>
+                  <p className="text-2xl font-bold" data-testid="text-today-drops">{stats?.todayDrops || 0}</p>
                   <p className="text-xs text-gray-400">Today</p>
                 </div>
               </div>
@@ -466,6 +466,17 @@ export default function PartnerDashboard() {
                 <div>
                   <p className="text-2xl font-bold">{stats?.activeDevices || 0}</p>
                   <p className="text-xs text-gray-400">Active Devices</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <XCircle className="h-8 w-8 text-red-500" />
+                <div>
+                  <p className="text-2xl font-bold" data-testid="text-today-rejected">{stats?.todayRejected || 0}</p>
+                  <p className="text-xs text-gray-400">Rejected Today</p>
                 </div>
               </div>
             </CardContent>

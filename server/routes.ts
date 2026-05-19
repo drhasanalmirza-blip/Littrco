@@ -568,7 +568,7 @@ export async function registerRoutes(
   app.get("/api/partner/shops/:shopId/stats", authMiddleware, requireRole("PARTNER"), async (req, res) => {
     try {
       const shopId = parseInt(req.params.shopId);
-      const events = await storage.getDropEventsByShop(shopId);
+      const events = await storage.getDropEventsWithVerdictByShop(shopId);
       const devices = await storage.getDevicesByShop(shopId);
       
       const today = new Date();
@@ -577,6 +577,15 @@ export async function registerRoutes(
       const todayEvents = events.filter(e => new Date(e.createdAt) >= today);
       const totalPoints = events.reduce((sum, e) => sum + e.pointsAwarded, 0);
       const todayPoints = todayEvents.reduce((sum, e) => sum + e.pointsAwarded, 0);
+
+      const totalRejected = events.filter(e => e.verdictAccepted === false).length;
+      const todayRejected = todayEvents.filter(e => e.verdictAccepted === false).length;
+      const rejectedByReason: Record<string, number> = {};
+      for (const e of events) {
+        if (e.verdictAccepted === false && e.verdictReason) {
+          rejectedByReason[e.verdictReason] = (rejectedByReason[e.verdictReason] || 0) + 1;
+        }
+      }
       
       res.json({
         totalDrops: events.length,
@@ -584,6 +593,9 @@ export async function registerRoutes(
         totalPoints,
         todayPoints,
         activeDevices: devices.filter(d => d.status === "ACTIVE").length,
+        totalRejected,
+        todayRejected,
+        rejectedByReason,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch stats" });
