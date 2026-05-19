@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { createDropV2Handler } from "./handlers/dropV2";
 import { 
   insertContactSchema, 
   insertLeadSchema, 
@@ -2408,27 +2409,6 @@ export async function registerRoutes(
 
   // ==================== V2 SMART BIN API ====================
 
-  function rollPointsV2(): number {
-    return Math.floor(Math.random() * 3) + 1;
-  }
-
-  function rollPointsDemo(): number {
-    // demo mode: random 1–10 inclusive
-    return Math.floor(Math.random() * 10) + 1;
-  }
-
-  function rollPointsFromTable(table: Array<{ points: number; weight: number }>): number {
-    if (!Array.isArray(table) || table.length === 0) return rollPointsV2();
-    const total = table.reduce((s, e) => s + (e.weight || 0), 0);
-    if (total <= 0) return rollPointsV2();
-    let r = Math.random() * total;
-    for (const e of table) {
-      r -= e.weight || 0;
-      if (r <= 0) return Math.max(0, Math.floor(e.points));
-    }
-    return Math.max(0, Math.floor(table[table.length - 1].points));
-  }
-
   function generatePairCode(): string {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "";
@@ -2690,178 +2670,8 @@ export async function registerRoutes(
   });
 
   // V2 Drop — ESP32 reports a vape drop, creates/extends reward session
-  app.post("/api/v2/device/drop", async (req, res) => {
-    try {
-      const { uid, event_id } = req.body;
-      if (!uid) {
-        return res.status(400).json({ ok: false, error: "uid required" });
-      }
-
-      const device = await storage.getDeviceByUid(uid);
-      if (!device || !device.shopId || device.status !== "ACTIVE") {
-        return res.status(400).json({ ok: false, error: "Device not paired or inactive" });
-      }
-
-      await storage.updateDeviceLastSeen(device.id);
-
-      // Helper: render the canonical "duplicate replay" response for a
-      // dropEvent that already exists (i.e. either an old request, or a
-      // concurrent retry that lost the idempotent-insert race below).
-      const replayDuplicate = async (existing: typeof import("@shared/schema").dropEvents.$inferSelect) => {
-        const session = existing.sessionId ? await storage.getRewardSession(existing.sessionId) : null;
-        const dupBin = await storage.getBinByDeviceId(device.id);
-        let dupRejected = false;
-        let dupRejectionReason: string | null = null;
-        if (event_id) {
-          const dupDrop = await storage.getDropByEventId(event_id);
-          if (dupDrop?.verdictReady && dupDrop.verdictAccepted === false && dupBin) {
-            const reason = dupDrop.verdictReason ?? '';
-            if ((reason === 'thc_vape' && dupBin.rejectThcVapes) || (reason === 'not_a_vape' && dupBin.rejectNonVapes)) {
-              dupRejected = true;
-              dupRejectionReason = reason;
-            }
-          }
-        }
-        return res.json({
-          ok: true,
-          duplicate: true,
-          sessionId: session?.id ?? null,
-          points: session?.pointsTotal ?? 0,
-          qr_url: session ? `https://littr.co/app/claim?token=${session.token}` : null,
-          stackCount: session?.dropCount ?? 0,
-          mode: dupBin?.mode ?? 'demo',
-          rejected: dupRejected,
-          rejectionReason: dupRejectionReason,
-        });
-      };
-
-      if (event_id) {
-        const existing = await storage.getDropEventByDeviceEventId(event_id);
-        if (existing) {
-          return await replayDuplicate(existing);
-        }
-      }
-
-      const config = await storage.getDeviceConfig(device.shopId);
-      const sessionWindowSec = config?.sessionWindowSec ?? 60;
-
-      // Mode-aware reward selection (Task #6).
-      // Look up the bin so we can branch on PENDING_SETUP / demo / normal.
-      const bin = await storage.getBinByDeviceId(device.id);
-      if (bin && bin.status === 'PENDING_SETUP') {
-        return res.status(409).json({
-          ok: false,
-          error: 'bin_not_configured',
-          message: 'Bin is awaiting staff setup. No rewards until configured.',
-        });
-      }
-      const mode: 'demo' | 'normal' = bin?.mode ?? 'demo';
-
-      let points: number;
-      let rejected = false;
-      let rejectionReason: string | null = null;
-      if (mode === 'demo') {
-        points = rollPointsDemo();
-      } else {
-        // Normal mode is classifier-gated when the bin has any reject toggle
-        // enabled. The reward outcome is decided *after* the classifier
-        // verdict — never optimistically. Until the verdict is ready we
-        // return an explicit pending/retry contract so the bin re-polls with
-        // the same event_id and the firmware never lights a reward it might
-        // have to take back.
-        const gatingEnabled = !!(bin && (bin.rejectThcVapes || bin.rejectNonVapes));
-        const existingDrop = event_id ? await storage.getDropByEventId(event_id) : undefined;
-
-        if (gatingEnabled && (!existingDrop || !existingDrop.verdictReady)) {
-          return res.json({
-            ok: true,
-            pending: true,
-            reason: 'awaiting_classifier_verdict',
-            mode,
-            retryAfterMs: 1000,
-          });
-        }
-
-        if (existingDrop?.verdictReady && existingDrop.verdictAccepted === false && bin) {
-          const reason = existingDrop.verdictReason ?? '';
-          const isThc = reason === 'thc_vape';
-          const isNonVape = reason === 'not_a_vape';
-          if ((isThc && bin.rejectThcVapes) || (isNonVape && bin.rejectNonVapes)) {
-            points = 0;
-            rejected = true;
-            rejectionReason = reason;
-          } else {
-            // Verdict says rejected for a different reason the bin owner
-            // isn't filtering on — pay the configured reward.
-            const rewardConfig = await storage.getRewardConfig(device.shopId);
-            const table = (rewardConfig?.rewardTableJson as Array<{ points: number; weight: number }> | undefined) ?? [];
-            points = (rewardConfig?.enabled ?? true) ? rollPointsFromTable(table) : 0;
-          }
-        } else {
-          // Either gating disabled, or verdict ready & accepted → pay
-          // configured reward.
-          const rewardConfig = await storage.getRewardConfig(device.shopId);
-          const table = (rewardConfig?.rewardTableJson as Array<{ points: number; weight: number }> | undefined) ?? [];
-          points = (rewardConfig?.enabled ?? true) ? rollPointsFromTable(table) : 0;
-        }
-      }
-
-      // Rejected drops (classifier verdict matched bin's reject toggles):
-      // Persist a minimal dropEvent row (0 points, no session, no ledger)
-      // so that retries with the same event_id hit the duplicate-check
-      // path above and never bypass the rejection. Then return immediately.
-      if (rejected) {
-        await storage.createDropEventIdempotent({
-          shopId: device.shopId,
-          deviceId: device.id,
-          deviceEventId: event_id || null,
-          sessionId: null,
-          pointsAwarded: 0,
-        });
-        return res.json({
-          ok: true,
-          sessionId: null,
-          points: 0,
-          qr_url: null,
-          stackCount: 0,
-          mode,
-          rejected: true,
-          rejectionReason,
-        });
-      }
-
-      // Atomicity: dropEvent insert (idempotency key) + session upsert +
-      // partner-ledger credit run in a single DB transaction. Concurrent
-      // retries with the same event_id block on the unique deviceEventId
-      // row lock and observe the finalized, committed state.
-      const { duplicate, dropEvent, session } = await storage.processDropAtomic({
-        deviceId: device.id,
-        shopId: device.shopId,
-        eventId: event_id || null,
-        points,
-        sessionWindowSec,
-        generateToken: generateClaimToken,
-      });
-
-      if (duplicate) {
-        return await replayDuplicate(dropEvent);
-      }
-
-      res.json({
-        ok: true,
-        sessionId: session.id,
-        points: session.pointsTotal,
-        qr_url: `https://littr.co/app/claim?token=${session.token}`,
-        stackCount: session.dropCount,
-        mode,
-        rejected,
-        rejectionReason,
-      });
-    } catch (error) {
-      console.error("V2 drop error:", error);
-      res.status(500).json({ ok: false, error: "Drop failed" });
-    }
-  });
+  // Handler logic lives in server/handlers/dropV2.ts for testability.
+  app.post("/api/v2/device/drop", createDropV2Handler(storage, generateClaimToken));
 
   // V2 Session Claim — user scans QR to claim stacked session points
   app.post("/api/v2/claim", optionalAuthMiddleware, async (req, res) => {
