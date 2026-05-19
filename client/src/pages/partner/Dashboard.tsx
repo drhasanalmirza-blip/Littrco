@@ -609,7 +609,13 @@ export default function PartnerDashboard() {
                             event.verdictReason === "not_a_vape" ? "Not a Vape" :
                             event.verdictReason ?? "Rejected";
                           return (
-                            <TableRow key={event.id} data-testid={`row-drop-${event.id}`}>
+                            <TableRow
+                              key={event.id}
+                              data-testid={`row-drop-${event.id}`}
+                              className={`animate-in fade-in slide-in-from-top-1 duration-500 ${
+                                isRejected ? "bg-red-50/50 dark:bg-red-950/30" : ""
+                              }`}
+                            >
                               <TableCell>
                                 {isRejected ? (
                                   <div className="flex items-center gap-2" data-testid={`status-drop-rejected-${event.id}`}>
