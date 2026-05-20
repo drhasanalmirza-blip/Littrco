@@ -586,6 +586,12 @@ export async function registerRoutes(
           rejectedByReason[e.verdictReason] = (rejectedByReason[e.verdictReason] || 0) + 1;
         }
       }
+      const todayRejectedByReason: Record<string, number> = {};
+      for (const e of todayEvents) {
+        if (e.verdictAccepted === false && e.verdictReason) {
+          todayRejectedByReason[e.verdictReason] = (todayRejectedByReason[e.verdictReason] || 0) + 1;
+        }
+      }
       
       res.json({
         totalDrops: events.length,
@@ -596,6 +602,7 @@ export async function registerRoutes(
         totalRejected,
         todayRejected,
         rejectedByReason,
+        todayRejectedByReason,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch stats" });

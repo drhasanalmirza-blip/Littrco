@@ -477,6 +477,15 @@ export default function PartnerDashboard() {
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-today-rejected">{stats?.todayRejected || 0}</p>
                   <p className="text-xs text-gray-400">Rejected Today</p>
+                  {stats?.todayRejectedByReason && Object.keys(stats.todayRejectedByReason).length > 0 && (
+                    <div className="mt-1 space-y-0.5" data-testid="breakdown-rejected-by-reason">
+                      {Object.entries(stats.todayRejectedByReason).map(([reason, count]) => (
+                        <p key={reason} className="text-xs text-gray-500 dark:text-gray-400" data-testid={`text-rejection-reason-${reason}`}>
+                          {reason.replace(/_/g, " ")}: <span className="font-medium text-red-400">{count}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
