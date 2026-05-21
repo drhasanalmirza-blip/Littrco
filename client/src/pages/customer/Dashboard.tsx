@@ -139,17 +139,7 @@ export default function CustomerDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <button 
-            onClick={() => setLocation('/app/scan')}
-            className="littr-card-solid p-4 text-center active:scale-[0.97] transition-all"
-            data-testid="button-scan-qr"
-          >
-            <div className="w-10 h-10 bg-green-50 dark:bg-green-950 rounded-xl flex items-center justify-center mx-auto mb-2">
-              <QrCode className="h-5 w-5 text-green-600" />
-            </div>
-            <p className="font-semibold text-xs text-black dark:text-white">Scan</p>
-          </button>
+        <div className="grid grid-cols-2 gap-3">
           <button 
             onClick={() => setLocation('/app/store')}
             className="littr-card-solid p-4 text-center active:scale-[0.97] transition-all"
@@ -161,31 +151,18 @@ export default function CustomerDashboard() {
             <p className="font-semibold text-xs text-black dark:text-white">Store</p>
           </button>
           <button 
-            onClick={() => setLocation('/app/bonus')}
+            onClick={() => setLocation('/dropoff')}
             className="littr-card-solid p-4 text-center active:scale-[0.97] transition-all"
-            data-testid="button-bonus"
+            data-testid="button-find-bin-top"
           >
             <div className="w-10 h-10 bg-green-50 dark:bg-green-950 rounded-xl flex items-center justify-center mx-auto mb-2">
-              <Star className="h-5 w-5 text-green-600" />
+              <MapPin className="h-5 w-5 text-green-600" />
             </div>
-            <p className="font-semibold text-xs text-black dark:text-white">Bonus</p>
+            <p className="font-semibold text-xs text-black dark:text-white">Find Bin</p>
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button 
-            onClick={() => setLocation('/app/scan')}
-            className="littr-card-solid p-3 flex items-center gap-3 active:scale-[0.97] transition-all"
-            data-testid="button-manual-claim"
-          >
-            <div className="w-9 h-9 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-              <Gift className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-            </div>
-            <div className="text-left">
-              <p className="font-semibold text-xs text-black dark:text-white">Enter Code</p>
-              <p className="text-[10px] text-gray-400">Manual claim</p>
-            </div>
-          </button>
+        <div className="grid grid-cols-1 gap-3">
           <button 
             onClick={() => setLocation('/dropoff')}
             className="littr-card-solid p-3 flex items-center gap-3 active:scale-[0.97] transition-all"
@@ -274,17 +251,13 @@ export default function CustomerDashboard() {
           <Wallet className="h-5 w-5" />
           <span>Wallet</span>
         </button>
-        <button className="littr-tab-item" onClick={() => setLocation('/app/scan')} data-testid="tab-scan">
-          <QrCode className="h-5 w-5" />
-          <span>Scan</span>
-        </button>
         <button className="littr-tab-item" onClick={() => setLocation('/app/store')} data-testid="tab-store">
           <ShoppingBag className="h-5 w-5" />
           <span>Store</span>
         </button>
-        <button className="littr-tab-item" onClick={() => setLocation('/app/drops')} data-testid="tab-drops">
-          <History className="h-5 w-5" />
-          <span>Drops</span>
+        <button className="littr-tab-item" onClick={() => setLocation('/dropoff')} data-testid="tab-find">
+          <MapPin className="h-5 w-5" />
+          <span>Find Bin</span>
         </button>
         <button className="littr-tab-item" onClick={handleLogout} data-testid="button-logout">
           <LogOut className="h-5 w-5" />

@@ -1,187 +1,114 @@
-import { useStore, apiRequest } from "@/lib/store";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useLocation, useSearch } from "wouter";
 import { useState, useEffect } from "react";
-import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { useRoute, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest, useStore } from "@/lib/store";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Battery, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 export default function ClaimPage() {
-  const search = useSearch();
-  const params = new URLSearchParams(search);
-  const token = params.get('token');
-  
-  const { user, setAuth } = useStore();
+  const [, params] = useRoute("/claim/:token");
+  const token = params?.token || "";
   const [, setLocation] = useLocation();
-  
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
-  const [points, setPoints] = useState(0);
+  const { user, role } = useStore();
+  const [claimState, setClaimState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [claimResult, setClaimResult] = useState<{ batteries: number; balance: number } | null>(null);
+  const [error, setError] = useState("");
 
-  const handleClaim = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    
-    if (!token) {
-      setStatus('error');
-      setMessage('Invalid claim link');
-      return;
-    }
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: [`/api/claim/${token}`],
+    queryFn: async () => {
+      const r = await apiRequest(`/api/claim/${token}`);
+      if (!r.ok) throw new Error((await r.json()).error || "Invalid token");
+      return r.json();
+    },
+    enabled: !!token,
+    retry: false,
+  });
 
-    setStatus('loading');
-    
-    try {
-      const body: any = { token };
-      
-      if (!user && email && password) {
-        body.email = email;
-        body.password = password;
-      }
-      
-      const res = await apiRequest('/api/claim', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        setStatus('error');
-        setMessage(data.error || 'Claim failed');
-        return;
-      }
-      
-      setStatus('success');
-      setPoints(data.points);
-      setMessage(`You earned ${data.points} batteries!`);
-      
-      if (data.sessionId && data.user) {
-        setAuth(data.user, data.sessionId);
-      }
-    } catch (error) {
-      setStatus('error');
-      setMessage('Connection error. Please try again.');
-    }
-  };
-
+  // Auto-claim if signed in customer and not claimed
   useEffect(() => {
-    if (user && token && status === 'idle') {
-      handleClaim();
+    if (data && !data.claimed && user && role === "customer" && claimState === "idle") {
+      doClaim();
     }
-  }, [user, token]);
+  }, [data, user, role]);
 
-  if (!token) {
+  async function doClaim() {
+    setClaimState("loading");
+    setError("");
+    try {
+      const r = await apiRequest(`/api/customer/claim/${token}`, { method: "POST" });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || "Claim failed");
+      setClaimResult({ batteries: body.batteries, balance: body.balance });
+      setClaimState("done");
+      refetch();
+    } catch (e: any) {
+      setError(e.message);
+      setClaimState("error");
+    }
+  }
+
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+
+  if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
-        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Invalid Link</h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">This claim link is invalid or has expired.</p>
-            <Button onClick={() => setLocation('/')} className="littr-btn littr-btn-primary">Go Home</Button>
-          </CardContent>
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <Card className="max-w-md w-full">
+          <CardHeader><CardTitle className="flex items-center gap-2"><AlertCircle className="text-red-500" />Invalid Claim Link</CardTitle></CardHeader>
+          <CardContent>This claim link is invalid or expired.</CardContent>
         </Card>
       </div>
     );
   }
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
-        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
-          <CardContent className="pt-6 text-center">
-            <Loader2 className="h-12 w-12 text-gray-900 dark:text-gray-100 mx-auto mb-4 animate-spin" />
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Claiming your batteries...</h2>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white dark:from-gray-900 dark:to-gray-950 flex items-center justify-center p-6">
+      <Card className="max-w-md w-full">
+        <CardHeader>
+          <CardTitle className="text-center text-2xl">
+            {data.claimed ? "Already Claimed" : claimState === "done" ? "Claimed!" : "Drop Receipt"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="text-center py-6">
+            <Battery className="h-16 w-16 mx-auto text-green-500 mb-3" />
+            <div className="text-5xl font-bold" data-testid="text-batteries">{data.batteries}</div>
+            <div className="text-sm text-gray-500 mt-1">Batteries from {data.acceptedDrops} vape(s)</div>
+            {data.shop && <div className="text-sm mt-2">at <strong>{data.shop.name}</strong></div>}
+          </div>
 
-  if (status === 'success') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
-        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
-          <CardContent className="pt-6 text-center">
-            <div className="bg-green-100 dark:bg-green-950 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="h-12 w-12 text-green-600" />
+          {data.claimed ? (
+            <div className="text-center text-sm text-gray-500 flex items-center gap-2 justify-center">
+              <CheckCircle2 className="h-4 w-4 text-green-500" /> This receipt has been claimed.
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">+{points} Batteries!</h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-6">Thanks for recycling responsibly!</p>
-            <Button onClick={() => setLocation('/app')} className="w-full littr-btn littr-btn-primary">
-              View My Wallet
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
-        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Claim Failed</h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">{message}</p>
-            <Button onClick={() => setLocation('/')} className="littr-btn littr-btn-primary">Go Home</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
-        <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
-          <CardHeader className="text-center">
-            <CardTitle className="text-gray-900 dark:text-gray-100">Claim Your Batteries</CardTitle>
-            <CardDescription className="text-gray-500 dark:text-gray-400">
-              Sign in or create an account to claim your recycling reward
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleClaim} className="space-y-4">
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Email</Label>
-                <Input 
-                  type="email" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  className="littr-input"
-                  required
-                  data-testid="input-email"
-                />
-              </div>
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Password</Label>
-                <Input 
-                  type="password" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create or enter your password"
-                  className="littr-input"
-                  required
-                  data-testid="input-password"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  New user? This will create your account.
-                </p>
-              </div>
-              <Button type="submit" className="w-full littr-btn littr-btn-primary" data-testid="button-claim">
-                Claim Batteries
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  return null;
+          ) : !user ? (
+            <div className="space-y-2">
+              <p className="text-sm text-center text-gray-600 dark:text-gray-400">Sign in to claim these batteries.</p>
+              <Button className="w-full" onClick={() => setLocation(`/app/login?next=${encodeURIComponent(`/claim/${token}`)}`)} data-testid="button-signin">Sign In</Button>
+              <Button variant="outline" className="w-full" onClick={() => setLocation(`/app/register?next=${encodeURIComponent(`/claim/${token}`)}`)} data-testid="button-register">Create Account</Button>
+            </div>
+          ) : role !== "customer" ? (
+            <p className="text-sm text-center text-red-600">You must claim from a customer account.</p>
+          ) : claimState === "loading" ? (
+            <div className="flex justify-center"><Loader2 className="animate-spin" /></div>
+          ) : claimState === "done" && claimResult ? (
+            <div className="text-center space-y-2">
+              <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto" />
+              <p>+{claimResult.batteries} Batteries added.</p>
+              <p className="text-sm text-gray-500">New balance: {claimResult.balance}</p>
+              <Button className="w-full mt-2" onClick={() => setLocation("/app")} data-testid="button-wallet">Go to Wallet</Button>
+            </div>
+          ) : (
+            <>
+              <Button className="w-full" onClick={doClaim} data-testid="button-claim">Claim {data.batteries} Batteries</Button>
+              {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

@@ -1,1053 +1,371 @@
-import { useState, useEffect } from "react";
-import { useStore, apiRequest } from "@/lib/store";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiRequest, useStore } from "@/lib/store";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, Zap, Package, Calendar, Trash2, Flame, AlertTriangle, Recycle, LogOut, Thermometer, Wind, Eye, Monitor, Wifi, ArrowRight, Link2, Coins, Gift, Sun, Moon, CheckCircle, XCircle, Filter } from "lucide-react";
-import littrOneImage from "@/assets/images/littr-one-official.png";
-import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { unwrapEnvelope } from "@/lib/apiEnvelope";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { Bluetooth, Trash2, Plus, LogOut, RefreshCcw, Battery } from "lucide-react";
+import { pairBinOverBLE, isWebBluetoothAvailable } from "@/lib/ble";
 
-type PartnerDeviceConfig = {
-  session_window_sec?: number;
-  accepted_hold_ms?: number;
-  warn_enabled?: boolean;
-  warn_temp_c?: number;
-  warn_voc_analog?: number;
-  warn_use_voc_digital?: boolean;
-  raw_swap_bytes?: boolean;
-};
-
-class SessionExpiredError extends Error {
-  constructor() {
-    super('SESSION_EXPIRED');
-    this.name = 'SessionExpiredError';
-  }
+interface Shop { id: number; name: string; city: string; status: string; }
+interface Device {
+  id: number; serial: string; status: string; firmwareVersion: string | null;
+  vapesSinceEmpty: number; fillPercent: number; lastHeartbeatAt: string | null;
+  tempC: number | null; latestPhotoUrl: string | null;
+}
+interface DropSession {
+  id: number; status: string; acceptedDropCount: number; batteriesEstimated: number;
+  shopPointsAwarded: number; claimToken: string | null; createdAt: string; finalizedAt: string | null;
 }
 
-function PartnerRewardsStore({ shopId }: { shopId: number | undefined }) {
-  const queryClient = useQueryClient();
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+export default function PartnerDashboard() {
+  const { user, role, clearAuth } = useStore();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
+  const [addBinOpen, setAddBinOpen] = useState(false);
 
-  const { data: storeItems = [] } = useQuery({
-    queryKey: ['partner-store'],
-    queryFn: async () => {
-      const res = await apiRequest('/api/partner/store');
-      if (!res.ok) throw new Error('Failed to fetch store');
-      return res.json();
-    },
+  const { data: shops = [] } = useQuery<Shop[]>({
+    queryKey: ["/api/partner/shops"],
+    queryFn: async () => (await apiRequest("/api/partner/shops")).json(),
+    enabled: !!user && (role === "partner" || role === "staff"),
   });
 
-  const { data: ledger = [] } = useQuery<any[]>({
-    queryKey: ['partner-rewards-points', shopId],
-    queryFn: async () => {
-      if (!shopId) return [];
-      const res = await apiRequest(`/api/v2/shop/${shopId}/points-ledger`);
-      if (!res.ok) throw new Error('Failed to fetch points');
-      const data = await res.json();
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.entries)) return data.entries;
-      return [];
-    },
+  const shopId = selectedShopId ?? shops[0]?.id ?? null;
+  const shop = shops.find(s => s.id === shopId);
+
+  const { data: devices = [], refetch: refetchDevices } = useQuery<Device[]>({
+    queryKey: [`/api/partner/shops/${shopId}/devices`],
+    queryFn: async () => (await apiRequest(`/api/partner/shops/${shopId}/devices`)).json(),
+    enabled: !!shopId,
+    refetchInterval: 10000,
+  });
+
+  const { data: sessions = [] } = useQuery<DropSession[]>({
+    queryKey: [`/api/partner/shops/${shopId}/sessions`],
+    queryFn: async () => (await apiRequest(`/api/partner/shops/${shopId}/sessions`)).json(),
     enabled: !!shopId,
   });
 
-  const totalPoints = (Array.isArray(ledger) ? ledger : []).reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
+  const { data: pointsBalance } = useQuery<{ balance: number }>({
+    queryKey: [`/api/partner/shops/${shopId}/points/balance`],
+    queryFn: async () => (await apiRequest(`/api/partner/shops/${shopId}/points/balance`)).json(),
+    enabled: !!shopId,
+  });
 
-  const redeem = useMutation({
-    mutationFn: async (storeItemId: number) => {
-      const res = await apiRequest('/api/partner/redeem', {
-        method: 'POST',
-        body: JSON.stringify({ storeItemId }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Failed to redeem' }));
-        throw new Error(err.message || 'Failed to redeem');
-      }
-      return res.json();
+  const { data: rewards = [] } = useQuery<any[]>({
+    queryKey: [`/api/partner/shops/${shopId}/rewards`],
+    queryFn: async () => (await apiRequest(`/api/partner/shops/${shopId}/rewards`)).json(),
+    enabled: !!shopId,
+  });
+
+  const markEmpty = useMutation({
+    mutationFn: async (deviceId: number) => {
+      const r = await apiRequest(`/api/partner/devices/${deviceId}/mark-empty`, { method: "POST" });
+      if (!r.ok) throw new Error("Failed");
+      return r.json();
     },
-    onSuccess: (data) => {
-      setSuccessMessage('Redeemed successfully!');
-      queryClient.invalidateQueries({ queryKey: ['partner-rewards-points'] });
-      setTimeout(() => setSuccessMessage(null), 5000);
+    onSuccess: () => {
+      toast({ title: "Mark Empty queued", description: "Bin will reset on next poll." });
+      refetchDevices();
     },
   });
 
+  const createReward = useMutation({
+    mutationFn: async (data: { name: string; cost: number; description?: string }) => {
+      const r = await apiRequest(`/api/partner/shops/${shopId}/rewards`, { method: "POST", body: JSON.stringify(data) });
+      if (!r.ok) throw new Error("Failed");
+      return r.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [`/api/partner/shops/${shopId}/rewards`] }),
+  });
+
+  const redeemReward = useMutation({
+    mutationFn: async (rewardId: number) => {
+      const r = await apiRequest(`/api/partner/shops/${shopId}/rewards/${rewardId}/redeem`, { method: "POST" });
+      if (!r.ok) throw new Error((await r.json()).error || "Failed");
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Reward redeemed" });
+      qc.invalidateQueries({ queryKey: [`/api/partner/shops/${shopId}/points/balance`] });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  if (!user || (role !== "partner" && role !== "staff")) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Button onClick={() => setLocation("/partner/login")}>Partner Login</Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-3">
-            <Coins className="h-8 w-8 text-yellow-500" />
-            <div>
-              <p className="text-2xl font-bold text-black dark:text-white" data-testid="text-rewards-points-balance">{totalPoints}</p>
-              <p className="text-xs text-gray-400">Available Points</p>
-            </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold">Partner Dashboard</h1>
+            <p className="text-sm text-gray-500">{user.email}</p>
           </div>
-        </CardContent>
-      </Card>
-
-      {successMessage && (
-        <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-600" data-testid="text-redeem-success">
-          {successMessage}
+          <div className="flex gap-2 items-center">
+            {shops.length > 1 && (
+              <select className="border rounded px-2 py-1 text-sm" value={shopId ?? ""}
+                onChange={(e) => setSelectedShopId(Number(e.target.value))} data-testid="select-shop">
+                {shops.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+            <Button variant="ghost" size="sm" onClick={async () => { await apiRequest("/api/auth/logout", { method: "POST" }); clearAuth(); setLocation("/"); }} data-testid="button-logout">
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {storeItems.map((item: any) => (
-          <Card key={item.id} className="border border-gray-200 dark:border-gray-700" data-testid={`card-store-item-${item.id}`}>
-            <CardHeader>
-              <CardTitle className="text-lg text-black dark:text-white">{item.name}</CardTitle>
-              {item.description && (
-                <CardDescription>{item.description}</CardDescription>
-              )}
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <span className="text-lg font-bold text-black dark:text-white">{item.cost} points</span>
-                <Button
-                  size="sm"
-                  className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
-                  onClick={() => redeem.mutate(item.id)}
-                  disabled={redeem.isPending || totalPoints < item.cost}
-                  data-testid={`button-redeem-${item.id}`}
-                >
-                  {redeem.isPending ? 'Redeeming...' : 'Redeem'}
+        {!shop ? (
+          <Card><CardContent className="p-8 text-center text-gray-500">No shops assigned to your account yet.</CardContent></Card>
+        ) : (
+          <Tabs defaultValue="bins">
+            <TabsList className="mb-4">
+              <TabsTrigger value="bins" data-testid="tab-bins">Bins</TabsTrigger>
+              <TabsTrigger value="activity" data-testid="tab-activity">Activity</TabsTrigger>
+              <TabsTrigger value="points" data-testid="tab-points">Point Shop</TabsTrigger>
+              <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="bins" className="space-y-4">
+              <div className="flex justify-end">
+                <Button onClick={() => setAddBinOpen(true)} data-testid="button-add-bin">
+                  <Plus className="h-4 w-4 mr-1" /> Add Bin
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-        {storeItems.length === 0 && (
-          <div className="col-span-full text-center py-8 text-gray-400">
-            <Gift className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>No rewards available yet.</p>
-          </div>
+              {devices.length === 0 ? (
+                <Card><CardContent className="p-8 text-center text-gray-500">No bins paired yet. Click "Add Bin" to pair one over Bluetooth.</CardContent></Card>
+              ) : devices.map(d => (
+                <Card key={d.id} data-testid={`card-device-${d.id}`}>
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-semibold">{d.serial}</span>
+                        <Badge variant={d.status === "LIVE" ? "default" : "secondary"}>{d.status}</Badge>
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        Fill: {d.fillPercent}% · {d.vapesSinceEmpty} vapes since empty
+                        {d.firmwareVersion && ` · fw ${d.firmwareVersion}`}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Last seen: {d.lastHeartbeatAt ? new Date(d.lastHeartbeatAt).toLocaleString() : "never"}
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => markEmpty.mutate(d.id)} data-testid={`button-mark-empty-${d.id}`}>
+                      <RefreshCcw className="h-4 w-4 mr-1" /> Mark Empty
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </TabsContent>
+
+            <TabsContent value="activity">
+              <Card>
+                <CardHeader><CardTitle>Recent Drop Sessions</CardTitle></CardHeader>
+                <CardContent>
+                  {sessions.length === 0 ? (
+                    <p className="text-sm text-gray-500">No drop sessions yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {sessions.map(s => (
+                        <div key={s.id} className="flex items-center justify-between border rounded p-3" data-testid={`row-session-${s.id}`}>
+                          <div>
+                            <div className="font-semibold">Session #{s.id} · {s.acceptedDropCount} vape(s)</div>
+                            <div className="text-sm text-gray-500">{new Date(s.createdAt).toLocaleString()}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm">{s.batteriesEstimated} Batteries · {s.shopPointsAwarded} Pts</div>
+                            <Badge variant="outline">{s.status}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="points">
+              <Card className="mb-4">
+                <CardContent className="p-6 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-gray-500">Shop Points Balance</div>
+                    <div className="text-4xl font-bold" data-testid="text-points-balance">{pointsBalance?.balance ?? 0}</div>
+                  </div>
+                  <Battery className="h-12 w-12 text-green-500" />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Rewards Catalog</CardTitle>
+                  <AddRewardButton onAdd={(d) => createReward.mutate(d)} />
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {rewards.length === 0 ? <p className="text-sm text-gray-500">No rewards yet.</p> : rewards.map(r => (
+                    <div key={r.id} className="flex items-center justify-between border rounded p-3" data-testid={`row-reward-${r.id}`}>
+                      <div>
+                        <div className="font-semibold">{r.name}</div>
+                        {r.description && <div className="text-sm text-gray-500">{r.description}</div>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge>{r.cost} pts</Badge>
+                        <Button size="sm" disabled={(pointsBalance?.balance ?? 0) < r.cost} onClick={() => redeemReward.mutate(r.id)} data-testid={`button-redeem-${r.id}`}>Redeem</Button>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="settings">
+              <DeviceSettingsPanel devices={devices} />
+            </TabsContent>
+          </Tabs>
+        )}
+
+        {addBinOpen && shop && (
+          <AddBinDialog shop={shop} onClose={() => setAddBinOpen(false)} onPaired={refetchDevices} />
         )}
       </div>
     </div>
   );
 }
 
-export default function PartnerDashboard() {
-  const { user, role, clearAuth, theme, toggleTheme } = useStore();
-  const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
-  const [pairCode, setPairCode] = useState("");
-  const [pairResult, setPairResult] = useState<any | null>(null);
-  const [activityFilter, setActivityFilter] = useState<"all" | "accepted" | "rejected">("all");
-
-  const { data: shops = [], isLoading: shopsLoading, isError: shopsError, error: shopsErrorObj } = useQuery({
-    queryKey: ['partner-shops'],
-    queryFn: async () => {
-      const res = await apiRequest('/api/partner/shops');
-      if (res.status === 401) {
-        throw new SessionExpiredError();
-      }
-      if (!res.ok) throw new Error('Failed to fetch shops');
-      return res.json();
-    },
-    // Don't retry an expired-session response — we want the redirect to fire
-    // immediately on the first 401 instead of pausing for retry backoff.
-    retry: (_failureCount, error) => !(error instanceof SessionExpiredError),
-  });
-
-  useEffect(() => {
-    if (shopsError && shopsErrorObj instanceof SessionExpiredError) {
-      clearAuth();
-      setLocation('/partner/login');
-    }
-  }, [shopsError, shopsErrorObj, clearAuth, setLocation]);
-
-  const shop = shops[0];
-
-  const { data: stats } = useQuery({
-    queryKey: ['partner-stats', shop?.id],
-    queryFn: async () => {
-      if (!shop) return null;
-      const res = await apiRequest(`/api/partner/shops/${shop.id}/stats`);
-      if (!res.ok) throw new Error('Failed to fetch stats');
-      return res.json();
-    },
-    enabled: !!shop,
-  });
-
-  const { data: rewardConfig } = useQuery({
-    queryKey: ['reward-config', shop?.id],
-    queryFn: async () => {
-      if (!shop) return null;
-      const res = await apiRequest(`/api/partner/shops/${shop.id}/reward-config`);
-      if (!res.ok) throw new Error('Failed to fetch reward config');
-      return res.json();
-    },
-    enabled: !!shop,
-  });
-
-  const { data: dropEvents = [] } = useQuery({
-    queryKey: ['partner-drops', shop?.id],
-    queryFn: async () => {
-      if (!shop) return [];
-      const res = await apiRequest(`/api/partner/shops/${shop.id}/drop-events`);
-      if (!res.ok) throw new Error('Failed to fetch drop events');
-      return res.json();
-    },
-    enabled: !!shop,
-    refetchInterval: 15000,
-  });
-
-  const { data: shopBins = [] } = useQuery({
-    queryKey: ['partner-bins', shop?.id],
-    queryFn: async () => {
-      if (!shop) return [];
-      const res = await apiRequest(`/api/partner/shops/${shop.id}/bins`);
-      if (!res.ok) throw new Error('Failed to fetch bins');
-      return res.json();
-    },
-    enabled: !!shop,
-  });
-
-  const { data: shopFireAlerts = [] } = useQuery({
-    queryKey: ['partner-fire-alerts', shop?.id],
-    queryFn: async () => {
-      if (!shop) return [];
-      const res = await apiRequest(`/api/partner/shops/${shop.id}/fire-alerts`);
-      if (!res.ok) throw new Error('Failed to fetch fire alerts');
-      return res.json();
-    },
-    enabled: !!shop,
-    refetchInterval: 10000,
-  });
-
-  const { data: pointsLedger = [] } = useQuery<any[]>({
-    queryKey: ['partner-points-ledger', shop?.id],
-    queryFn: async () => {
-      if (!shop) return [];
-      const res = await apiRequest(`/api/v2/shop/${shop.id}/points-ledger`);
-      if (!res.ok) throw new Error('Failed to fetch points ledger');
-      const data = await res.json();
-      const entries = unwrapEnvelope<any[]>(data, 'entries');
-      return Array.isArray(entries) ? entries : [];
-    },
-    enabled: !!shop,
-  });
-
-  const { data: deviceConfig } = useQuery<PartnerDeviceConfig | null>({
-    queryKey: ['partner-device-config', shop?.id],
-    queryFn: async () => {
-      if (!shop) return null;
-      const res = await apiRequest(`/api/v2/shop/${shop.id}/device-config`);
-      if (!res.ok) throw new Error('Failed to fetch device config');
-      const data = await res.json();
-      return unwrapEnvelope<PartnerDeviceConfig>(data, 'config') ?? null;
-    },
-    enabled: !!shop,
-  });
-
-  const pairDevice = useMutation({
-    mutationKey: ['pair-device'],
-    mutationFn: async () => {
-      if (!shop) throw new Error('No shop assigned');
-      const res = await apiRequest('/api/v2/device/pair-claim', {
-        method: 'POST',
-        body: JSON.stringify({ pairCode, shopId: shop.id }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Failed to pair device' }));
-        throw new Error(err.message || 'Failed to pair device');
-      }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setPairResult(data);
-      setPairCode("");
-      queryClient.invalidateQueries({ queryKey: ['partner-bins'] });
-    },
-    onError: (error: any) => {
-      setPairResult({ error: error.message });
-    },
-  });
-
-  const updateDeviceConfig = useMutation({
-    mutationKey: ['update-device-config'],
-    mutationFn: async (updates: any) => {
-      if (!shop) throw new Error('No shop assigned');
-      const res = await apiRequest(`/api/v2/shop/${shop.id}/device-config`, {
-        method: 'PATCH',
-        body: JSON.stringify(updates),
-      });
-      if (!res.ok) throw new Error('Failed to update device config');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['partner-device-config'] });
-    },
-  });
-
-  const updateConfig = useMutation({
-    mutationFn: async (updates: any) => {
-      if (!shop) throw new Error('No shop assigned');
-      const res = await apiRequest(`/api/partner/shops/${shop.id}/reward-config`, {
-        method: 'PATCH',
-        body: JSON.stringify(updates),
-      });
-      if (!res.ok) throw new Error('Failed to update config');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reward-config'] });
-    },
-  });
-
-  const requestPickup = useMutation({
-    mutationFn: async () => {
-      if (!shop) throw new Error('No shop assigned');
-      const res = await apiRequest(`/api/partner/shops/${shop.id}/pickup-request`, {
-        method: 'POST',
-        body: JSON.stringify({ notes: 'Pickup requested via dashboard' }),
-      });
-      if (!res.ok) throw new Error('Failed to request pickup');
-      return res.json();
-    },
-    onSuccess: () => {
-      alert('Pickup request submitted! We will contact you soon.');
-    },
-  });
-
-  const handleLogout = async () => {
-    await apiRequest('/api/auth/logout', { method: 'POST' });
-    clearAuth();
-    setLocation('/');
-  };
-
-  if (!user || (role !== 'partner' && role !== 'admin' && role !== 'staff')) {
-    return (
-      <div className="littr-dashboard flex items-center justify-center">
-        <div className="littr-card-solid p-8 rounded-2xl text-center">
-          <p className="text-xl mb-4 text-black dark:text-white">Access Denied</p>
-          <Button onClick={() => setLocation('/partner/login')} className="littr-btn littr-btn-primary">Partner Login</Button>
-        </div>
-      </div>
-    );
-  }
-
-  const isSessionExpired = shopsError && shopsErrorObj instanceof SessionExpiredError;
-
-  if (shopsLoading || isSessionExpired) {
-    return (
-      <div className="littr-dashboard flex items-center justify-center" data-testid="status-dashboard-loading">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500 dark:text-gray-400">
-            {isSessionExpired ? 'Redirecting to login...' : 'Loading dashboard...'}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!shop) {
-    return (
-      <div className="littr-dashboard">
-        <div className="littr-nav px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
-              <Recycle className="h-5 w-5 text-white" />
-            </div>
-            <h1 className="font-bold text-black dark:text-white">Partner Dashboard</h1>
+function AddRewardButton({ onAdd }: { onAdd: (d: { name: string; cost: number; description?: string }) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [cost, setCost] = useState(10);
+  const [desc, setDesc] = useState("");
+  return (
+    <>
+      <Button size="sm" onClick={() => setOpen(true)} data-testid="button-add-reward"><Plus className="h-4 w-4 mr-1" />New Reward</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>New Reward</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} data-testid="input-reward-name" /></div>
+            <div><Label>Cost (points)</Label><Input type="number" value={cost} onChange={e => setCost(Number(e.target.value))} data-testid="input-reward-cost" /></div>
+            <div><Label>Description (optional)</Label><Input value={desc} onChange={e => setDesc(e.target.value)} data-testid="input-reward-desc" /></div>
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={toggleTheme}
-              data-testid="button-theme-toggle"
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              aria-label="Toggle theme"
-            >
-              {theme === 'dark' ? (
-                <Sun className="h-4 w-4 text-yellow-400" />
-              ) : (
-                <Moon className="h-4 w-4 text-gray-500" />
-              )}
-            </button>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </div>
-        </div>
-        <div className="container mx-auto px-4 py-20 text-center">
-          <p className="text-gray-500 dark:text-gray-400">No shop assigned to your account.</p>
-          <p className="text-sm text-gray-400 mt-2">Contact LITTR support for assistance.</p>
-        </div>
-      </div>
-    );
-  }
+          <DialogFooter>
+            <Button onClick={() => { onAdd({ name, cost, description: desc || undefined }); setOpen(false); setName(""); setCost(10); setDesc(""); }} data-testid="button-save-reward">Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
-  const totalPointsEarned = (Array.isArray(pointsLedger) ? pointsLedger : []).reduce((sum: number, entry: any) => sum + (entry.points || 0), 0);
+function DeviceSettingsPanel({ devices }: { devices: Device[] }) {
+  const [selected, setSelected] = useState<number | null>(devices[0]?.id ?? null);
+  const id = selected ?? devices[0]?.id;
+  const { data, refetch } = useQuery<{ settingsJson: any; version: number }>({
+    queryKey: [`/api/partner/devices/${id}/settings`],
+    queryFn: async () => (await apiRequest(`/api/partner/devices/${id}/settings`)).json(),
+    enabled: !!id,
+  });
+  const [text, setText] = useState("");
+  const { toast } = useToast();
+
+  if (devices.length === 0) return <p className="text-sm text-gray-500">No devices yet.</p>;
 
   return (
-    <div className="littr-dashboard">
-      <div className="littr-nav px-4 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
-            <Recycle className="h-5 w-5 text-white" />
+    <Card>
+      <CardHeader>
+        <CardTitle>Device Settings</CardTitle>
+        <select className="border rounded px-2 py-1 text-sm mt-2 w-fit" value={id ?? ""} onChange={(e) => setSelected(Number(e.target.value))} data-testid="select-settings-device">
+          {devices.map(d => <option key={d.id} value={d.id}>{d.serial}</option>)}
+        </select>
+      </CardHeader>
+      <CardContent>
+        <div className="text-xs text-gray-500 mb-2">Version: {data?.version ?? 0}</div>
+        <textarea
+          className="w-full h-64 font-mono text-xs border rounded p-2 bg-gray-50 dark:bg-gray-900"
+          defaultValue={JSON.stringify(data?.settingsJson || {}, null, 2)}
+          onChange={(e) => setText(e.target.value)}
+          data-testid="textarea-settings"
+        />
+        <Button className="mt-3" onClick={async () => {
+          try {
+            const parsed = JSON.parse(text || JSON.stringify(data?.settingsJson || {}));
+            const r = await apiRequest(`/api/partner/devices/${id}/settings`, { method: "PUT", body: JSON.stringify(parsed) });
+            if (!r.ok) throw new Error("Save failed");
+            toast({ title: "Settings saved", description: "Bin will pull on next poll." });
+            refetch();
+          } catch (e: any) {
+            toast({ title: "Invalid JSON", description: e.message, variant: "destructive" });
+          }
+        }} data-testid="button-save-settings">Save</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AddBinDialog({ shop, onClose, onPaired }: { shop: Shop; onClose: () => void; onPaired: () => void }) {
+  const [state, setState] = useState<"idle" | "init" | "bt" | "waiting" | "done" | "error">("idle");
+  const [msg, setMsg] = useState("");
+  const supported = isWebBluetoothAvailable();
+
+  async function start() {
+    setState("init");
+    setMsg("Reserving slot…");
+    try {
+      const r = await apiRequest("/api/partner/bins/pair-init", { method: "POST", body: JSON.stringify({ shopId: shop.id }) });
+      if (!r.ok) throw new Error("pair-init failed");
+      const { deviceKey, nonce, serial } = await r.json();
+      setMsg("Pick your bin in the Bluetooth picker…");
+      setState("bt");
+      await pairBinOverBLE({ deviceKey, nonce, serial });
+      setMsg("Waiting for bin to come online…");
+      setState("waiting");
+      // Poll devices for ~30s
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        onPaired();
+      }
+      setState("done");
+    } catch (e: any) {
+      setMsg(e.message || "Pairing failed");
+      setState("error");
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Add Bin to {shop.name}</DialogTitle></DialogHeader>
+        {!supported ? (
+          <div className="space-y-3">
+            <p className="text-sm">Web Bluetooth is not available in this browser. Use Chrome or Edge on desktop or Android to pair a bin.</p>
+            <Button onClick={onClose}>Close</Button>
           </div>
-          <div>
-            <h1 className="font-bold text-black dark:text-white">{shop.name}</h1>
-            <p className="text-xs text-gray-400">{user?.email}</p>
+        ) : state === "idle" ? (
+          <div className="space-y-3">
+            <p className="text-sm">Power on the bin so it advertises over Bluetooth, then click below.</p>
+            <Button onClick={start} data-testid="button-start-pair"><Bluetooth className="h-4 w-4 mr-1" /> Find Bin</Button>
           </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={toggleTheme}
-            data-testid="button-theme-toggle-main"
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark' ? (
-              <Sun className="h-4 w-4 text-yellow-400" />
-            ) : (
-              <Moon className="h-4 w-4 text-gray-500" />
-            )}
-          </button>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800" data-testid="button-logout">
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </Button>
-        </div>
-      </div>
-
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <TrendingUp className="h-8 w-8 text-green-500" />
-                <div>
-                  <p className="text-2xl font-bold" data-testid="text-total-drops">{stats?.totalDrops || 0}</p>
-                  <p className="text-xs text-gray-400">Total Drops</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Calendar className="h-8 w-8 text-blue-500" />
-                <div>
-                  <p className="text-2xl font-bold" data-testid="text-today-drops">{stats?.todayDrops || 0}</p>
-                  <p className="text-xs text-gray-400">Today</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Zap className="h-8 w-8 text-yellow-500" />
-                <div>
-                  <p className="text-2xl font-bold">{stats?.totalPoints || 0}</p>
-                  <p className="text-xs text-gray-400">Points Given</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <Package className="h-8 w-8 text-purple-500" />
-                <div>
-                  <p className="text-2xl font-bold">{stats?.activeDevices || 0}</p>
-                  <p className="text-xs text-gray-400">Active Devices</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <XCircle className="h-8 w-8 text-red-500" />
-                <div>
-                  <p className="text-2xl font-bold" data-testid="text-today-rejected">{stats?.todayRejected || 0}</p>
-                  <p className="text-xs text-gray-400">Rejected Today</p>
-                  {stats?.todayRejectedByReason && Object.keys(stats.todayRejectedByReason).length > 0 && (
-                    <div className="mt-1 space-y-0.5" data-testid="breakdown-rejected-by-reason">
-                      {Object.entries(stats.todayRejectedByReason).map(([reason, count]) => (
-                        <p key={reason} className="text-xs text-gray-500 dark:text-gray-400" data-testid={`text-rejection-reason-${reason}`}>
-                          {reason.replace(/_/g, " ")}: <span className="font-medium text-red-400">{count}</span>
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="mb-8 bg-gradient-to-r from-gray-50 dark:from-gray-800 to-white dark:to-gray-900 border-gray-200 dark:border-gray-700 overflow-hidden" data-testid="card-littr-one-showcase">
-          <CardContent className="p-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
-              <div className="flex justify-center items-center">
-                <img 
-                  src={littrOneImage} 
-                  alt="LITTR One Smart Bin" 
-                  className="w-32 h-32 object-contain"
-                  style={{ imageRendering: 'pixelated' }}
-                  data-testid="img-littr-one-partner"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded" data-testid="badge-new-partner">NEW</span>
-                  <h3 className="text-lg font-bold text-black dark:text-white" data-testid="heading-littr-one-partner">LITTR One Smart Bin</h3>
-                </div>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">
-                  Upgrade your shop with our WiFi-enabled smart bin featuring temperature, VOC, and fill sensors.
-                </p>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    <Thermometer className="h-3 w-3 text-red-400" /> Fire Safety
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    <Wind className="h-3 w-3 text-blue-400" /> Air Quality
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    <Eye className="h-3 w-3 text-purple-400" /> Fill Detection
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    <Monitor className="h-3 w-3 text-cyan-400" /> QR Rewards
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    <Wifi className="h-3 w-3 text-yellow-400" /> Real-time Alerts
-                  </span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div>
-                    <span className="text-gray-400 line-through text-sm" data-testid="text-price-original-partner">$459.95</span>
-                    <span className="text-xl font-bold text-green-600 ml-2" data-testid="text-price-discounted-partner">$169.95</span>
-                  </div>
-                  <Button size="sm" className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200" data-testid="button-partner-order-bin">
-                    Order for Your Shop <ArrowRight className="ml-1 h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Tabs defaultValue="activity" className="space-y-4">
-          <TabsList className="grid grid-cols-3 md:grid-cols-6">
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="bins" className="flex items-center gap-1">
-              {shopFireAlerts.filter((a: any) => !a.acknowledged).length > 0 && (
-                <Flame className="h-4 w-4 text-red-500 animate-pulse" />
-              )}
-              Devices
-            </TabsTrigger>
-            <TabsTrigger value="rewards-config">Rewards</TabsTrigger>
-            <TabsTrigger value="pickup">Pickup</TabsTrigger>
-            <TabsTrigger value="points" className="flex items-center gap-1">
-              <Coins className="h-4 w-4" />
-              Points
-            </TabsTrigger>
-            <TabsTrigger value="rewards" className="flex items-center gap-1">
-              <Gift className="h-4 w-4" />
-              Rewards
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="activity">
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <CardTitle>Recent Activity</CardTitle>
-                    <CardDescription>Vape drops at your location</CardDescription>
-                  </div>
-                  <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1" data-testid="filter-activity">
-                    <Filter className="h-3 w-3 text-gray-400 mx-1" />
-                    {(["all", "accepted", "rejected"] as const).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => setActivityFilter(f)}
-                        data-testid={`button-filter-${f}`}
-                        className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
-                          activityFilter === f
-                            ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm"
-                            : "text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white"
-                        }`}
-                      >
-                        {f === "all" ? "All" : f === "accepted" ? "Accepted" : "Rejected"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {(() => {
-                  const filteredEvents = (dropEvents as any[]).filter((event) => {
-                    const isRejected = event.verdictAccepted === false;
-                    const isAccepted = event.verdictAccepted === true;
-                    if (activityFilter === "rejected") return isRejected;
-                    if (activityFilter === "accepted") return isAccepted;
-                    return true;
-                  });
-                  return (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Points Awarded</TableHead>
-                          <TableHead>Time</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredEvents.slice(0, 20).map((event: any) => {
-                          const isRejected = event.verdictAccepted === false;
-                          const isAccepted = event.verdictAccepted === true;
-                          const rejectionLabel =
-                            event.verdictReason === "thc_vape" ? "THC Vape" :
-                            event.verdictReason === "not_a_vape" ? "Not a Vape" :
-                            event.verdictReason ?? "Rejected";
-                          return (
-                            <TableRow
-                              key={event.id}
-                              data-testid={`row-drop-${event.id}`}
-                              className={`animate-in fade-in slide-in-from-top-1 duration-500 ${
-                                isRejected ? "bg-red-50/50 dark:bg-red-950/30" : ""
-                              }`}
-                            >
-                              <TableCell>
-                                {isRejected ? (
-                                  <div className="flex items-center gap-2" data-testid={`status-drop-rejected-${event.id}`}>
-                                    <Badge variant="destructive" className="flex items-center gap-1">
-                                      <XCircle className="h-3 w-3" />
-                                      Rejected
-                                    </Badge>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400" data-testid={`text-rejection-reason-${event.id}`}>
-                                      {rejectionLabel}
-                                    </span>
-                                  </div>
-                                ) : isAccepted ? (
-                                  <Badge variant="outline" className="flex items-center gap-1 text-green-600 border-green-300 dark:border-green-700" data-testid={`status-drop-accepted-${event.id}`}>
-                                    <CheckCircle className="h-3 w-3" />
-                                    Accepted
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="secondary" className="text-gray-500" data-testid={`status-drop-pending-${event.id}`}>
-                                    Pending
-                                  </Badge>
-                                )}
-                              </TableCell>
-                              <TableCell className="font-medium" data-testid={`text-points-${event.id}`}>
-                                {isRejected ? <span className="text-gray-400 line-through">+{event.pointsAwarded}</span> : `+${event.pointsAwarded}`}
-                              </TableCell>
-                              <TableCell className="text-gray-500 dark:text-gray-400">{new Date(event.createdAt).toLocaleString()}</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                        {filteredEvents.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={3} className="text-center text-gray-400 py-8" data-testid="text-no-activity">
-                              {activityFilter === "all"
-                                ? "No drops yet. When customers recycle, activity will appear here."
-                                : `No ${activityFilter} drops yet.`}
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  );
-                })()}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="bins">
-            <div className="space-y-4">
-              {shopFireAlerts.filter((a: any) => !a.resolvedAt).length > 0 && (
-                <Card className="border-red-500 !bg-red-50 dark:!bg-red-950">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-600">
-                      <Flame className="h-5 w-5 animate-pulse" />
-                      Fire Alerts
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {shopFireAlerts.filter((a: any) => !a.resolvedAt).map((alert: any) => (
-                        <div 
-                          key={alert.id} 
-                          className={`p-3 rounded-lg ${
-                            alert.severity === 'CRITICAL' ? 'bg-red-100 dark:bg-red-900 border border-red-500' :
-                            alert.severity === 'HIGH' ? 'bg-red-50 dark:bg-red-950 border border-red-400' :
-                            'bg-orange-50 dark:bg-orange-950 border border-orange-400'
-                          }`}
-                          data-testid={`partner-fire-alert-${alert.id}`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-red-500" />
-                            <Badge variant="destructive">{alert.severity}</Badge>
-                            <span className="font-medium text-black dark:text-white">{alert.bin?.name || `Bin #${alert.binId}`}</span>
-                            {alert.temperature && (
-                              <span className="text-sm text-gray-600 dark:text-gray-300">🌡️ {alert.temperature.toFixed(1)}°C</span>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Contact LITTR support immediately if you notice smoke or fire.
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Trash2 className="h-5 w-5" />
-                    Your Bins
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {shopBins.length > 0 ? (
-                    <div className="space-y-4">
-                      {shopBins.map((bin: any) => (
-                        <div 
-                          key={bin.id} 
-                          className={`p-4 rounded-lg border ${
-                            bin.status === 'FIRE_ALERT' ? 'border-red-500 bg-red-50 dark:bg-red-950' :
-                            bin.status === 'PENDING_SETUP' ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950' :
-                            bin.status === 'ONLINE' ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950' :
-                            'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800'
-                          }`}
-                          data-testid={`partner-bin-${bin.id}`}
-                        >
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="space-y-1">
-                              <h4 className="font-semibold text-black dark:text-white">{bin.name}</h4>
-                              <div className="flex flex-wrap gap-2">
-                                <Badge
-                                  variant={
-                                    bin.status === 'ONLINE' ? 'default' :
-                                    bin.status === 'FIRE_ALERT' ? 'destructive' :
-                                    bin.status === 'PENDING_SETUP' ? 'outline' :
-                                    'secondary'
-                                  }
-                                  data-testid={`status-bin-${bin.id}`}
-                                >
-                                  {bin.status === 'PENDING_SETUP' ? 'Pending Setup' : bin.status}
-                                </Badge>
-                                {bin.mode && bin.status !== 'PENDING_SETUP' && (
-                                  <Badge variant="outline" data-testid={`mode-bin-${bin.id}`}>
-                                    {bin.mode === 'demo' ? 'Demo mode' : 'Normal mode'}
-                                  </Badge>
-                                )}
-                              </div>
-                              {bin.status === 'PENDING_SETUP' && (
-                                <p className="text-xs text-amber-700 dark:text-amber-300" data-testid={`text-pending-setup-${bin.id}`}>
-                                  Waiting for LITTR staff to confirm camera setup. No rewards until configured.
-                                </p>
-                              )}
-                            </div>
-                            <div className="text-right text-sm">
-                              <div className="font-bold text-lg text-green-600">{bin.vapeCount || 0}</div>
-                              <div className="text-gray-500 dark:text-gray-400">vapes recycled</div>
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-2">
-                            <div>
-                              <div className="flex justify-between text-sm mb-1 text-gray-600 dark:text-gray-300">
-                                <span>Fill Level</span>
-                                <span>{bin.fillLevel || 0}%</span>
-                              </div>
-                              <Progress value={bin.fillLevel || 0} className="h-2" />
-                            </div>
-                            
-                            <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-400">
-                              {bin.lastTemperature && (
-                                <span>🌡️ {bin.lastTemperature.toFixed(1)}°C</span>
-                              )}
-                              {bin.lastAirQuality && (
-                                <span>💨 AQI: {bin.lastAirQuality}</span>
-                              )}
-                              {bin.lastSeenAt && (
-                                <span>Last seen: {new Date(bin.lastSeenAt).toLocaleString()}</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                      <Trash2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                      <p>No bins linked to your shop yet.</p>
-                      <p className="text-sm text-gray-400">Contact LITTR to get your smart bin installed.</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Bin Settings (Cloud Config)</CardTitle>
-                  <CardDescription>Configure your smart bin behavior via cloud settings</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <Label>Session Window (seconds)</Label>
-                      <span className="text-sm font-medium">{deviceConfig?.session_window_sec || 60}s</span>
-                    </div>
-                    <Slider
-                      value={[deviceConfig?.session_window_sec || 60]}
-                      min={10}
-                      max={300}
-                      step={5}
-                      onValueChange={([value]) => updateDeviceConfig.mutate({ session_window_sec: value })}
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <Label>Accepted Hold Time (seconds)</Label>
-                      <span className="text-sm font-medium">{((deviceConfig?.accepted_hold_ms || 5000) / 1000).toFixed(1)}s</span>
-                    </div>
-                    <Slider
-                      value={[deviceConfig?.accepted_hold_ms || 5000]}
-                      min={3000}
-                      max={30000}
-                      step={1000}
-                      onValueChange={([value]) => updateDeviceConfig.mutate({ accepted_hold_ms: value })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-base">Warning Enabled</Label>
-                      <p className="text-sm text-gray-400">Enable temperature warning alerts</p>
-                    </div>
-                    <Switch
-                      checked={deviceConfig?.warn_enabled ?? false}
-                      onCheckedChange={(warn_enabled) => updateDeviceConfig.mutate({ warn_enabled })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Warning Temperature (°C)</Label>
-                    <Input
-                      type="number"
-                      value={deviceConfig?.warn_temp_c ?? 45}
-                      onChange={(e) => updateDeviceConfig.mutate({ warn_temp_c: Number(e.target.value) })}
-                    />
-                  </div>
-
-                  <Button
-                    onClick={() => {
-                      const cfg = deviceConfig ?? {};
-                      const payload: PartnerDeviceConfig = {
-                        session_window_sec: cfg.session_window_sec,
-                        accepted_hold_ms: cfg.accepted_hold_ms,
-                        warn_enabled: cfg.warn_enabled,
-                        warn_temp_c: cfg.warn_temp_c,
-                        warn_voc_analog: cfg.warn_voc_analog,
-                        warn_use_voc_digital: cfg.warn_use_voc_digital,
-                        raw_swap_bytes: cfg.raw_swap_bytes,
-                      };
-                      updateDeviceConfig.mutate(payload);
-                    }}
-                    disabled={updateDeviceConfig.isPending}
-                    className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
-                    data-testid="button-save-config"
-                  >
-                    {updateDeviceConfig.isPending ? 'Saving...' : 'Save Config'}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Link2 className="h-5 w-5" />
-                    Pair a New Smart Bin
-                  </CardTitle>
-                  <CardDescription>Enter the 6-character pair code displayed on your smart bin to connect it to your shop</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex gap-3">
-                    <Input
-                      placeholder="e.g. ABC123"
-                      value={pairCode}
-                      onChange={(e) => setPairCode(e.target.value.toUpperCase().slice(0, 6))}
-                      maxLength={6}
-                      className="font-mono text-lg tracking-widest uppercase"
-                      data-testid="input-pair-code"
-                    />
-                    <Button
-                      onClick={() => pairDevice.mutate()}
-                      disabled={pairDevice.isPending || pairCode.length !== 6}
-                      className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
-                      data-testid="button-pair-device"
-                    >
-                      {pairDevice.isPending ? 'Pairing...' : 'Pair Device'}
-                    </Button>
-                  </div>
-                  {pairResult && !pairResult.error && (
-                    <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-600">
-                      Device paired successfully!
-                    </div>
-                  )}
-                  {pairResult?.error && (
-                    <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-600">
-                      {pairResult.error}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="rewards-config">
-            <Card>
-              <CardHeader>
-                <CardTitle>Rewards Configuration</CardTitle>
-                <CardDescription>Control how rewards work at your location</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-base">Rewards Enabled</Label>
-                    <p className="text-sm text-gray-400">Toggle rewards on/off for your location</p>
-                  </div>
-                  <Switch 
-                    checked={rewardConfig?.enabled ?? true}
-                    onCheckedChange={(enabled) => updateConfig.mutate({ enabled })}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label>Daily Spin Cap</Label>
-                    <span className="text-sm font-medium">{rewardConfig?.dailySpinCap || 50}</span>
-                  </div>
-                  <Slider
-                    value={[rewardConfig?.dailySpinCap || 50]}
-                    min={10}
-                    max={200}
-                    step={10}
-                    onValueChange={([value]) => updateConfig.mutate({ dailySpinCap: value })}
-                  />
-                  <p className="text-xs text-gray-400">Maximum spins allowed per day per device</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label>Minimum Seconds Between Spins</Label>
-                    <span className="text-sm font-medium">{rewardConfig?.minSecondsBetweenSpins || 30}s</span>
-                  </div>
-                  <Slider
-                    value={[rewardConfig?.minSecondsBetweenSpins || 30]}
-                    min={10}
-                    max={120}
-                    step={5}
-                    onValueChange={([value]) => updateConfig.mutate({ minSecondsBetweenSpins: value })}
-                  />
-                  <p className="text-xs text-gray-400">Anti-abuse rate limiting</p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="pickup">
-            <Card>
-              <CardHeader>
-                <CardTitle>Request Pickup</CardTitle>
-                <CardDescription>Schedule a bin collection</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <p className="text-gray-500 dark:text-gray-400 mb-4">
-                    When your bin is getting full, request a pickup and we'll schedule a collection.
-                  </p>
-                  <Button 
-                    size="lg" 
-                    onClick={() => requestPickup.mutate()}
-                    disabled={requestPickup.isPending}
-                    className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
-                  >
-                    {requestPickup.isPending ? 'Requesting...' : 'Request Pickup'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="points">
-            <div className="space-y-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <Coins className="h-8 w-8 text-yellow-500" />
-                    <div>
-                      <p className="text-2xl font-bold" data-testid="text-points-total">{totalPointsEarned}</p>
-                      <p className="text-xs text-gray-400">Total Points Earned</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Points Ledger</CardTitle>
-                  <CardDescription>History of all points earned</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Points</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead>Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pointsLedger.map((entry: any, index: number) => (
-                        <TableRow key={entry.id || index}>
-                          <TableCell className="font-medium">+{entry.points}</TableCell>
-                          <TableCell>{entry.reason}</TableCell>
-                          <TableCell>{new Date(entry.createdAt).toLocaleString()}</TableCell>
-                        </TableRow>
-                      ))}
-                      {pointsLedger.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={3} className="text-center text-gray-400">
-                            No points earned yet.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="rewards" className="space-y-4">
-            <PartnerRewardsStore shopId={shop?.id} />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm">{msg}</p>
+            {state === "done" && <Button onClick={onClose}>Done</Button>}
+            {state === "error" && <Button onClick={onClose} variant="outline">Close</Button>}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

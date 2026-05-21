@@ -1,206 +1,107 @@
-import type { Express } from "express";
-import { createServer, type Server } from "http";
+import type { Express, Request, Response } from "express";
+import { type Server } from "http";
 import { storage } from "./storage";
-import { createDropV2Handler } from "./handlers/dropV2";
-import { 
-  insertContactSchema, 
-  insertLeadSchema, 
-  insertVolunteerSchema,
-  insertShopSchema,
-  insertDeviceSchema,
-  insertStoreItemSchema,
+import {
+  insertContactSchema, insertLeadSchema, insertVolunteerSchema,
+  insertShopSchema, insertShopRewardSchema,
 } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
-import { 
-  sendContactNotification, 
-  sendBinRequestNotification, 
-  sendVolunteerNotification, 
-  sendCustomEmail,
-  sendPointsClaimedEmail,
-  sendRedemptionEmail,
+import {
+  sendContactNotification, sendBinRequestNotification, sendVolunteerNotification,
 } from "./email";
 import bcrypt from "bcryptjs";
-import { 
-  login, 
-  register, 
-  logout, 
-  authMiddleware, 
-  optionalAuthMiddleware,
-  requireRole,
-  authenticateDevice,
-  hashDeviceKey,
-  generateDeviceKey,
-  generateClaimToken,
-  hashPassword,
+import {
+  login, register, logout, authMiddleware, optionalAuthMiddleware, requireRole,
+  hashDeviceKey, generateDeviceKey, generateSerial, generateNonce, generateClaimToken,
+  hashPassword, deviceAuthMiddleware,
 } from "./auth";
 import { z } from "zod";
-import { verifyRecaptcha } from "./recaptcha";
-import type { DeviceConfig } from "@shared/schema";
+import { writePhotoJpeg, decodeDataUrlOrBase64 } from "./blob";
 
-function serializeShopDeviceConfig(config: DeviceConfig) {
-  return {
-    session_window_sec: config.sessionWindowSec,
-    accepted_hold_ms: config.acceptedHoldMs,
-    warn_enabled: config.warnEnabled,
-    warn_temp_c: config.warnTempC,
-    warn_voc_analog: config.warnVocAnalog,
-    warn_use_voc_digital: config.warnUseVocDigital,
-    raw_swap_bytes: config.rawSwapBytes,
-  };
+const NONCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_CLAIM_TTL_SEC = 7 * 24 * 3600;
+const DEFAULT_BATTERIES_PER_VAPE = 5;
+const DEFAULT_SHOP_POINTS_PER_VAPE = 1;
+
+async function isPartnerOfShop(userId: string, shopId: number): Promise<boolean> {
+  return storage.isShopMember(userId, shopId);
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
-  
-  // ==================== AUTH ROUTES ====================
-  
+export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // ==================== AUTH ====================
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { email, password, recaptchaToken } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ error: "Email and password required" });
-      }
-      
-      const user = await storage.getUserByEmail(email);
-      const isInternalRole = user && (user.role === "STAFF" || user.role === "PARTNER");
-      
-      if (!isInternalRole) {
-        const captcha = await verifyRecaptcha(recaptchaToken, "login");
-        if (!captcha.success) {
-          return res.status(403).json({ error: captcha.error || "Spam protection check failed" });
-        }
-      }
-      
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ error: "Email and password required" });
       const result = await login(email, password);
-      if (!result) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-      
-      res.json({ 
-        user: { 
-          id: result.user.id, 
-          email: result.user.email, 
-          role: result.user.role,
-          themePreference: result.user.themePreference || 'light',
-        }, 
-        sessionId: result.sessionId 
+      if (!result) return res.status(401).json({ error: "Invalid credentials" });
+      res.json({
+        user: { id: result.user.id, email: result.user.email, role: result.user.role, themePreference: result.user.themePreference || "light" },
+        sessionId: result.sessionId,
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({ error: "Login failed" });
     }
   });
-  
+
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, recaptchaToken } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ error: "Email and password required" });
-      }
-      
-      const captcha = await verifyRecaptcha(recaptchaToken, "register");
-      if (!captcha.success) {
-        return res.status(403).json({ error: captcha.error || "Spam protection check failed" });
-      }
-      
+      const { email, password, role } = req.body;
+      if (!email || !password) return res.status(400).json({ error: "Email and password required" });
       const existing = await storage.getUserByEmail(email);
-      if (existing) {
-        return res.status(400).json({ error: "Email already registered" });
-      }
-      
-      const result = await register(email, password, "CUSTOMER");
-      
-      res.json({ 
-        user: { 
-          id: result.user.id, 
-          email: result.user.email, 
-          role: result.user.role 
-        }, 
-        sessionId: result.sessionId 
-      });
-    } catch (error) {
+      if (existing) return res.status(400).json({ error: "Email already registered" });
+      const r = await register(email, password, role === "PARTNER" ? "PARTNER" : "CUSTOMER");
+      res.json({ user: { id: r.user.id, email: r.user.email, role: r.user.role }, sessionId: r.sessionId });
+    } catch {
       res.status(500).json({ error: "Registration failed" });
     }
   });
-  
+
   app.post("/api/auth/logout", authMiddleware, async (req, res) => {
-    try {
-      await logout(req.sessionId!);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Logout failed" });
-    }
+    await logout(req.sessionId!);
+    res.json({ success: true });
   });
-  
+
   app.get("/api/auth/me", authMiddleware, async (req, res) => {
-    const fullUser = await storage.getUser(req.user!.id);
-    res.json({ 
-      user: { 
-        id: req.user!.id, 
-        email: req.user!.email, 
-        role: req.user!.role,
-        themePreference: fullUser?.themePreference || 'light',
-      } 
-    });
+    const u = req.user!;
+    res.json({ user: { id: u.id, email: u.email, role: u.role, themePreference: u.themePreference || "light" } });
   });
 
   app.patch("/api/auth/theme", authMiddleware, async (req, res) => {
-    try {
-      const { theme } = req.body;
-      if (!theme || !['light', 'dark'].includes(theme)) {
-        return res.status(400).json({ error: "Invalid theme" });
-      }
-      await storage.updateUserTheme(req.user!.id, theme);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update theme" });
-    }
+    const { theme } = req.body;
+    if (!["light", "dark"].includes(theme)) return res.status(400).json({ error: "Invalid theme" });
+    await storage.updateUserTheme(req.user!.id, theme);
+    res.json({ success: true });
   });
 
   app.post("/api/auth/change-password", authMiddleware, async (req, res) => {
     try {
       const { currentPassword, newPassword } = req.body;
-      if (!currentPassword || !newPassword) {
-        return res.status(400).json({ error: "Current and new passwords required" });
-      }
-      
       const user = await storage.getUser(req.user!.id);
-      if (!user || !user.passwordHash) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      
-      const passwordMatch = await bcrypt.compare(currentPassword, user.passwordHash);
-      if (!passwordMatch) {
-        return res.status(401).json({ error: "Current password is incorrect" });
-      }
-      
-      const newPasswordHash = await hashPassword(newPassword);
-      const updated = await storage.updateUserPassword(req.user!.id, newPasswordHash);
-      
-      res.json({ success: true, message: "Password changed successfully" });
-    } catch (error) {
+      if (!user?.passwordHash) return res.status(404).json({ error: "User not found" });
+      const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
+      await storage.updateUserPassword(req.user!.id, await hashPassword(newPassword));
+      res.json({ success: true });
+    } catch {
       res.status(500).json({ error: "Failed to change password" });
     }
   });
 
-  // ==================== PUBLIC FORM ROUTES ====================
-  
+  // ==================== PUBLIC FORMS ====================
   app.post("/api/contact", async (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
-      const contact = await storage.createContact(data);
-      sendContactNotification(data).catch(err => console.error('Email error:', err));
-      res.json(contact);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        return res.status(400).json({ error: fromZodError(error).message });
-      }
-      res.status(500).json({ error: "Failed to create contact" });
+      const c = await storage.createContact(data);
+      sendContactNotification(data).catch(() => {});
+      res.json(c);
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: fromZodError(e).message });
+      res.status(500).json({ error: "Failed" });
     }
   });
 
-  app.post("/api/lead", async (req, res) => {
+  app.post("/api/leads", async (req, res) => {
     try {
       const data = insertLeadSchema.parse(req.body);
       const lead = await storage.createLead(data);
@@ -210,4574 +111,535 @@ export async function registerRoutes(
         email: data.email,
         phone: data.phone,
         address: data.address,
-        volume: data.volume || "Not specified",
-      }).catch(err => console.error('Email error:', err));
+        volume: data.volume ?? "",
+      }).catch(() => {});
       res.json(lead);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        return res.status(400).json({ error: fromZodError(error).message });
-      }
-      res.status(500).json({ error: "Failed to create lead" });
-    }
-  });
-  
-  // Keep old endpoint for backwards compatibility
-  app.post("/api/bin-request", async (req, res) => {
-    try {
-      const data = {
-        businessName: req.body.businessName,
-        contactName: req.body.contactPerson,
-        email: req.body.email,
-        phone: req.body.phone,
-        address: req.body.address,
-        volume: req.body.volume,
-      };
-      const lead = await storage.createLead(data);
-      sendBinRequestNotification(req.body).catch(err => console.error('Email error:', err));
-      res.json(lead);
-    } catch (error: any) {
-      res.status(500).json({ error: "Failed to create bin request" });
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: fromZodError(e).message });
+      res.status(500).json({ error: "Failed" });
     }
   });
 
-  app.post("/api/volunteer", async (req, res) => {
+  app.post("/api/volunteers", async (req, res) => {
     try {
       const data = insertVolunteerSchema.parse(req.body);
-      const volunteer = await storage.createVolunteer(data);
-      sendVolunteerNotification(data).catch(err => console.error('Email error:', err));
-      res.json(volunteer);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        return res.status(400).json({ error: fromZodError(error).message });
-      }
-      res.status(500).json({ error: "Failed to create volunteer application" });
+      const v = await storage.createVolunteer(data);
+      sendVolunteerNotification(data).catch(() => {});
+      res.json(v);
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: fromZodError(e).message });
+      res.status(500).json({ error: "Failed" });
     }
   });
 
-  // ==================== STAFF ROUTES ====================
-  
-  app.get("/api/staff/leads", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  app.get("/api/shops", async (_req, res) => {
+    const shops = await storage.getVerifiedShops();
+    res.json(shops);
+  });
+
+  // ==================== CUSTOMER ====================
+  app.get("/api/customer/wallet", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    const customer = await storage.getCustomerByUserId(req.user!.id);
+    if (!customer) return res.status(404).json({ error: "Customer profile not found" });
+    const { balance, lifetimeEarned } = await storage.getBatteryBalance(customer.id);
+    res.json({
+      customer: { id: customer.id, publicId: customer.publicId },
+      wallet: { pointsBalance: balance, lifetimeEarned },
+    });
+  });
+
+  app.get("/api/customer/transactions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    const customer = await storage.getCustomerByUserId(req.user!.id);
+    if (!customer) return res.json([]);
+    const txs = await storage.getBatteryTransactions(customer.id, 100);
+    res.json(txs.map(t => ({
+      id: t.id,
+      amount: t.type === "REDEEMED" ? -t.amount : t.amount,
+      type: t.type,
+      description: t.description || (t.type === "EARNED" ? "Drop session claim" : "Reward redemption"),
+      createdAt: t.createdAt,
+    })));
+  });
+
+  app.get("/api/customer/redemptions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    const customer = await storage.getCustomerByUserId(req.user!.id);
+    if (!customer) return res.json([]);
+    res.json(await storage.getRedemptionsByCustomer(customer.id));
+  });
+
+  app.get("/api/customer/store", async (_req, res) => {
+    res.json(await storage.getActiveStoreItems("customer"));
+  });
+
+  app.post("/api/customer/redeem", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    const body = z.object({ itemId: z.number() }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "itemId required" });
+    const customer = await storage.getCustomerByUserId(req.user!.id);
+    if (!customer) return res.status(404).json({ error: "Customer profile not found" });
+    const item = await storage.getStoreItem(body.data.itemId);
+    if (!item || !item.active) return res.status(404).json({ error: "Item not available" });
+    const { balance } = await storage.getBatteryBalance(customer.id);
+    if (balance < item.pointsCost) return res.status(400).json({ error: "Insufficient batteries" });
+    await storage.createBatteryTransaction({
+      customerId: customer.id, sessionId: null, amount: item.pointsCost,
+      type: "REDEEMED", status: "POSTED", description: `Reward: ${item.name}`,
+    } as any);
+    const redemption = await storage.createRedemption({
+      customerId: customer.id, storeItemId: item.id, pointsSpent: item.pointsCost, status: "PENDING",
+    });
+    res.json({ ok: true, redemption, balance: balance - item.pointsCost });
+  });
+
+  // ==================== CLAIM FLOW ====================
+  app.get("/api/claim/:token", async (req, res) => {
+    const session = await storage.getDropSessionByClaimToken(req.params.token);
+    if (!session) return res.status(404).json({ error: "Invalid claim token" });
+    if (session.expiresAt && session.expiresAt < new Date()) return res.status(410).json({ error: "Claim expired" });
+    const shop = session.shopId ? await storage.getShop(session.shopId) : null;
+    res.json({
+      sessionId: session.id,
+      batteries: session.batteriesEstimated,
+      acceptedDrops: session.acceptedDropCount,
+      claimed: !!session.claimedByCustomerId,
+      shop: shop ? { id: shop.id, name: shop.name, city: shop.city } : null,
+      expiresAt: session.expiresAt,
+    });
+  });
+
+  app.post("/api/customer/claim/:token", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    const session = await storage.getDropSessionByClaimToken(req.params.token);
+    if (!session) return res.status(404).json({ error: "Invalid claim token" });
+    if (session.claimedByCustomerId) return res.status(409).json({ error: "Already claimed" });
+    if (session.expiresAt && session.expiresAt < new Date()) return res.status(410).json({ error: "Claim expired" });
+    const customer = await storage.getCustomerByUserId(req.user!.id);
+    if (!customer) return res.status(404).json({ error: "Customer profile not found" });
+
+    // Race-safe: insert battery transaction FIRST (UNIQUE on sessionId blocks the race),
+    // then update session metadata. If insert fails (already claimed), session is untouched.
     try {
-      const leads = await storage.getAllLeads();
-      res.json(leads);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch leads" });
+      await storage.createBatteryTransaction({
+        customerId: customer.id,
+        sessionId: session.id,
+        amount: session.batteriesEstimated,
+        type: "EARNED",
+        status: "POSTED",
+        description: `Drop session #${session.id}`,
+      });
+    } catch (e) {
+      return res.status(409).json({ error: "Already claimed" });
+    }
+    await storage.updateDropSession(session.id, {
+      claimedByCustomerId: customer.id,
+      claimedAt: new Date(),
+      status: "CLAIMED",
+      batteriesConfirmed: session.batteriesEstimated,
+    });
+    res.json({ ok: true, batteries: session.batteriesEstimated, balance: (await storage.getBatteryBalance(customer.id)).balance });
+  });
+
+  // ==================== PARTNER ====================
+  app.get("/api/partner/shops", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shops = req.user!.role === "STAFF"
+      ? await storage.getAllShops()
+      : await storage.getShopsByMemberId(req.user!.id);
+    res.json(shops);
+  });
+
+  app.get("/api/partner/shops/:id/devices", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    res.json(await storage.getDevicesByShop(shopId));
+  });
+
+  app.get("/api/partner/shops/:id/sessions", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    res.json(await storage.getRecentSessionsByShops([shopId], 50));
+  });
+
+  app.get("/api/partner/shops/:id/points/balance", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    res.json({ balance: await storage.getShopPointBalance(shopId) });
+  });
+
+  app.get("/api/partner/shops/:id/points/transactions", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    res.json(await storage.getShopPointTransactions(shopId, 100));
+  });
+
+  // Shop reward store
+  app.get("/api/partner/shops/:id/rewards", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    res.json(await storage.getShopRewards(shopId));
+  });
+
+  app.post("/api/partner/shops/:id/rewards", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    try {
+      const data = insertShopRewardSchema.parse({ ...req.body, shopId });
+      res.json(await storage.createShopReward(data));
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: fromZodError(e).message });
+      res.status(500).json({ error: "Failed" });
     }
   });
-  
-  app.patch("/api/staff/leads/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { status, notes } = req.body;
-      const lead = await storage.updateLeadStatus(parseInt(req.params.id), status, notes);
-      res.json(lead);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update lead" });
-    }
+
+  app.patch("/api/partner/shops/:id/rewards/:rewardId", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    const reward = await storage.getShopReward(Number(req.params.rewardId));
+    if (!reward || reward.shopId !== shopId) return res.status(404).json({ error: "Not found" });
+    res.json(await storage.updateShopReward(reward.id, req.body));
   });
-  
-  app.get("/api/staff/shops", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const shops = await storage.getAllShops();
-      res.json(shops);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch shops" });
-    }
+
+  app.delete("/api/partner/shops/:id/rewards/:rewardId", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    const reward = await storage.getShopReward(Number(req.params.rewardId));
+    if (!reward || reward.shopId !== shopId) return res.status(404).json({ error: "Not found" });
+    await storage.deleteShopReward(reward.id);
+    res.json({ ok: true });
   });
-  
+
+  app.post("/api/partner/shops/:id/rewards/:rewardId/redeem", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    const reward = await storage.getShopReward(Number(req.params.rewardId));
+    if (!reward || reward.shopId !== shopId || !reward.active) return res.status(404).json({ error: "Not found" });
+    const balance = await storage.getShopPointBalance(shopId);
+    if (balance < reward.cost) return res.status(400).json({ error: "Insufficient points" });
+    await storage.createShopPointTransaction({
+      shopId, sessionId: null, deviceId: null, amount: reward.cost, type: "REDEEMED", status: "POSTED",
+      description: `Reward: ${reward.name}`,
+    });
+    const redemption = await storage.createShopRewardRedemption({
+      shopId, rewardId: reward.id, redeemedByUserId: req.user!.id, cost: reward.cost,
+    });
+    res.json({ ok: true, redemption, balance: balance - reward.cost });
+  });
+
+  app.get("/api/partner/shops/:id/redemption-history", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const shopId = Number(req.params.id);
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+    res.json(await storage.getShopRewardRedemptions(shopId));
+  });
+
+  // Per-device settings editor
+  app.get("/api/partner/devices/:id/settings", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF" && device.shopId && !(await isPartnerOfShop(req.user!.id, device.shopId)))
+      return res.status(403).json({ error: "Not your device" });
+    const s = await storage.getDeviceSettings(device.id);
+    res.json({ settingsJson: s?.settingsJson || {}, version: s?.version || 0 });
+  });
+
+  app.put("/api/partner/devices/:id/settings", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF" && device.shopId && !(await isPartnerOfShop(req.user!.id, device.shopId)))
+      return res.status(403).json({ error: "Not your device" });
+    const s = await storage.upsertDeviceSettings(device.id, req.body || {});
+    res.json(s);
+  });
+
+  // Partner "Mark Empty" enqueues a device command
+  app.post("/api/partner/devices/:id/mark-empty", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF" && device.shopId && !(await isPartnerOfShop(req.user!.id, device.shopId)))
+      return res.status(403).json({ error: "Not your device" });
+    const cmd = await storage.enqueueCommand(device.id, "RESET_FILL_AND_COUNT");
+    // Optimistically zero on server too so UI updates immediately
+    await storage.updateDevice(device.id, { vapesSinceEmpty: 0, fillPercent: 0 });
+    res.json({ ok: true, command: cmd });
+  });
+
+  // ==================== BLE PAIR INIT ====================
+  app.post("/api/partner/bins/pair-init", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const body = z.object({ shopId: z.number() }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "shopId required" });
+    const shopId = body.data.shopId;
+    if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
+      return res.status(403).json({ error: "Not your shop" });
+
+    const serial = generateSerial();
+    const deviceKey = generateDeviceKey();
+    const deviceKeyHash = hashDeviceKey(deviceKey);
+    const device = await storage.createDevice({
+      serial, deviceKeyHash, shopId, partnerId: req.user!.id, status: "PROVISIONING",
+    } as any);
+    const nonce = generateNonce();
+    await storage.createPairingNonce(device.id, nonce, new Date(Date.now() + NONCE_TTL_MS));
+    res.json({ deviceId: device.id, serial, deviceKey, nonce, ttlMs: NONCE_TTL_MS });
+  });
+
+  // ==================== DEVICE API (/api/device/*) ====================
+
+  // Pairing claim — no device-key auth (uses nonce instead)
+  app.post("/api/device/claim", async (req, res) => {
+    const body = z.object({ nonce: z.string(), serial: z.string().optional(), firmwareVersion: z.string().optional() }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "nonce required" });
+    const consumed = await storage.consumePairingNonce(body.data.nonce);
+    if (!consumed) return res.status(400).json({ error: "Invalid or expired nonce" });
+    const device = await storage.getDevice(consumed.deviceId);
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (body.data.serial && body.data.serial !== device.serial) return res.status(400).json({ error: "Serial mismatch" });
+    const updated = await storage.updateDevice(device.id, {
+      status: "LIVE",
+      firmwareVersion: body.data.firmwareVersion || device.firmwareVersion,
+      lastHeartbeatAt: new Date(),
+    });
+    res.json({ deviceId: device.id, serial: device.serial, shopId: device.shopId });
+  });
+
+  // All routes below require X-Device-Key
+  app.post("/api/device/telemetry", deviceAuthMiddleware, async (req, res) => {
+    const body = z.object({
+      vapesSinceEmpty: z.number().optional(),
+      fillPercent: z.number().optional(),
+      tempC: z.number().optional(),
+      vocRaw: z.number().optional(),
+      wifiRssi: z.number().optional(),
+      sdFreeMb: z.number().optional(),
+      firmwareVersion: z.string().optional(),
+      state: z.string().optional(),
+      errorLog: z.string().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "bad telemetry" });
+    const patch: any = { ...body.data, lastHeartbeatAt: new Date() };
+    delete patch.state;
+    await storage.updateDevice(req.device!.id, patch);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/device/settings", deviceAuthMiddleware, async (req, res) => {
+    const have = Number((req.query.version as string) || 0);
+    const s = await storage.getDeviceSettings(req.device!.id);
+    if (!s) return res.json({ version: 0, settings: {} });
+    if (s.version <= have) return res.status(304).end();
+    res.json({ version: s.version, settings: s.settingsJson });
+  });
+
+  app.get("/api/device/commands", deviceAuthMiddleware, async (req, res) => {
+    const since = Number((req.query.lastCommandId as string) || 0);
+    const cmds = await storage.getPendingCommands(req.device!.id, since);
+    res.json({ commands: cmds });
+  });
+
+  app.post("/api/device/commands/ack", deviceAuthMiddleware, async (req, res) => {
+    const body = z.object({ commandId: z.number(), result: z.string().optional() }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "commandId required" });
+    const c = await storage.ackCommand(body.data.commandId, req.device!.id, body.data.result);
+    if (!c) return res.status(404).json({ error: "Command not found" });
+    res.json({ ok: true });
+  });
+
+  app.post("/api/device/drop-sessions/start", deviceAuthMiddleware, async (req, res) => {
+    const s = await storage.createDropSession(req.device!.id, req.device!.shopId || null);
+    res.json({ sessionId: s.id });
+  });
+
+  app.post("/api/device/drops", deviceAuthMiddleware, async (req, res) => {
+    const body = z.object({
+      sessionId: z.number(),
+      sequence: z.number(),
+      beamPatternJson: z.any().optional(),
+      tempC: z.number().optional(),
+      vocRaw: z.number().optional(),
+      fillPercent: z.number().optional(),
+      accepted: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "bad drop" });
+    const session = await storage.getDropSession(body.data.sessionId);
+    if (!session || session.deviceId !== req.device!.id) return res.status(404).json({ error: "Session not found" });
+    if (session.status !== "OPEN") return res.status(400).json({ error: "Session not open" });
+    const drop = await storage.createDrop(body.data as any);
+    await storage.updateDropSession(session.id, {
+      detectedDropCount: session.detectedDropCount + 1,
+      acceptedDropCount: session.acceptedDropCount + (body.data.accepted === false ? 0 : 1),
+    });
+    res.json({ dropId: drop.id });
+  });
+
+  // Photo upload — multipart not required; accepts base64 in JSON body
+  app.post("/api/device/drops/:dropId/photos", deviceAuthMiddleware, async (req, res) => {
+    const dropId = Number(req.params.dropId);
+    const body = z.object({
+      imageRole: z.enum(["before", "after"]),
+      imageBase64: z.string(),
+    }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "imageBase64 required" });
+    // Ownership: dropId -> session -> deviceId must match the calling device
+    const drop = await storage.getDrop(dropId);
+    if (!drop) return res.status(404).json({ error: "Drop not found" });
+    const dropSession = await storage.getDropSession(drop.sessionId);
+    if (!dropSession || dropSession.deviceId !== req.device!.id) return res.status(403).json({ error: "Not your drop" });
+    const buf = decodeDataUrlOrBase64(body.data.imageBase64);
+    if (!buf || buf.length < 100) return res.status(400).json({ error: "Invalid image" });
+    const { url } = await writePhotoJpeg(req.device!.id, buf);
+    const photo = await storage.createPhoto({
+      deviceId: req.device!.id, dropId, storageUrl: url,
+      reason: body.data.imageRole === "before" ? "drop_before" : "drop_after",
+    } as any);
+    // latestPhotoUrl from after-photo
+    if (body.data.imageRole === "after") {
+      await storage.updateDevice(req.device!.id, { latestPhotoUrl: url, latestPhotoTakenAt: new Date() });
+    }
+    res.json({ photoId: photo.id, url });
+  });
+
+  // Idle / maintenance / calibration photos (not tied to a drop)
+  app.post("/api/device/photos", deviceAuthMiddleware, async (req, res) => {
+    const body = z.object({
+      reason: z.enum(["idle", "maintenance", "calibration"]),
+      imageBase64: z.string(),
+      sessionId: z.number().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "imageBase64 required" });
+    const buf = decodeDataUrlOrBase64(body.data.imageBase64);
+    if (!buf) return res.status(400).json({ error: "Invalid image" });
+    const { url } = await writePhotoJpeg(req.device!.id, buf);
+    const photo = await storage.createPhoto({
+      deviceId: req.device!.id, sessionId: body.data.sessionId, storageUrl: url, reason: body.data.reason,
+    } as any);
+    await storage.updateDevice(req.device!.id, { latestPhotoUrl: url, latestPhotoTakenAt: new Date() });
+    res.json({ photoId: photo.id, url });
+  });
+
+  // Finalize a session: award shop points, generate claim token
+  app.post("/api/device/drop-sessions/:id/finalize", deviceAuthMiddleware, async (req, res) => {
+    const sessionId = Number(req.params.id);
+    const session = await storage.getDropSession(sessionId);
+    if (!session || session.deviceId !== req.device!.id) return res.status(404).json({ error: "Session not found" });
+    if (session.status !== "OPEN") return res.status(400).json({ error: "Already finalized" });
+    if (session.acceptedDropCount === 0) {
+      const updated = await storage.updateDropSession(sessionId, { status: "EXPIRED", finalizedAt: new Date() });
+      return res.json({ ok: true, batteries: 0, claimToken: null, claimUrl: null, expired: true });
+    }
+    const cfg = session.shopId ? await storage.getRewardConfig(session.shopId) : null;
+    const battsPer = cfg?.batteriesPerVape ?? DEFAULT_BATTERIES_PER_VAPE;
+    const ptsPer = cfg?.shopPointsPerVape ?? DEFAULT_SHOP_POINTS_PER_VAPE;
+    const ttlSec = cfg?.claimExpirySec ?? DEFAULT_CLAIM_TTL_SEC;
+
+    const batteries = session.acceptedDropCount * battsPer;
+    const shopPoints = session.acceptedDropCount * ptsPer;
+    const claimToken = generateClaimToken();
+    const expiresAt = new Date(Date.now() + ttlSec * 1000);
+
+    await storage.updateDropSession(sessionId, {
+      status: "FINALIZED",
+      batteriesEstimated: batteries,
+      shopPointsAwarded: shopPoints,
+      claimToken,
+      expiresAt,
+      finalizedAt: new Date(),
+    });
+
+    // Award shop points immediately (no QR scan needed)
+    if (session.shopId && shopPoints > 0) {
+      await storage.createShopPointTransaction({
+        shopId: session.shopId, deviceId: req.device!.id, sessionId,
+        amount: shopPoints, type: "EARNED", status: "POSTED",
+        description: `${session.acceptedDropCount} vape drop(s)`,
+      });
+    }
+
+    const baseUrl = (req.headers["x-forwarded-proto"] ? `${req.headers["x-forwarded-proto"]}://` : "https://") +
+                    (req.headers["x-forwarded-host"] || req.headers.host);
+    const claimUrl = `${baseUrl}/claim/${claimToken}`;
+    res.json({ ok: true, batteries, shopPoints, claimToken, claimUrl, expiresAt });
+  });
+
+  // ==================== STAFF ====================
+  app.get("/api/staff/devices", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    const list = await storage.getAllDevices();
+    res.json(list);
+  });
+
+  app.get("/api/staff/devices/:id/commands", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    res.json(await storage.getCommandsByDevice(Number(req.params.id), 100));
+  });
+
+  app.post("/api/staff/devices/:id/commands", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    const body = z.object({ type: z.string(), payload: z.any().optional() }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "type required" });
+    const c = await storage.enqueueCommand(Number(req.params.id), body.data.type, body.data.payload);
+    res.json(c);
+  });
+
+  app.delete("/api/staff/devices/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    await storage.deleteDevice(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  app.get("/api/staff/shops", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    res.json(await storage.getAllShops());
+  });
+
   app.post("/api/staff/shops", authMiddleware, requireRole("STAFF"), async (req, res) => {
     try {
       const data = insertShopSchema.parse(req.body);
       const shop = await storage.createShop(data);
-      // Create default reward config
-      await storage.createRewardConfig({ shopId: shop.id });
       res.json(shop);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        return res.status(400).json({ error: fromZodError(error).message });
-      }
-      res.status(500).json({ error: "Failed to create shop" });
+    } catch (e: any) {
+      if (e.name === "ZodError") return res.status(400).json({ error: fromZodError(e).message });
+      res.status(500).json({ error: "Failed" });
     }
   });
-  
+
   app.patch("/api/staff/shops/:id/status", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { status } = req.body;
-      const shop = await storage.updateShopStatus(parseInt(req.params.id), status);
-      res.json(shop);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update shop status" });
-    }
-  });
-  
-  app.post("/api/staff/shops/:shopId/members", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { email, password, role } = req.body;
-      const shopId = parseInt(req.params.shopId);
-      
-      // Check if user exists
-      let user = await storage.getUserByEmail(email);
-      if (!user) {
-        // Create partner user
-        const passwordHash = await hashPassword(password);
-        user = await storage.createUser({ email, passwordHash, role: "PARTNER" });
-      }
-      
-      // Add as shop member
-      const member = await storage.createShopMember({ userId: user.id, shopId, role: role || "MANAGER" });
-      res.json({ user: { id: user.id, email: user.email }, member });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to add shop member" });
-    }
-  });
-  
-  app.get("/api/staff/devices", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const shops = await storage.getAllShops();
-      const allDevices = [];
-      for (const shop of shops) {
-        const devices = await storage.getDevicesByShop(shop.id);
-        allDevices.push(...devices.map(d => ({ ...d, shopName: shop.name })));
-      }
-      res.json(allDevices);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch devices" });
-    }
-  });
-  
-  app.post("/api/staff/devices", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { shopId, name } = req.body;
-      
-      // Generate device key (only shown once)
-      const deviceKey = generateDeviceKey();
-      const deviceKeyHash = hashDeviceKey(deviceKey);
-      
-      const device = await storage.createDevice({ 
-        shopId: parseInt(shopId), 
-        name, 
-        deviceKeyHash,
-        status: "ACTIVE"
-      });
-      
-      // Auto-create a bin record linked to this device
-      const bin = await storage.createBin({
-        shopId: parseInt(shopId),
-        deviceId: device.id,
-        name: name,
-        binType: "vape",
-        status: "OFFLINE",
-        fillLevel: 0,
-        vapeCount: 0,
-      });
-      
-      // Return the device with the key and ID (only time it's shown)
-      res.json({ 
-        device,
-        bin,
-        deviceId: device.id,
-        deviceKey,
-        warning: "Save this device ID and key now. They cannot be retrieved again." 
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create device" });
-    }
-  });
-  
-  app.get("/api/staff/activity-log", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const log = await storage.getActivityLog();
-      res.json(log);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch activity log" });
-    }
+    const shop = await storage.updateShopStatus(Number(req.params.id), req.body.status);
+    res.json(shop);
   });
 
-  app.get("/api/staff/drop-events", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const shops = await storage.getAllShops();
-      const allEvents = [];
-      for (const shop of shops) {
-        const events = await storage.getDropEventsByShop(shop.id);
-        allEvents.push(...events.map(e => ({ ...e, shopName: shop.name })));
-      }
-      allEvents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      res.json(allEvents);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch drop events" });
-    }
-  });
-  
-  app.get("/api/staff/contacts", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const contacts = await storage.getAllContacts();
-      res.json(contacts);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch contacts" });
-    }
-  });
-  
-  app.get("/api/staff/volunteers", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const volunteers = await storage.getAllVolunteers();
-      res.json(volunteers);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch volunteers" });
-    }
-  });
-  
-  app.get("/api/staff/store-items", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const items = await storage.getAllStoreItems();
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch store items" });
-    }
-  });
-  
-  app.post("/api/staff/store-items", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const data = insertStoreItemSchema.parse(req.body);
-      const item = await storage.createStoreItem(data);
-      res.json(item);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        return res.status(400).json({ error: fromZodError(error).message });
-      }
-      res.status(500).json({ error: "Failed to create store item" });
-    }
-  });
-  
-  app.get("/api/staff/redemptions", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const redemptions = await storage.getAllRedemptions();
-      res.json(redemptions);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch redemptions" });
-    }
-  });
-  
-  app.patch("/api/staff/redemptions/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { status } = req.body;
-      const redemption = await storage.updateRedemptionStatus(parseInt(req.params.id), status);
-      res.json(redemption);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update redemption" });
-    }
+  app.post("/api/staff/shops/:id/members", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    const body = z.object({ userId: z.string(), role: z.enum(["OWNER", "MANAGER"]).optional() }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "userId required" });
+    const m = await storage.createShopMember({
+      userId: body.data.userId, shopId: Number(req.params.id), role: body.data.role || "MANAGER",
+    });
+    res.json(m);
   });
 
-  app.delete("/api/staff/shops/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const success = await storage.deleteShop(parseInt(req.params.id));
-      if (!success) {
-        return res.status(404).json({ error: "Shop not found" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete shop" });
-    }
+  app.get("/api/staff/users", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    const users = await storage.getAllUsers();
+    res.json(users.map(u => ({ id: u.id, email: u.email, role: u.role, createdAt: u.createdAt })));
   });
 
-  app.get("/api/staff/partner-redemptions", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const redemptions = await storage.getAllPartnerRedemptions();
-      res.json(redemptions);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch partner redemptions" });
-    }
-  });
-
-  app.patch("/api/staff/partner-redemptions/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { status } = req.body;
-      const redemption = await storage.updatePartnerRedemptionStatus(parseInt(req.params.id), status);
-      res.json(redemption);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update partner redemption" });
-    }
-  });
-  
-  app.get("/api/staff/pickup-requests", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const requests = await storage.getAllPickupRequests();
-      res.json(requests);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch pickup requests" });
-    }
-  });
-
-  // ==================== PARTNER ROUTES ====================
-  
-  app.get("/api/partner/shops", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shops = await storage.getShopsByMemberId(req.user!.id);
-      res.json(shops);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch shops" });
-    }
-  });
-  
-  app.get("/api/partner/shops/:shopId", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shop = await storage.getShop(parseInt(req.params.shopId));
-      if (!shop) {
-        return res.status(404).json({ error: "Shop not found" });
-      }
-      
-      // Verify user has access
-      const shops = await storage.getShopsByMemberId(req.user!.id);
-      if (!shops.find(s => s.id === shop.id)) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-      
-      res.json(shop);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch shop" });
-    }
-  });
-  
-  app.get("/api/partner/shops/:shopId/reward-config", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.shopId);
-      const config = await storage.getRewardConfig(shopId);
-      res.json(config);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch reward config" });
-    }
-  });
-  
-  app.patch("/api/partner/shops/:shopId/reward-config", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.shopId);
-      const config = await storage.updateRewardConfig(shopId, req.body);
-      res.json(config);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update reward config" });
-    }
-  });
-  
-  app.get("/api/partner/shops/:shopId/drop-events", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const events = await storage.getDropEventsWithVerdictByShop(parseInt(req.params.shopId));
-      res.json(events);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch drop events" });
-    }
-  });
-  
-  app.get("/api/partner/shops/:shopId/stats", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.shopId);
-      const events = await storage.getDropEventsWithVerdictByShop(shopId);
-      const devices = await storage.getDevicesByShop(shopId);
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const todayEvents = events.filter(e => new Date(e.createdAt) >= today);
-      const totalPoints = events.reduce((sum, e) => sum + e.pointsAwarded, 0);
-      const todayPoints = todayEvents.reduce((sum, e) => sum + e.pointsAwarded, 0);
-
-      const totalRejected = events.filter(e => e.verdictAccepted === false).length;
-      const todayRejected = todayEvents.filter(e => e.verdictAccepted === false).length;
-      const rejectedByReason: Record<string, number> = {};
-      for (const e of events) {
-        if (e.verdictAccepted === false && e.verdictReason) {
-          rejectedByReason[e.verdictReason] = (rejectedByReason[e.verdictReason] || 0) + 1;
-        }
-      }
-      const todayRejectedByReason: Record<string, number> = {};
-      for (const e of todayEvents) {
-        if (e.verdictAccepted === false && e.verdictReason) {
-          todayRejectedByReason[e.verdictReason] = (todayRejectedByReason[e.verdictReason] || 0) + 1;
-        }
-      }
-      
-      res.json({
-        totalDrops: events.length,
-        todayDrops: todayEvents.length,
-        totalPoints,
-        todayPoints,
-        activeDevices: devices.filter(d => d.status === "ACTIVE").length,
-        totalRejected,
-        todayRejected,
-        rejectedByReason,
-        todayRejectedByReason,
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch stats" });
-    }
-  });
-  
-  app.post("/api/partner/shops/:shopId/pickup-request", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.shopId);
-      const { notes } = req.body;
-      
-      const request = await storage.createPickupRequest({
-        shopId,
-        requestedById: req.user!.id,
-        notes,
-        status: "PENDING",
-      });
-      
-      res.json(request);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create pickup request" });
-    }
-  });
-
-  app.get("/api/partner/store", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const items = await storage.getStoreItemsByCategory('partner');
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch partner store items" });
-    }
-  });
-
-  app.post("/api/partner/redeem", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const { storeItemId } = req.body;
-      const user = req.user!;
-      
-      const shops = await storage.getShopsByMemberId(user.id);
-      const shop = shops[0];
-      if (!shop) {
-        return res.status(404).json({ error: "No shop found for your account" });
-      }
-      
-      const item = await storage.getStoreItem(storeItemId);
-      if (!item || !item.active || item.category !== 'partner') {
-        return res.status(404).json({ error: "Store item not found" });
-      }
-      
-      const totalPoints = await storage.getPartnerPointsTotal(shop.id);
-      if (totalPoints < item.pointsCost) {
-        return res.status(400).json({ error: "Insufficient points" });
-      }
-      
-      await storage.deductPartnerPoints(shop.id, item.pointsCost, `Redeemed: ${item.name}`);
-      
-      const redemption = await storage.createPartnerRedemption({
-        userId: user.id,
-        shopId: shop.id,
-        storeItemId: item.id,
-        pointsSpent: item.pointsCost,
-        status: "PENDING",
-      });
-      
-      sendRedemptionEmail(user.email, item.name).catch(err => console.error('Email error:', err));
-      
-      res.json(redemption);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to redeem item" });
-    }
-  });
-
-  app.get("/api/partner/redemptions", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shops = await storage.getShopsByMemberId(req.user!.id);
-      const shop = shops[0];
-      if (!shop) return res.json([]);
-      const redemptions = await storage.getPartnerRedemptions(shop.id);
-      res.json(redemptions);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch redemptions" });
-    }
-  });
-
-  // ==================== CUSTOMER ROUTES ====================
-  
-  app.get("/api/customer/wallet", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    try {
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer profile not found" });
-      }
-      
-      const wallet = await storage.getWallet(customer.id);
-      res.json({ customer, wallet });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch wallet" });
-    }
-  });
-  
-  app.get("/api/customer/transactions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    try {
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer profile not found" });
-      }
-      
-      const wallet = await storage.getWallet(customer.id);
-      if (!wallet) {
-        return res.status(404).json({ error: "Wallet not found" });
-      }
-      
-      const transactions = await storage.getTransactionsByWallet(wallet.id);
-      res.json(transactions);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch transactions" });
-    }
-  });
-  
-  app.get("/api/customer/store", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    try {
-      const items = await storage.getStoreItemsByCategory('customer');
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch store items" });
-    }
-  });
-  
-  app.post("/api/customer/redeem", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    try {
-      const { storeItemId } = req.body;
-      
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer profile not found" });
-      }
-      
-      const wallet = await storage.getWallet(customer.id);
-      if (!wallet) {
-        return res.status(404).json({ error: "Wallet not found" });
-      }
-      
-      const item = await storage.getStoreItem(storeItemId);
-      if (!item || !item.active) {
-        return res.status(404).json({ error: "Store item not found" });
-      }
-      
-      if (wallet.pointsBalance < item.pointsCost) {
-        return res.status(400).json({ error: "Insufficient points" });
-      }
-      
-      // Deduct points
-      await storage.updateWalletBalance(customer.id, -item.pointsCost, false);
-      
-      // Create transaction
-      await storage.createTransaction({
-        walletId: wallet.id,
-        amount: -item.pointsCost,
-        type: "REDEEM",
-        description: `Redeemed: ${item.name}`,
-      });
-      
-      // Create redemption
-      const redemption = await storage.createRedemption({
-        customerId: customer.id,
-        storeItemId: item.id,
-        pointsSpent: item.pointsCost,
-        status: "PENDING",
-      });
-      
-      // Send email
-      sendRedemptionEmail(req.user!.email, item.name).catch(err => console.error('Email error:', err));
-      
-      res.json(redemption);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to redeem item" });
-    }
-  });
-  
-  app.get("/api/customer/redemptions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    try {
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer profile not found" });
-      }
-      
-      const redemptions = await storage.getRedemptionsByCustomer(customer.id);
-      res.json(redemptions);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch redemptions" });
-    }
-  });
-
-  app.post("/api/customer/survey", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    try {
-      const { surveyType, answers } = req.body;
-      
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer profile not found" });
-      }
-      
-      if (surveyType === 'signup') {
-        const existing = await storage.getLatestSurveyByType(customer.id, 'signup');
-        if (existing) {
-          return res.status(400).json({ error: "You've already completed the sign-up survey" });
-        }
-      }
-      
-      if (surveyType === 'weekly') {
-        const latest = await storage.getLatestSurveyByType(customer.id, 'weekly');
-        if (latest) {
-          const daysSince = (Date.now() - new Date(latest.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-          if (daysSince < 7) {
-            return res.status(400).json({ error: "You can take the weekly survey once per week", nextAvailable: new Date(new Date(latest.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000) });
-          }
-        }
-      }
-      
-      const pointsAwarded = surveyType === 'signup' ? 20 : 3;
-      
-      const response = await storage.createSurveyResponse({
-        customerId: customer.id,
-        surveyType,
-        answers,
-        pointsAwarded,
-      });
-      
-      const wallet = await storage.getWallet(customer.id);
-      if (wallet) {
-        await storage.updateWalletBalance(customer.id, pointsAwarded, true);
-        await storage.createTransaction({
-          walletId: wallet.id,
-          amount: pointsAwarded,
-          type: "EARN",
-          description: surveyType === 'signup' ? 'Welcome survey bonus' : 'Weekly survey bonus',
-        });
-      }
-      
-      res.json({ ok: true, pointsAwarded, response });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to submit survey" });
-    }
-  });
-
-  app.get("/api/customer/survey/status", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    try {
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer profile not found" });
-      }
-      
-      const signupSurvey = await storage.getLatestSurveyByType(customer.id, 'signup');
-      const weeklySurvey = await storage.getLatestSurveyByType(customer.id, 'weekly');
-      
-      let weeklyAvailable = true;
-      let nextWeeklyDate = null;
-      
-      if (weeklySurvey) {
-        const daysSince = (Date.now() - new Date(weeklySurvey.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSince < 7) {
-          weeklyAvailable = false;
-          nextWeeklyDate = new Date(new Date(weeklySurvey.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000);
-        }
-      }
-      
-      res.json({
-        signupCompleted: !!signupSurvey,
-        weeklyAvailable,
-        nextWeeklyDate,
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch survey status" });
-    }
-  });
-
-  // ==================== CLAIM ROUTES ====================
-  
-  app.post("/api/claim", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const { token, email, password } = req.body;
-      
-      if (!token) {
-        return res.status(400).json({ error: "Token required" });
-      }
-      
-      const tokenHash = hashDeviceKey(token);
-      const claimToken = await storage.getClaimToken(tokenHash);
-      
-      if (!claimToken) {
-        return res.status(404).json({ error: "Token not found" });
-      }
-      
-      if (claimToken.claimedAt) {
-        return res.status(400).json({ error: "Token already claimed" });
-      }
-      
-      if (new Date(claimToken.expiresAt) < new Date()) {
-        return res.status(400).json({ error: "Token expired" });
-      }
-      
-      let user = req.user;
-      let sessionId: string | undefined;
-      
-      // If not logged in, require email/password for registration or login
-      if (!user) {
-        if (!email || !password) {
-          return res.status(400).json({ error: "Please log in or register to claim points" });
-        }
-        
-        const existing = await storage.getUserByEmail(email);
-        if (existing) {
-          // Login
-          const result = await login(email, password);
-          if (!result) {
-            return res.status(401).json({ error: "Invalid credentials" });
-          }
-          user = result.user;
-          sessionId = result.sessionId;
-        } else {
-          // Register
-          const result = await register(email, password, "CUSTOMER");
-          user = result.user;
-          sessionId = result.sessionId;
-        }
-      }
-      
-      // Get customer and wallet
-      const customer = await storage.getCustomerByUserId(user.id);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer profile not found" });
-      }
-      
-      const wallet = await storage.getWallet(customer.id);
-      if (!wallet) {
-        return res.status(404).json({ error: "Wallet not found" });
-      }
-      
-      // Get drop event for points
-      const dropEvent = await storage.getDropEvent(claimToken.dropEventId);
-      if (!dropEvent) {
-        return res.status(404).json({ error: "Drop event not found" });
-      }
-      
-      // Claim the token
-      const claimed = await storage.claimToken(tokenHash, user.id);
-      if (!claimed) {
-        return res.status(400).json({ error: "Failed to claim token" });
-      }
-      
-      // Update wallet
-      await storage.updateWalletBalance(customer.id, dropEvent.pointsAwarded, true);
-      
-      // Create transaction
-      await storage.createTransaction({
-        walletId: wallet.id,
-        amount: dropEvent.pointsAwarded,
-        type: "EARN",
-        description: "Vape drop reward",
-      });
-
-      // Engage Task #5 reward-lock: flip drops.rewardClaimed for any Task #5
-      // drop linked back to this dropEvent, so staff corrections after this
-      // point can no longer change the verdict (see /api/admin/review/:id/correct).
-      try {
-        await storage.markDropsClaimedByDropEventId(dropEvent.id);
-      } catch (err) {
-        console.error('[Claim] markDropsClaimedByDropEventId failed for dropEvent', dropEvent.id, err);
-      }
-
-      // Send email
-      sendPointsClaimedEmail(user.email, dropEvent.pointsAwarded).catch(err => console.error('Email error:', err));
-      
-      res.json({ 
-        success: true, 
-        points: dropEvent.pointsAwarded,
-        newBalance: wallet.pointsBalance + dropEvent.pointsAwarded,
-        sessionId,
-      });
-    } catch (error) {
-      console.error('Claim error:', error);
-      res.status(500).json({ error: "Failed to claim points" });
-    }
-  });
-
-  // ==================== DEVICE API (ESP32) ====================
-  
-  app.post("/api/device/spin", async (req, res) => {
-    try {
-      const deviceId = req.headers["x-device-id"] as string;
-      const deviceKey = req.headers["x-device-key"] as string;
-      
-      if (!deviceId || !deviceKey) {
-        return res.status(401).json({ error: "Device authentication required" });
-      }
-      
-      const auth = await authenticateDevice(deviceId, deviceKey);
-      if (!auth) {
-        return res.status(401).json({ error: "Invalid device credentials" });
-      }
-      
-      const { device, shop } = auth;
-      
-      // Get reward config
-      const config = await storage.getRewardConfig(shop.id);
-      if (!config || !config.enabled) {
-        return res.status(400).json({ error: "Rewards disabled for this shop" });
-      }
-      
-      // Check daily caps
-      const todayEvents = await storage.getTodayDropEventsByDevice(device.id);
-      if (todayEvents.length >= config.dailySpinCap) {
-        return res.status(429).json({ error: "Daily spin limit reached" });
-      }
-      
-      const todayPoints = todayEvents.reduce((sum, e) => sum + e.pointsAwarded, 0);
-      if (todayPoints >= config.dailyPointCap) {
-        return res.status(429).json({ error: "Daily point limit reached" });
-      }
-      
-      // Check rate limit
-      if (todayEvents.length > 0) {
-        const lastEvent = todayEvents[todayEvents.length - 1];
-        const secondsSinceLast = (Date.now() - new Date(lastEvent.createdAt).getTime()) / 1000;
-        if (secondsSinceLast < config.minSecondsBetweenSpins) {
-          return res.status(429).json({ 
-            error: "Too fast", 
-            waitSeconds: Math.ceil(config.minSecondsBetweenSpins - secondsSinceLast) 
-          });
-        }
-      }
-      
-      // Weighted random reward
-      const rewardTable = config.rewardTableJson as { points: number; weight: number }[];
-      const totalWeight = rewardTable.reduce((sum, r) => sum + r.weight, 0);
-      let random = Math.random() * totalWeight;
-      let points = rewardTable[0].points;
-      
-      for (const reward of rewardTable) {
-        random -= reward.weight;
-        if (random <= 0) {
-          points = reward.points;
-          break;
-        }
-      }
-      
-      // Create drop event
-      const dropEvent = await storage.createDropEvent({
-        shopId: shop.id,
-        deviceId: device.id,
-        pointsAwarded: points,
-      });
-      
-      // Create claim token (expires in 3 minutes)
-      const token = generateClaimToken();
-      const tokenHash = hashDeviceKey(token);
-      const expiresAt = new Date(Date.now() + 3 * 60 * 1000);
-      await storage.createClaimToken(tokenHash, dropEvent.id, expiresAt);
-      
-      res.json({
-        points,
-        message: `+${points} points`,
-        qr_url: `https://littr.co/app/claim?token=${token}`,
-        expires_in: 180,
-      });
-    } catch (error) {
-      console.error('Device spin error:', error);
-      res.status(500).json({ error: "Spin failed" });
-    }
-  });
-  
-  app.get("/api/device/status", async (req, res) => {
-    try {
-      const deviceId = req.headers["x-device-id"] as string;
-      const deviceKey = req.headers["x-device-key"] as string;
-      
-      if (!deviceId || !deviceKey) {
-        return res.status(401).json({ error: "Device authentication required" });
-      }
-      
-      const auth = await authenticateDevice(deviceId, deviceKey);
-      if (!auth) {
-        return res.status(401).json({ error: "Invalid device credentials" });
-      }
-      
-      const { device, shop } = auth;
-      const config = await storage.getRewardConfig(shop.id);
-      const todayEvents = await storage.getTodayDropEventsByDevice(device.id);
-      
-      res.json({
-        status: "ok",
-        device: { id: device.id, name: device.name },
-        shop: { id: shop.id, name: shop.name },
-        rewards_enabled: config?.enabled ?? false,
-        today_spins: todayEvents.length,
-        daily_spin_cap: config?.dailySpinCap ?? 50,
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Status check failed" });
-    }
-  });
-
-  // Rate limit tracking for telemetry (in-memory, resets on restart)
-  const telemetryLastSeen = new Map<number, number>();
-  const TELEMETRY_MIN_INTERVAL_MS = 30000; // 30 seconds minimum between readings
-  const FIRE_ALERT_TEMP_THRESHOLD = 60; // Celsius - trigger fire alert above this
-
-  // Device telemetry endpoint - receives sensor data from ESP32
-  app.post("/api/device/telemetry", async (req, res) => {
-    try {
-      const deviceId = req.headers["x-device-id"] as string;
-      const deviceKey = req.headers["x-device-key"] as string;
-      
-      if (!deviceId || !deviceKey) {
-        return res.status(401).json({ error: "Device authentication required" });
-      }
-      
-      const auth = await authenticateDevice(deviceId, deviceKey);
-      if (!auth) {
-        return res.status(401).json({ error: "Invalid device credentials" });
-      }
-      
-      const { device, shop } = auth;
-      
-      // Rate limiting
-      const lastSeen = telemetryLastSeen.get(device.id);
-      const now = Date.now();
-      if (lastSeen && now - lastSeen < TELEMETRY_MIN_INTERVAL_MS) {
-        const waitSeconds = Math.ceil((TELEMETRY_MIN_INTERVAL_MS - (now - lastSeen)) / 1000);
-        return res.status(429).json({ error: "Too fast", waitSeconds });
-      }
-      telemetryLastSeen.set(device.id, now);
-      
-      // Validate request body
-      const { temperatureC, vocAnalog, vocDigital, fillPercent } = req.body;
-      
-      // Basic validation
-      if (fillPercent !== undefined && (fillPercent < 0 || fillPercent > 100)) {
-        return res.status(400).json({ error: "fillPercent must be 0-100" });
-      }
-      if (vocAnalog !== undefined && (vocAnalog < 0 || vocAnalog > 4095)) {
-        return res.status(400).json({ error: "vocAnalog must be 0-4095 (12-bit ADC)" });
-      }
-      if (temperatureC !== undefined && (temperatureC < -40 || temperatureC > 125)) {
-        return res.status(400).json({ error: "temperatureC out of valid range" });
-      }
-      
-      // Get or create bin for this device
-      let bin = await storage.getBinByDeviceId(device.id);
-      
-      if (!bin) {
-        // Auto-create bin for device if it doesn't exist
-        bin = await storage.createBin({
-          shopId: shop.id,
-          deviceId: device.id,
-          name: device.name || `Bin ${device.id}`,
-          binType: "vape",
-          status: "ONLINE",
-          fillLevel: 0,
-          vapeCount: 0,
-        });
-      }
-      
-      // Store historical reading
-      await storage.createBinReading({
-        binId: bin.id,
-        temperature: temperatureC,
-        airQuality: vocAnalog,
-        vocAnalog: vocAnalog,
-        vocDigital: vocDigital,
-        fillLevel: fillPercent,
-      });
-      
-      // Update bin with latest sensor data
-      const updatedBin = await storage.updateBinSensorData(bin.id, {
-        fillLevel: fillPercent ?? bin.fillLevel,
-        lastTemperature: temperatureC ?? bin.lastTemperature,
-        lastAirQuality: vocAnalog ?? bin.lastAirQuality,
-        lastVocAnalog: vocAnalog ?? bin.lastVocAnalog,
-        lastVocDigital: vocDigital ?? bin.lastVocDigital,
-      });
-      
-      // Check for fire alert conditions
-      let fireAlertTriggered = false;
-      if (temperatureC !== undefined && temperatureC >= FIRE_ALERT_TEMP_THRESHOLD) {
-        // Check if there's already an active (unacknowledged) fire alert for this bin
-        const existingAlerts = await storage.getFireAlertsByShop(shop.id);
-        const hasActiveAlert = existingAlerts.some(a => 
-          a.binId === bin!.id && !a.acknowledged && !a.resolvedAt
-        );
-        
-        if (!hasActiveAlert) {
-          await storage.createFireAlert({
-            binId: bin.id,
-            shopId: shop.id,
-            severity: temperatureC >= 80 ? "CRITICAL" : "HIGH",
-            temperature: temperatureC,
-            acknowledged: false,
-          });
-          fireAlertTriggered = true;
-          
-          // Update bin status to FIRE_ALERT
-          await storage.updateBinStatus(bin.id, "FIRE_ALERT");
-        }
-      } else if (vocDigital === true) {
-        // VOC digital pin high also indicates potential hazard
-        const existingAlerts = await storage.getFireAlertsByShop(shop.id);
-        const hasActiveAlert = existingAlerts.some(a => 
-          a.binId === bin!.id && !a.acknowledged && !a.resolvedAt
-        );
-        
-        if (!hasActiveAlert) {
-          await storage.createFireAlert({
-            binId: bin.id,
-            shopId: shop.id,
-            severity: "HIGH",
-            temperature: temperatureC,
-            acknowledged: false,
-          });
-          fireAlertTriggered = true;
-          await storage.updateBinStatus(bin.id, "FIRE_ALERT");
-        }
-      }
-      
-      // Update device last seen
-      await storage.updateDeviceLastSeen(device.id);
-      
-      res.json({
-        status: "ok",
-        binId: bin.id,
-        fireAlertTriggered,
-        nextPollSeconds: 60, // Recommend next poll in 60 seconds
-      });
-    } catch (error) {
-      console.error("Telemetry error:", error);
-      res.status(500).json({ error: "Telemetry failed" });
-    }
-  });
-
-  // Get telemetry history for a device/bin
-  app.get("/api/device/telemetry/history", async (req, res) => {
-    try {
-      const deviceId = req.headers["x-device-id"] as string;
-      const deviceKey = req.headers["x-device-key"] as string;
-      
-      if (!deviceId || !deviceKey) {
-        return res.status(401).json({ error: "Device authentication required" });
-      }
-      
-      const auth = await authenticateDevice(deviceId, deviceKey);
-      if (!auth) {
-        return res.status(401).json({ error: "Invalid device credentials" });
-      }
-      
-      const bin = await storage.getBinByDeviceId(auth.device.id);
-      if (!bin) {
-        return res.status(404).json({ error: "No bin found for this device" });
-      }
-      
-      const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);
-      const readings = await storage.getBinReadings(bin.id, limit);
-      
-      res.json({
-        binId: bin.id,
-        readings: readings.map(r => ({
-          temperature: r.temperature,
-          vocAnalog: r.vocAnalog,
-          vocDigital: r.vocDigital,
-          fillPercent: r.fillLevel,
-          recordedAt: r.createdAt,
-        })),
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to get telemetry history" });
-    }
-  });
-
-  // ==================== LEGACY DASHBOARD ROUTES (for backwards compatibility) ====================
-  
-  app.get("/api/dashboard/contacts", async (req, res) => {
-    try {
-      const contacts = await storage.getAllContacts();
-      res.json(contacts);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch contacts" });
-    }
-  });
-
-  app.get("/api/dashboard/bin-requests", async (req, res) => {
-    try {
-      const leads = await storage.getAllLeads();
-      // Transform to old format for backwards compatibility
-      res.json(leads.map(l => ({
-        id: l.id,
-        businessName: l.businessName,
-        contactPerson: l.contactName,
-        email: l.email,
-        phone: l.phone,
-        address: l.address,
-        volume: l.volume,
-        createdAt: l.createdAt,
-      })));
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch bin requests" });
-    }
-  });
-
-  app.get("/api/dashboard/volunteers", async (req, res) => {
-    try {
-      const volunteers = await storage.getAllVolunteers();
-      res.json(volunteers);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch volunteers" });
-    }
-  });
-
-  // Email endpoints
-  app.post("/api/test-email", async (req, res) => {
-    try {
-      const { to } = req.body;
-      const testEmail = to || 'test@example.com';
-      
-      const result = await sendCustomEmail(
-        testEmail,
-        'LITTR.co Test Email',
-        `<h2>Test Email from LITTR.co</h2><p>If you received this, your email setup is working!</p><p>Sent at: ${new Date().toISOString()}</p>`
-      );
-      
-      if (result.success) {
-        res.json({ success: true, message: `Test email sent to ${testEmail}` });
-      } else {
-        res.status(500).json({ success: false, error: result.error });
-      }
-    } catch (error: any) {
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  app.post("/api/admin/send-email", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { to, subject, html } = req.body;
-      
-      if (!to || !subject || !html) {
-        return res.status(400).json({ error: "Missing required fields: to, subject, html" });
-      }
-      
-      const result = await sendCustomEmail(to, subject, html);
-      
-      if (result.success) {
-        res.json({ success: true, message: "Email sent successfully" });
-      } else {
-        res.status(500).json({ error: "Failed to send email" });
-      }
-    } catch (error) {
-      res.status(500).json({ error: "Failed to send email" });
-    }
-  });
-
-  // ==================== V1 DEVICE API (LITTR Screen Pro) ====================
-  
-  // New weighted point distribution
-  const POINT_DISTRIBUTION = [
-    { points: 1, weight: 70, label: "+1 LITTR point" },
-    { points: 2, weight: 15, label: "+2 LITTR points" },
-    { points: 5, weight: 10, label: "+5 LITTR points" },
-    { points: 10, weight: 4, label: "+10 LITTR points" },
-    { points: 25, weight: 0.9, label: "+25 LITTR points" },
-    { points: 100, weight: 0.1, label: "JACKPOT! +100 LITTR points" },
-  ];
-
-  // Device pairing with Shop PIN
-  app.post("/api/v1/device/pair", async (req, res) => {
-    try {
-      const { shopPin, deviceName, firmwareVersion } = req.body;
-      
-      if (!shopPin || !deviceName) {
-        return res.status(400).json({ error: "shopPin and deviceName required" });
-      }
-      
-      // Find shop by secret PIN
-      const shop = await storage.getShopByPin(shopPin);
-      if (!shop) {
-        return res.status(404).json({ error: "Invalid shop PIN" });
-      }
-      
-      if (shop.status !== "VERIFIED") {
-        return res.status(400).json({ error: "Shop not verified" });
-      }
-      
-      // Generate device credentials
-      const deviceKey = generateDeviceKey();
-      const deviceKeyHash = hashDeviceKey(deviceKey);
-      
-      // Create device
-      const device = await storage.createDevice({
-        shopId: shop.id,
-        name: deviceName,
-        deviceKeyHash,
-        status: "ACTIVE",
-      });
-      
-      // Create reward config if not exists
-      let config = await storage.getRewardConfig(shop.id);
-      if (!config) {
-        config = await storage.createRewardConfig({ 
-          shopId: shop.id,
-          rewardTableJson: POINT_DISTRIBUTION,
-        });
-      }
-      
-      res.json({
-        deviceId: device.id.toString(),
-        deviceKey,
-        shopId: shop.id.toString(),
-        config: {
-          minSecondsBetweenSpins: config.minSecondsBetweenSpins,
-          enabled: config.enabled,
-        },
-      });
-    } catch (error) {
-      console.error('Device pair error:', error);
-      res.status(500).json({ error: "Pairing failed" });
-    }
-  });
-
-  // V1 Device spin with new point distribution
-  app.post("/api/v1/device/spin", async (req, res) => {
-    try {
-      const deviceId = req.headers["x-device-id"] as string;
-      const deviceKey = req.headers["x-device-key"] as string;
-      
-      if (!deviceId || !deviceKey) {
-        return res.status(401).json({ error: "Device authentication required" });
-      }
-      
-      const auth = await authenticateDevice(deviceId, deviceKey);
-      if (!auth) {
-        return res.status(401).json({ error: "Invalid device credentials" });
-      }
-      
-      const { device, shop } = auth;
-      
-      // Get reward config
-      const config = await storage.getRewardConfig(shop.id);
-      if (!config || !config.enabled) {
-        return res.status(400).json({ error: "Rewards disabled for this shop" });
-      }
-      
-      // Check rate limit (20 seconds)
-      const todayEvents = await storage.getTodayDropEventsByDevice(device.id);
-      const minSeconds = 20;
-      
-      if (todayEvents.length > 0) {
-        const lastEvent = todayEvents[todayEvents.length - 1];
-        const secondsSinceLast = (Date.now() - new Date(lastEvent.createdAt).getTime()) / 1000;
-        if (secondsSinceLast < minSeconds) {
-          return res.status(429).json({ 
-            ok: false,
-            error: "Too fast", 
-            waitSeconds: Math.ceil(minSeconds - secondsSinceLast) 
-          });
-        }
-      }
-      
-      // Use new weighted point distribution
-      const totalWeight = POINT_DISTRIBUTION.reduce((sum, r) => sum + r.weight, 0);
-      let random = Math.random() * totalWeight;
-      let selectedReward = POINT_DISTRIBUTION[0];
-      
-      for (const reward of POINT_DISTRIBUTION) {
-        random -= reward.weight;
-        if (random <= 0) {
-          selectedReward = reward;
-          break;
-        }
-      }
-      
-      // Create drop event
-      const dropEvent = await storage.createDropEvent({
-        shopId: shop.id,
-        deviceId: device.id,
-        pointsAwarded: selectedReward.points,
-      });
-      
-      // Create claim token (expires in 2 minutes as per spec)
-      const token = generateClaimToken();
-      const tokenHash = hashDeviceKey(token);
-      const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
-      await storage.createClaimToken(tokenHash, dropEvent.id, expiresAt);
-      
-      res.json({
-        ok: true,
-        outcome: {
-          points: selectedReward.points,
-          label: selectedReward.label,
-        },
-        claim: {
-          token,
-          expiresAt: expiresAt.toISOString(),
-          qrUrl: `https://littr.co/app/claim?token=${token}`,
-        },
-      });
-    } catch (error) {
-      console.error('V1 Device spin error:', error);
-      res.status(500).json({ ok: false, error: "Spin failed" });
-    }
-  });
-
-  // V1 Claim endpoint
-  app.post("/api/v1/claim", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const { token, email, password } = req.body;
-      
-      if (!token) {
-        return res.status(400).json({ ok: false, error: "Token required" });
-      }
-      
-      const tokenHash = hashDeviceKey(token);
-      const claimToken = await storage.getClaimToken(tokenHash);
-      
-      if (!claimToken) {
-        return res.status(404).json({ ok: false, error: "Token not found" });
-      }
-      
-      if (claimToken.claimedAt) {
-        return res.status(400).json({ ok: false, error: "Token already claimed" });
-      }
-      
-      if (new Date(claimToken.expiresAt) < new Date()) {
-        return res.status(400).json({ ok: false, error: "Token expired" });
-      }
-      
-      let user = req.user;
-      let sessionId: string | undefined;
-      
-      // If not logged in, require email/password for registration or login
-      if (!user) {
-        if (!email || !password) {
-          return res.status(400).json({ 
-            ok: false, 
-            error: "Please log in or register to claim points",
-            requiresAuth: true 
-          });
-        }
-        
-        const existing = await storage.getUserByEmail(email);
-        if (existing) {
-          // Login
-          const result = await login(email, password);
-          if (!result) {
-            return res.status(401).json({ ok: false, error: "Invalid credentials" });
-          }
-          user = result.user;
-          sessionId = result.sessionId;
-        } else {
-          // Register
-          const result = await register(email, password, "CUSTOMER");
-          user = result.user;
-          sessionId = result.sessionId;
-        }
-      }
-      
-      // Get customer and wallet
-      const customer = await storage.getCustomerByUserId(user.id);
-      if (!customer) {
-        return res.status(404).json({ ok: false, error: "Customer profile not found" });
-      }
-      
-      const wallet = await storage.getWallet(customer.id);
-      if (!wallet) {
-        return res.status(404).json({ ok: false, error: "Wallet not found" });
-      }
-      
-      // Get drop event for points
-      const dropEvent = await storage.getDropEvent(claimToken.dropEventId);
-      if (!dropEvent) {
-        return res.status(404).json({ ok: false, error: "Drop event not found" });
-      }
-      
-      // Get shop info for receipt
-      const shop = await storage.getShop(dropEvent.shopId);
-      
-      // Claim the token
-      const claimed = await storage.claimToken(tokenHash, user.id);
-      if (!claimed) {
-        return res.status(400).json({ ok: false, error: "Failed to claim token" });
-      }
-      
-      // Update wallet
-      await storage.updateWalletBalance(customer.id, dropEvent.pointsAwarded, true);
-      
-      // Create transaction
-      await storage.createTransaction({
-        walletId: wallet.id,
-        amount: dropEvent.pointsAwarded,
-        type: "EARN",
-        description: `Recycling reward at ${shop?.name || 'LITTR location'}`,
-      });
-
-      // Engage Task #5 reward-lock (see /api/claim for rationale).
-      try {
-        await storage.markDropsClaimedByDropEventId(dropEvent.id);
-      } catch (err) {
-        console.error('[V1 Claim] markDropsClaimedByDropEventId failed for dropEvent', dropEvent.id, err);
-      }
-
-      const newBalance = wallet.pointsBalance + dropEvent.pointsAwarded;
-      
-      // Send email
-      sendPointsClaimedEmail(user.email, dropEvent.pointsAwarded).catch(err => console.error('Email error:', err));
-      
-      res.json({ 
-        ok: true,
-        receipt: {
-          points: dropEvent.pointsAwarded,
-          shopName: shop?.name || 'LITTR Location',
-          timestamp: new Date().toISOString(),
-          newBalance,
-        },
-        sessionId,
-        user: sessionId ? { id: user.id, email: user.email, role: user.role } : undefined,
-      });
-    } catch (error) {
-      console.error('V1 Claim error:', error);
-      res.status(500).json({ ok: false, error: "Failed to claim points" });
-    }
-  });
-
-  // Staff endpoint to set shop PIN
-  app.patch("/api/staff/shops/:id/pin", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { pin } = req.body;
-      if (!pin || pin.length !== 6 || !/^\d+$/.test(pin)) {
-        return res.status(400).json({ error: "PIN must be 6 digits" });
-      }
-      
-      const shop = await storage.updateShopPin(parseInt(req.params.id), pin);
-      res.json(shop);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update shop PIN" });
-    }
-  });
-
-  // ==================== V1 BIN SENSOR API (ESP32) ====================
-  
-  // Fire detection thresholds
-  const TEMP_THRESHOLDS = {
-    LOW: 45,      // Warning level
-    MEDIUM: 55,   // Concern level
-    HIGH: 65,     // Danger level
-    CRITICAL: 75, // Critical - immediate action
-  };
-  
-  // Report sensor telemetry from ESP32 bin
-  app.post("/api/v1/bin/telemetry", async (req, res) => {
-    try {
-      const deviceId = req.headers["x-device-id"] as string;
-      const deviceKey = req.headers["x-device-key"] as string;
-      
-      if (!deviceId || !deviceKey) {
-        return res.status(401).json({ ok: false, error: "Device authentication required" });
-      }
-      
-      const auth = await authenticateDevice(deviceId, deviceKey);
-      if (!auth) {
-        return res.status(401).json({ ok: false, error: "Invalid device credentials" });
-      }
-      
-      const { device, shop } = auth;
-      const { binId, temperature, airQuality, fillLevel, vapeCount } = req.body;
-      
-      if (!binId) {
-        return res.status(400).json({ ok: false, error: "Bin ID required" });
-      }
-      
-      const bin = await storage.getBin(parseInt(binId));
-      if (!bin || bin.deviceId !== device.id) {
-        return res.status(404).json({ ok: false, error: "Bin not found or not linked to device" });
-      }
-      
-      // Create sensor reading
-      await storage.createBinReading({
-        binId: bin.id,
-        temperature: temperature ?? null,
-        airQuality: airQuality ?? null,
-        fillLevel: fillLevel ?? null,
-      });
-      
-      // Update bin status
-      const updateData: any = { fillLevel, vapeCount };
-      if (temperature !== undefined) updateData.lastTemperature = temperature;
-      if (airQuality !== undefined) updateData.lastAirQuality = airQuality;
-      if (vapeCount !== undefined) updateData.vapeCount = vapeCount;
-      
-      await storage.updateBinSensorData(bin.id, updateData);
-      
-      // Check for fire alert conditions
-      let fireAlertCreated = false;
-      if (temperature !== undefined) {
-        let severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | null = null;
-        
-        if (temperature >= TEMP_THRESHOLDS.CRITICAL) {
-          severity = 'CRITICAL';
-        } else if (temperature >= TEMP_THRESHOLDS.HIGH) {
-          severity = 'HIGH';
-        } else if (temperature >= TEMP_THRESHOLDS.MEDIUM) {
-          severity = 'MEDIUM';
-        } else if (temperature >= TEMP_THRESHOLDS.LOW) {
-          severity = 'LOW';
-        }
-        
-        if (severity) {
-          // Check for recent temp reading to calculate rise
-          const recentReadings = await storage.getBinReadings(bin.id, 5);
-          let tempRise = 0;
-          if (recentReadings.length >= 2 && recentReadings[1].temperature) {
-            tempRise = temperature - recentReadings[1].temperature;
-          }
-          
-          // Create fire alert
-          await storage.createFireAlert({
-            binId: bin.id,
-            shopId: shop.id,
-            severity,
-            temperature,
-            temperatureRise: tempRise,
-            acknowledged: false,
-          });
-          
-          // Update bin status to FIRE_ALERT
-          await storage.updateBinStatus(bin.id, 'FIRE_ALERT');
-          fireAlertCreated = true;
-        }
-      }
-      
-      res.json({
-        ok: true,
-        binId: bin.id,
-        status: fireAlertCreated ? 'FIRE_ALERT' : 'ONLINE',
-        fireAlert: fireAlertCreated,
-      });
-    } catch (error) {
-      console.error('Bin telemetry error:', error);
-      res.status(500).json({ ok: false, error: "Failed to process telemetry" });
-    }
-  });
-  
-  // Get bin config for ESP32
-  app.get("/api/v1/bin/config", async (req, res) => {
-    try {
-      const deviceId = req.headers["x-device-id"] as string;
-      const deviceKey = req.headers["x-device-key"] as string;
-      
-      if (!deviceId || !deviceKey) {
-        return res.status(401).json({ ok: false, error: "Device authentication required" });
-      }
-      
-      const auth = await authenticateDevice(deviceId, deviceKey);
-      if (!auth) {
-        return res.status(401).json({ ok: false, error: "Invalid device credentials" });
-      }
-      
-      const { device, shop } = auth;
-      
-      // Get bins linked to this device
-      const allBins = await storage.getBinsByShop(shop.id);
-      const deviceBins = allBins.filter(b => b.deviceId === device.id);
-      
-      res.json({
-        ok: true,
-        deviceId: device.id,
-        shopId: shop.id,
-        shopName: shop.name,
-        bins: deviceBins.map(b => ({
-          id: b.id,
-          name: b.name,
-          binType: b.binType,
-        })),
-        config: {
-          telemetryIntervalMs: 30000, // 30 seconds
-          tempAlertThreshold: TEMP_THRESHOLDS.LOW,
-        },
-      });
-    } catch (error) {
-      console.error('Bin config error:', error);
-      res.status(500).json({ ok: false, error: "Failed to get config" });
-    }
-  });
-  
-  // ==================== STAFF BIN MANAGEMENT ====================
-  
-  // Get all bins (staff only) - includes device info
-  app.get("/api/staff/bins", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allBins = await storage.getAllBinsWithDevice();
-      const shops = await storage.getAllShops();
-      
-      // Enrich bins with shop info
-      const enrichedBins = allBins.map(bin => ({
-        ...bin,
-        shop: shops.find(s => s.id === bin.shopId),
-      }));
-      
-      res.json(enrichedBins);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch bins" });
-    }
-  });
-
-  // Delete a bin (staff only)
-  app.delete("/api/staff/bins/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const binId = parseInt(req.params.id);
-      if (isNaN(binId)) {
-        return res.status(400).json({ error: "Invalid bin ID" });
-      }
-      
-      const deleted = await storage.deleteBin(binId);
-      if (!deleted) {
-        return res.status(404).json({ error: "Bin not found" });
-      }
-      
-      res.json({ success: true, message: "Bin deleted successfully" });
-    } catch (error) {
-      console.error("Error deleting bin:", error);
-      res.status(500).json({ error: "Failed to delete bin" });
-    }
-  });
-  
-  // Create a bin (staff only)
-  app.post("/api/staff/bins", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { shopId, name, binType, deviceId } = req.body;
-      
-      if (!shopId || !name) {
-        return res.status(400).json({ error: "Shop ID and name required" });
-      }
-      
-      const bin = await storage.createBin({
-        shopId,
-        name,
-        binType: binType || 'vape',
-        deviceId: deviceId || null,
-        status: 'OFFLINE',
-        fillLevel: 0,
-        vapeCount: 0,
-      });
-      
-      res.json(bin);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create bin" });
-    }
-  });
-  
-  // Get active fire alerts (staff only)
-  app.get("/api/staff/fire-alerts", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const alerts = await storage.getActiveFireAlerts();
-      const allBins = await storage.getAllBins();
-      const shops = await storage.getAllShops();
-      
-      const enrichedAlerts = alerts.map(alert => ({
-        ...alert,
-        bin: allBins.find(b => b.id === alert.binId),
-        shop: shops.find(s => s.id === alert.shopId),
-      }));
-      
-      res.json(enrichedAlerts);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch fire alerts" });
-    }
-  });
-  
-  // Acknowledge fire alert (staff only)
-  app.patch("/api/staff/fire-alerts/:id/acknowledge", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const alert = await storage.acknowledgeFireAlert(parseInt(req.params.id), req.user!.id);
-      if (!alert) {
-        return res.status(404).json({ error: "Alert not found" });
-      }
-      res.json(alert);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to acknowledge alert" });
-    }
-  });
-  
-  // Resolve fire alert (staff only)
-  app.patch("/api/staff/fire-alerts/:id/resolve", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const alert = await storage.resolveFireAlert(parseInt(req.params.id));
-      if (!alert) {
-        return res.status(404).json({ error: "Alert not found" });
-      }
-      
-      // Reset bin status to ONLINE
-      if (alert.binId) {
-        await storage.updateBinStatus(alert.binId, 'ONLINE');
-      }
-      
-      res.json(alert);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to resolve alert" });
-    }
-  });
-  
-  // Update shop coordinates (staff only)
-  app.patch("/api/staff/shops/:id/coordinates", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { latitude, longitude } = req.body;
-      if (latitude === undefined || longitude === undefined) {
-        return res.status(400).json({ error: "Latitude and longitude required" });
-      }
-      
-      const shop = await storage.updateShopCoordinates(parseInt(req.params.id), latitude, longitude);
-      res.json(shop);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update coordinates" });
-    }
-  });
-  
-  // ==================== STAFF MAILBOX ENDPOINTS ====================
-  
-  // Get all mailboxes (staff only - for admin)
-  app.get("/api/staff/mailboxes", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allMailboxes = await storage.getAllMailboxes();
-      const users = await Promise.all(allMailboxes.map(async m => {
-        const user = await storage.getUser(m.userId);
-        return { ...m, user: user ? { id: user.id, email: user.email, role: user.role } : null };
-      }));
-      res.json(users);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch mailboxes" });
-    }
-  });
-  
-  // Create mailbox for a staff user (staff only)
-  app.post("/api/staff/mailboxes", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { userId, emailAddress, displayName } = req.body;
-      if (!userId || !emailAddress || !displayName) {
-        return res.status(400).json({ error: "userId, emailAddress, and displayName required" });
-      }
-      
-      // Validate email format
-      if (!emailAddress.endsWith("@littr.co")) {
-        return res.status(400).json({ error: "Email must end with @littr.co" });
-      }
-      
-      // Check if user exists and is staff
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      if (user.role !== "STAFF") {
-        return res.status(400).json({ error: "Mailboxes can only be created for staff users" });
-      }
-      
-      // Check if email already exists
-      const existing = await storage.getMailboxByEmail(emailAddress);
-      if (existing) {
-        return res.status(400).json({ error: "Email address already in use" });
-      }
-      
-      // Check if user already has a mailbox
-      const userMailbox = await storage.getMailboxByUserId(userId);
-      if (userMailbox) {
-        return res.status(400).json({ error: "User already has a mailbox" });
-      }
-      
-      const mailbox = await storage.createMailbox({ userId, emailAddress, displayName, isActive: true });
-      res.json(mailbox);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create mailbox" });
-    }
-  });
-  
-  // Update mailbox (staff only)
-  app.patch("/api/staff/mailboxes/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { displayName, isActive } = req.body;
-      const mailbox = await storage.updateMailbox(parseInt(req.params.id), { displayName, isActive });
-      if (!mailbox) {
-        return res.status(404).json({ error: "Mailbox not found" });
-      }
-      res.json(mailbox);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update mailbox" });
-    }
-  });
-  
-  // Delete mailbox (staff only)
-  app.delete("/api/staff/mailboxes/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const deleted = await storage.deleteMailbox(parseInt(req.params.id));
-      if (!deleted) {
-        return res.status(404).json({ error: "Mailbox not found" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete mailbox" });
-    }
-  });
-  
-  // ==================== STAFF INBOX ENDPOINTS ====================
-  
-  // Get current user's mailbox
-  app.get("/api/inbox/mailbox", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const mailbox = await storage.getMailboxByUserId(req.user!.id);
-      if (!mailbox) {
-        return res.status(404).json({ error: "No mailbox found for this user" });
-      }
-      const unreadCount = await storage.getUnreadCount(mailbox.id);
-      res.json({ ...mailbox, unreadCount });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch mailbox" });
-    }
-  });
-  
-  // Get inbox messages
-  app.get("/api/inbox/messages", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const mailbox = await storage.getMailboxByUserId(req.user!.id);
-      if (!mailbox) {
-        return res.status(404).json({ error: "No mailbox found" });
-      }
-      
-      const messages = await storage.getInboxMessages(mailbox.id);
-      // Enrich with sender info
-      const allMailboxes = await storage.getAllMailboxes();
-      const enrichedMessages = messages.map(m => ({
-        ...m,
-        fromMailbox: allMailboxes.find(mb => mb.id === m.fromMailboxId),
-      }));
-      res.json(enrichedMessages);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch messages" });
-    }
-  });
-  
-  // Get sent messages
-  app.get("/api/inbox/sent", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const mailbox = await storage.getMailboxByUserId(req.user!.id);
-      if (!mailbox) {
-        return res.status(404).json({ error: "No mailbox found" });
-      }
-      
-      const messages = await storage.getSentMessages(mailbox.id);
-      const allMailboxes = await storage.getAllMailboxes();
-      const enrichedMessages = messages.map(m => ({
-        ...m,
-        toMailbox: m.toMailboxId ? allMailboxes.find(mb => mb.id === m.toMailboxId) : null,
-      }));
-      res.json(enrichedMessages);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch sent messages" });
-    }
-  });
-  
-  // Get single message
-  app.get("/api/inbox/messages/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const mailbox = await storage.getMailboxByUserId(req.user!.id);
-      if (!mailbox) {
-        return res.status(404).json({ error: "No mailbox found" });
-      }
-      
-      const message = await storage.getInternalMessage(parseInt(req.params.id));
-      if (!message) {
-        return res.status(404).json({ error: "Message not found" });
-      }
-      
-      // Verify user has access to this message
-      if (message.toMailboxId !== mailbox.id && message.fromMailboxId !== mailbox.id) {
-        return res.status(403).json({ error: "Not authorized to view this message" });
-      }
-      
-      // Mark as read if it's in their inbox
-      if (message.toMailboxId === mailbox.id && !message.isRead) {
-        await storage.markMessageAsRead(message.id);
-      }
-      
-      const allMailboxes = await storage.getAllMailboxes();
-      res.json({
-        ...message,
-        fromMailbox: allMailboxes.find(mb => mb.id === message.fromMailboxId),
-        toMailbox: message.toMailboxId ? allMailboxes.find(mb => mb.id === message.toMailboxId) : null,
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch message" });
-    }
-  });
-  
-  // Send message (internal or external)
-  app.post("/api/inbox/send", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const mailbox = await storage.getMailboxByUserId(req.user!.id);
-      if (!mailbox) {
-        return res.status(404).json({ error: "No mailbox found" });
-      }
-      
-      const { to, subject, body } = req.body;
-      if (!to || !subject || !body) {
-        return res.status(400).json({ error: "to, subject, and body required" });
-      }
-      
-      // Determine if internal or external
-      const isInternalEmail = to.endsWith("@littr.co");
-      
-      if (isInternalEmail) {
-        // Internal message - find the recipient mailbox
-        const recipientMailbox = await storage.getMailboxByEmail(to);
-        if (!recipientMailbox) {
-          return res.status(404).json({ error: "Recipient mailbox not found" });
-        }
-        
-        // Create message in recipient's inbox
-        const message = await storage.createInternalMessage({
-          fromMailboxId: mailbox.id,
-          toMailboxId: recipientMailbox.id,
-          subject,
-          body,
-          isRead: false,
-          isArchived: false,
-          isOutbound: false,
-        });
-        
-        // Create copy in sender's sent folder
-        await storage.createInternalMessage({
-          fromMailboxId: mailbox.id,
-          toMailboxId: recipientMailbox.id,
-          subject,
-          body,
-          isRead: true,
-          isArchived: false,
-          isOutbound: true,
-        });
-        
-        res.json({ success: true, message });
-      } else {
-        // External email - use Resend
-        const sent = await sendCustomEmail(to, subject, body, mailbox.emailAddress);
-        
-        // Log outbound message
-        await storage.createInternalMessage({
-          fromMailboxId: mailbox.id,
-          toMailboxId: null,
-          toExternal: to,
-          subject,
-          body,
-          isRead: true,
-          isArchived: false,
-          isOutbound: true,
-        });
-        
-        res.json({ success: sent });
-      }
-    } catch (error) {
-      console.error('Send error:', error);
-      res.status(500).json({ error: "Failed to send message" });
-    }
-  });
-  
-  // Archive message
-  app.patch("/api/inbox/messages/:id/archive", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const mailbox = await storage.getMailboxByUserId(req.user!.id);
-      if (!mailbox) {
-        return res.status(404).json({ error: "No mailbox found" });
-      }
-      
-      const message = await storage.getInternalMessage(parseInt(req.params.id));
-      if (!message || message.toMailboxId !== mailbox.id) {
-        return res.status(404).json({ error: "Message not found" });
-      }
-      
-      const archived = await storage.archiveMessage(message.id);
-      res.json(archived);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to archive message" });
-    }
-  });
-  
-  // Get all users for staff management
-  app.get("/api/staff/users", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allUsers = await storage.getAllUsers();
-      const safeUsers = allUsers.map(({ passwordHash, ...rest }) => rest);
-      res.json(safeUsers);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch users" });
-    }
-  });
-
-  // Update user role
   app.patch("/api/staff/users/:id/role", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { role } = req.body;
-      if (!["STAFF", "PARTNER", "CUSTOMER"].includes(role)) {
-        return res.status(400).json({ error: "Invalid role" });
-      }
-      const updated = await storage.updateUserRole(req.params.id, role);
-      if (!updated) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      const { passwordHash, ...safeUser } = updated;
-      res.json(safeUser);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update role" });
-    }
+    const u = await storage.updateUserRole(req.params.id, req.body.role);
+    res.json(u);
   });
 
-  // Reset user password (staff sets new password)
-  app.patch("/api/staff/users/:id/password", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { password } = req.body;
-      if (!password || password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters" });
-      }
-      const newHash = await hashPassword(password);
-      const updated = await storage.updateUserPassword(req.params.id, newHash);
-      if (!updated) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to reset password" });
-    }
+  app.get("/api/staff/leads", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    res.json(await storage.getAllLeads());
   });
 
-  // Create new user account (staff)
-  app.post("/api/staff/users", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { email, password, role } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ error: "Email and password are required" });
-      }
-      if (password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters" });
-      }
-      if (!["STAFF", "PARTNER", "CUSTOMER"].includes(role)) {
-        return res.status(400).json({ error: "Invalid role" });
-      }
-      const existing = await storage.getUserByEmail(email);
-      if (existing) {
-        return res.status(409).json({ error: "Email already registered" });
-      }
-      const passwordHash = await hashPassword(password);
-      const user = await storage.createUser({ email, passwordHash, role });
-      const { passwordHash: _, ...safeUser } = user;
-      res.status(201).json(safeUser);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create user" });
-    }
+  app.get("/api/staff/contacts", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    res.json(await storage.getAllContacts());
   });
-  
-  app.get("/api/staff/users/:id/shops", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const memberships = await storage.getShopMembersByUserId(req.params.id);
-      const allShops = await storage.getAllShops();
-      const assignedShops = memberships.map(m => {
-        const shop = allShops.find(s => s.id === m.shopId);
-        return { ...m, shopName: shop?.name || 'Unknown' };
-      });
-      res.json(assignedShops);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch user shops" });
-    }
-  });
-
-  app.post("/api/staff/users/:id/shops", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { shopId } = req.body;
-      if (!shopId) return res.status(400).json({ error: "Shop ID is required" });
-      const member = await storage.createShopMember({ userId: req.params.id, shopId, role: "MANAGER" });
-      res.status(201).json(member);
-    } catch (error: any) {
-      if (error?.code === '23505') {
-        return res.status(409).json({ error: "User is already assigned to this shop" });
-      }
-      res.status(500).json({ error: "Failed to assign shop" });
-    }
-  });
-
-  app.delete("/api/staff/users/:id/shops/:shopId", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const deleted = await storage.deleteShopMember(req.params.id, parseInt(req.params.shopId));
-      if (!deleted) return res.status(404).json({ error: "Membership not found" });
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to remove shop assignment" });
-    }
-  });
-
-  app.delete("/api/staff/users/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const targetId = req.params.id;
-      if (targetId === (req as any).user.id) {
-        return res.status(400).json({ error: "You cannot delete your own account" });
-      }
-      const deleted = await storage.deleteUser(targetId);
-      if (!deleted) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete user" });
-    }
-  });
-
-  // ==================== PARTNER BIN ENDPOINTS ====================
-  
-  // Get partner's bins
-  app.get("/api/partner/shops/:shopId/bins", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.shopId);
-      
-      // Verify partner owns this shop
-      const shops = await storage.getShopsByMemberId(req.user!.id);
-      if (!shops.find(s => s.id === shopId)) {
-        return res.status(403).json({ error: "Not authorized" });
-      }
-      
-      const shopBins = await storage.getBinsByShop(shopId);
-      res.json(shopBins);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch bins" });
-    }
-  });
-  
-  // Get partner's fire alerts
-  app.get("/api/partner/shops/:shopId/fire-alerts", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.shopId);
-      
-      // Verify partner owns this shop
-      const shops = await storage.getShopsByMemberId(req.user!.id);
-      if (!shops.find(s => s.id === shopId)) {
-        return res.status(403).json({ error: "Not authorized" });
-      }
-      
-      const alerts = await storage.getFireAlertsByShop(shopId);
-      const bins = await storage.getBinsByShop(shopId);
-      
-      const enrichedAlerts = alerts.map(alert => ({
-        ...alert,
-        bin: bins.find(b => b.id === alert.binId),
-      }));
-      
-      res.json(enrichedAlerts);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch fire alerts" });
-    }
-  });
-  
-  // ==================== PUBLIC ENDPOINTS ====================
-  
-  // Get verified shops with coordinates for map
-  app.get("/api/shops/locations", async (req, res) => {
-    try {
-      const shops = await storage.getVerifiedShopsWithCoordinates();
-      res.json(shops.map(s => ({
-        id: s.id,
-        name: s.name,
-        address: s.address,
-        city: s.city,
-        latitude: s.latitude,
-        longitude: s.longitude,
-      })));
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch shop locations" });
-    }
-  });
-  
-  // Check if staff exists (for first-time setup)
-  app.get("/api/setup/check", async (req, res) => {
-    try {
-      const hasStaff = await storage.hasAnyStaff();
-      res.json({ hasStaff });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to check setup status" });
-    }
-  });
-  
-  // First-time staff setup
-  app.post("/api/setup/staff", async (req, res) => {
-    try {
-      // Only allow if no staff exists
-      const hasStaff = await storage.hasAnyStaff();
-      if (hasStaff) {
-        return res.status(403).json({ error: "Staff account already exists" });
-      }
-      
-      const { email, password, name } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ error: "Email and password required" });
-      }
-      
-      const existing = await storage.getUserByEmail(email);
-      if (existing) {
-        return res.status(400).json({ error: "Email already in use" });
-      }
-      
-      // Create staff user
-      const result = await register(email, password, "STAFF");
-      
-      res.json({
-        success: true,
-        user: {
-          id: result.user.id,
-          email: result.user.email,
-          role: result.user.role,
-        },
-        sessionId: result.sessionId,
-      });
-    } catch (error) {
-      console.error('Setup error:', error);
-      res.status(500).json({ error: "Failed to create staff account" });
-    }
-  });
-
-  // ==================== V2 SMART BIN API ====================
-
-  function generatePairCode(): string {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code = "";
-    for (let i = 0; i < 6; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return code;
-  }
-
-  // V2 Pair Request — ESP32 calls with its UID to get a pair code
-  app.post("/api/v2/device/pair-request", async (req, res) => {
-    try {
-      const { uid, firmwareVersion } = req.body;
-      if (!uid) {
-        return res.status(400).json({ ok: false, error: "uid required" });
-      }
-
-      const existingDevice = await storage.getDeviceByUid(uid);
-      if (existingDevice && existingDevice.shopId && existingDevice.status === "ACTIVE") {
-        return res.status(200).json({
-          ok: true,
-          status: "already_paired",
-          deviceId: existingDevice.id,
-        });
-      }
-
-      const activePR = await storage.getActivePairRequestByUid(uid);
-      if (activePR) {
-        return res.status(200).json({
-          ok: true,
-          status: "pending",
-          pairCode: activePR.pairCode,
-          expiresAt: activePR.expiresAt.toISOString(),
-        });
-      }
-
-      const pairCode = generatePairCode();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-      const pr = await storage.createPairRequest({
-        uid,
-        pairCode,
-        firmwareVersion: firmwareVersion || null,
-        expiresAt,
-      });
-
-      res.json({
-        ok: true,
-        status: "pending",
-        pairCode: pr.pairCode,
-        expiresAt: pr.expiresAt.toISOString(),
-      });
-    } catch (error) {
-      console.error("V2 pair-request error:", error);
-      res.status(500).json({ ok: false, error: "Pair request failed" });
-    }
-  });
-
-  // V2 Pair Claim — partner/staff scans QR or enters code to claim device
-  app.post("/api/v2/device/pair-claim", authMiddleware, async (req, res) => {
-    try {
-      const user = req.user!;
-      const { pairCode, shopId } = req.body;
-
-      if (!pairCode || !shopId) {
-        return res.status(400).json({ ok: false, error: "pairCode and shopId required" });
-      }
-
-      if (user.role !== "STAFF" && user.role !== "PARTNER") {
-        return res.status(403).json({ ok: false, error: "Staff or partner role required" });
-      }
-
-      if (user.role === "PARTNER") {
-        const memberShops = await storage.getShopsByMemberId(user.id);
-        if (!memberShops.find(s => s.id === parseInt(shopId))) {
-          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
-        }
-      }
-
-      const shop = await storage.getShop(parseInt(shopId));
-      if (!shop || shop.status !== "VERIFIED") {
-        return res.status(400).json({ ok: false, error: "Shop not found or not verified" });
-      }
-
-      const pr = await storage.getPairRequestByCode(pairCode.toUpperCase());
-      if (!pr) {
-        return res.status(404).json({ ok: false, error: "Pair code not found" });
-      }
-      if (pr.claimed) {
-        return res.status(400).json({ ok: false, error: "Pair code already claimed" });
-      }
-      if (new Date(pr.expiresAt) < new Date()) {
-        return res.status(400).json({ ok: false, error: "Pair code expired" });
-      }
-
-      let device = await storage.getDeviceByUid(pr.uid);
-      if (!device) {
-        const deviceKey = generateDeviceKey();
-        const deviceKeyHash = hashDeviceKey(deviceKey);
-        device = await storage.createDevice({
-          shopId: shop.id,
-          name: `Bin ${pr.uid.slice(-4).toUpperCase()}`,
-          deviceKeyHash,
-          uid: pr.uid,
-          status: "ACTIVE",
-        });
-      } else {
-        device = (await storage.updateDevice(device.id, {
-          shopId: shop.id,
-          status: "ACTIVE",
-        }))!;
-      }
-
-      let config = await storage.getDeviceConfig(shop.id);
-      if (!config) {
-        config = await storage.upsertDeviceConfig({ shopId: shop.id });
-      }
-
-      // Idempotently create the bin row so it shows up in the partner dashboard
-      // immediately (rather than waiting for first telemetry to auto-create it).
-      // IMPORTANT: do this BEFORE claimPairRequest so a bin-insert failure
-      // doesn't consume the one-shot pair code.
-      // If the caller passes name/mode/cameraModel inline, the bin is created
-      // directly in OFFLINE (skipping PENDING_SETUP). This matches the
-      // unified staff assign flow.
-      const { name: claimName, mode: claimMode, cameraModel: claimCameraModel } = req.body ?? {};
-      const anyInline = claimName || claimMode || claimCameraModel;
-      const hasInlineConfig = !!(claimName && claimMode && claimCameraModel);
-      if (anyInline && !hasInlineConfig) {
-        // Reject partial inline config — all-or-none. Prevents silent fallback
-        // to PENDING_SETUP for v3 callers that only sent some fields.
-        return res.status(400).json({ ok: false, error: 'name, mode, and cameraModel must be supplied together (or all omitted for legacy pairing)' });
-      }
-      if (hasInlineConfig) {
-        if (!['demo', 'normal'].includes(claimMode)) {
-          return res.status(400).json({ ok: false, error: 'mode must be "demo" or "normal"' });
-        }
-        if (!['none', 's3cam', 'android_cam'].includes(claimCameraModel)) {
-          return res.status(400).json({ ok: false, error: 'cameraModel must be one of none, s3cam, android_cam' });
-        }
-      }
-
-      let bin = await storage.getBinByDeviceId(device.id);
-      if (!bin) {
-        bin = await storage.createBin({
-          shopId: shop.id,
-          deviceId: device.id,
-          name: hasInlineConfig ? claimName : `Smart Bin #${device.id}`,
-          binType: "vape",
-          status: hasInlineConfig ? "OFFLINE" : "PENDING_SETUP",
-          fillLevel: 0,
-          vapeCount: 0,
-          mode: hasInlineConfig ? claimMode : "demo",
-          cameraModel: hasInlineConfig ? claimCameraModel : "none",
-        });
-        if (hasInlineConfig) {
-          await storage.updateBinSetup(bin.id, { name: claimName, mode: claimMode, cameraModel: claimCameraModel, status: "OFFLINE" });
-        }
-      }
-
-      const claimed = await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
-      if (!claimed) {
-        return res.status(409).json({ ok: false, error: "Pair code already claimed; retry pairing" });
-      }
-
-      res.json({
-        ok: true,
-        deviceId: device.id,
-        shopId: shop.id,
-        shopName: shop.name,
-        binId: bin.id,
-        status: bin.status,
-      });
-    } catch (error) {
-      console.error("V2 pair-claim error:", error);
-      res.status(500).json({ ok: false, error: "Pair claim failed" });
-    }
-  });
-
-  // V2 Pair Status — ESP32 polls to check if paired
-  app.get("/api/v2/device/pair-status", async (req, res) => {
-    try {
-      const uid = req.query.uid as string;
-      if (!uid) {
-        return res.status(400).json({ ok: false, error: "uid query param required" });
-      }
-
-      const device = await storage.getDeviceByUid(uid);
-      if (device && device.shopId && device.status === "ACTIVE") {
-        const config = await storage.getDeviceConfig(device.shopId);
-        const shop = await storage.getShop(device.shopId);
-        return res.json({
-          ok: true,
-          paired: true,
-          deviceId: device.id,
-          shopId: device.shopId,
-          shopName: shop?.name ?? null,
-          config: {
-            sessionWindowSec: config?.sessionWindowSec ?? 60,
-            acceptedHoldMs: config?.acceptedHoldMs ?? 6000,
-            telemetryPeriodSec: 60,
-            warnTempC: config?.warnTempC ?? 55,
-            warnVocAnalog: config?.warnVocAnalog ?? 850,
-            warnVocDigital: config?.warnUseVocDigital ? 1 : -1,
-          },
-        });
-      }
-
-      res.json({ ok: true, paired: false });
-    } catch (error) {
-      console.error("V2 pair-status error:", error);
-      res.status(500).json({ ok: false, error: "Status check failed" });
-    }
-  });
-
-  // V2 Config — ESP32 fetches cloud config
-  app.get("/api/v2/device/config", async (req, res) => {
-    try {
-      const uid = req.query.uid as string;
-      if (!uid) {
-        return res.status(400).json({ ok: false, error: "uid query param required" });
-      }
-
-      const device = await storage.getDeviceByUid(uid);
-      if (!device || !device.shopId) {
-        return res.status(404).json({ ok: false, error: "Device not paired" });
-      }
-
-      await storage.updateDeviceLastSeen(device.id);
-
-      const config = await storage.getDeviceConfig(device.shopId);
-      const rewardConfig = await storage.getRewardConfig(device.shopId);
-      const bin = await storage.getBinByDeviceId(device.id);
-
-      res.json({
-        ok: true,
-        deviceId: device.id,
-        shopId: device.shopId,
-        binId: bin?.id ?? null,
-        binStatus: bin?.status ?? null,
-        mode: bin?.mode ?? "demo",
-        cameraModel: bin?.cameraModel ?? "none",
-        rejectNonVapes: bin?.rejectNonVapes ?? false,
-        rejectThcVapes: bin?.rejectThcVapes ?? false,
-        config: {
-          sessionWindowSec: config?.sessionWindowSec ?? 60,
-          acceptedHoldMs: config?.acceptedHoldMs ?? 6000,
-          telemetryPeriodSec: 60,
-          warnTempC: config?.warnTempC ?? 55,
-          warnVocAnalog: config?.warnVocAnalog ?? 850,
-          warnVocDigital: config?.warnUseVocDigital ? 1 : -1,
-        },
-        rewards_enabled: rewardConfig?.enabled ?? true,
-      });
-    } catch (error) {
-      console.error("V2 config error:", error);
-      res.status(500).json({ ok: false, error: "Config fetch failed" });
-    }
-  });
-
-  // V2 Drop — ESP32 reports a vape drop, creates/extends reward session
-  // Handler logic lives in server/handlers/dropV2.ts for testability.
-  app.post("/api/v2/device/drop", createDropV2Handler(storage, generateClaimToken));
-
-  // V2 Session Claim — user scans QR to claim stacked session points
-  app.post("/api/v2/claim", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const sessionToken = req.body.token || req.body.sessionToken;
-      const { email, password } = req.body;
-      if (!sessionToken) {
-        return res.status(400).json({ ok: false, error: "token required" });
-      }
-
-      const session = await storage.getRewardSessionByToken(sessionToken);
-      if (!session) {
-        return res.status(404).json({ ok: false, error: "Session not found" });
-      }
-      if (session.status === "CLAIMED") {
-        return res.status(400).json({ ok: false, error: "Already claimed" });
-      }
-      if (session.status === "EXPIRED" || new Date(session.expiresAt) < new Date()) {
-        if (session.status !== "EXPIRED") {
-          await storage.updateRewardSession(session.id, { status: "EXPIRED" as any, voided: true });
-        }
-        return res.status(400).json({ ok: false, error: "Session expired" });
-      }
-
-      let user = req.user;
-      let newSessionId: string | undefined;
-
-      if (!user) {
-        if (!email || !password) {
-          return res.status(400).json({
-            ok: false,
-            error: "Please log in or register to claim points",
-            requiresAuth: true,
-          });
-        }
-
-        const existing = await storage.getUserByEmail(email);
-        if (existing) {
-          const result = await login(email, password);
-          if (!result) {
-            return res.status(401).json({ ok: false, error: "Invalid credentials" });
-          }
-          user = result.user;
-          newSessionId = result.sessionId;
-        } else {
-          const result = await register(email, password, "CUSTOMER");
-          user = result.user;
-          newSessionId = result.sessionId;
-        }
-      }
-
-      let customer = await storage.getCustomerByUserId(user!.id);
-      if (!customer) {
-        customer = await storage.createCustomer({ userId: user!.id, publicId: `LITTR-${Date.now().toString(36).toUpperCase()}` });
-        await storage.createWallet(customer.id);
-      }
-
-      const wallet = await storage.getWallet(customer.id);
-      if (!wallet) {
-        return res.status(500).json({ ok: false, error: "Wallet error" });
-      }
-
-      await storage.updateWalletBalance(customer.id, session.pointsTotal, true);
-      await storage.createTransaction({
-        walletId: wallet.id,
-        type: "EARN",
-        amount: session.pointsTotal,
-        description: `Claimed ${session.dropCount} drop(s) from recycling bin`,
-      });
-
-      await storage.updateRewardSession(session.id, {
-        status: "CLAIMED" as any,
-        claimedByUserId: user!.id,
-        claimedAt: new Date(),
-      });
-
-      // Engage Task #5 reward-lock for every drop linked to this session
-      // (drops.dropEventId → dropEvents.sessionId = session.id).
-      try {
-        await storage.markDropsClaimedByRewardSessionId(session.id);
-      } catch (err) {
-        console.error('[V2 Claim] markDropsClaimedByRewardSessionId failed for session', session.id, err);
-      }
-
-      const updatedWallet = await storage.getWallet(customer.id);
-
-      res.json({
-        ok: true,
-        pointsClaimed: session.pointsTotal,
-        dropCount: session.dropCount,
-        newBalance: updatedWallet?.pointsBalance ?? session.pointsTotal,
-        ...(newSessionId ? { sessionId: newSessionId } : {}),
-      });
-    } catch (error) {
-      console.error("V2 claim error:", error);
-      res.status(500).json({ ok: false, error: "Claim failed" });
-    }
-  });
-
-  // V2 Telemetry — ESP32 reports sensor data
-  app.post("/api/v2/device/telemetry", async (req, res) => {
-    try {
-      const { uid } = req.body;
-      const temperatureC = req.body.temperatureC ?? req.body.temperature;
-      const vocAnalog = req.body.vocAnalog ?? req.body.voc_analog;
-      const vocDigital = req.body.vocDigital ?? req.body.voc_digital;
-      const fillPercent = req.body.fillPercent ?? req.body.fill_pct;
-
-      if (!uid) {
-        return res.status(400).json({ ok: false, error: "uid required" });
-      }
-
-      const device = await storage.getDeviceByUid(uid);
-      if (!device || !device.shopId) {
-        return res.status(404).json({ ok: false, error: "Device not paired" });
-      }
-
-      await storage.updateDeviceLastSeen(device.id);
-
-      const bin = await storage.getBinByDeviceId(device.id);
-      if (bin) {
-        await storage.updateBinSensorData(bin.id, {
-          lastTemperature: temperatureC,
-          lastVocAnalog: vocAnalog,
-          lastVocDigital: vocDigital,
-          fillLevel: fillPercent,
-        });
-
-        await storage.createBinReading({
-          binId: bin.id,
-          temperature: temperatureC,
-          vocAnalog: vocAnalog,
-          vocDigital: vocDigital,
-          fillLevel: fillPercent,
-        });
-      }
-
-      const config = await storage.getDeviceConfig(device.shopId);
-      const warnTempC = config?.warnTempC ?? 55;
-      const warnVocAnalog = config?.warnVocAnalog ?? 850;
-      const warnVocDigitalEnabled = config?.warnUseVocDigital ?? false;
-
-      let fireAlertTriggered = false;
-
-      if (temperatureC != null && temperatureC >= warnTempC) {
-        fireAlertTriggered = true;
-        const severity = temperatureC >= 80 ? "CRITICAL" : temperatureC >= 60 ? "HIGH" : "MEDIUM";
-        if (bin) {
-          await storage.createFireAlert({
-            binId: bin.id,
-            shopId: device.shopId,
-            severity: severity as any,
-            temperature: temperatureC,
-            temperatureRise: temperatureC > 60 ? temperatureC - 60 : 0,
-          });
-        }
-      }
-
-      if (vocAnalog != null && vocAnalog >= warnVocAnalog) {
-        fireAlertTriggered = true;
-        if (bin) {
-          await storage.createFireAlert({
-            binId: bin.id,
-            shopId: device.shopId,
-            severity: "HIGH" as any,
-            temperature: temperatureC ?? 0,
-            temperatureRise: 0,
-          });
-        }
-      }
-
-      if (warnVocDigitalEnabled && vocDigital === true) {
-        fireAlertTriggered = true;
-        if (bin) {
-          await storage.createFireAlert({
-            binId: bin.id,
-            shopId: device.shopId,
-            severity: "HIGH" as any,
-            temperature: temperatureC ?? 0,
-            temperatureRise: 0,
-          });
-        }
-      }
-
-      res.json({ status: "ok", fireAlertTriggered });
-    } catch (error) {
-      console.error("V2 telemetry error:", error);
-      res.status(500).json({ ok: false, error: "Telemetry failed" });
-    }
-  });
-
-  // V2 Staff/Partner — Update device config for a shop
-  app.patch("/api/v2/shop/:shopId/device-config", authMiddleware, async (req, res) => {
-    try {
-      const user = req.user!;
-      const shopId = parseInt(req.params.shopId);
-
-      if (user.role === "PARTNER") {
-        const memberShops = await storage.getShopsByMemberId(user.id);
-        if (!memberShops.find(s => s.id === shopId)) {
-          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
-        }
-      } else if (user.role !== "STAFF") {
-        return res.status(403).json({ ok: false, error: "Access denied" });
-      }
-
-      const { session_window_sec, accepted_hold_ms, warn_enabled, warn_temp_c, warn_voc_analog, warn_use_voc_digital, raw_swap_bytes } = req.body;
-      const updateData: any = {};
-      if (session_window_sec !== undefined) updateData.sessionWindowSec = session_window_sec;
-      if (accepted_hold_ms !== undefined) updateData.acceptedHoldMs = accepted_hold_ms;
-      if (warn_enabled !== undefined) updateData.warnEnabled = warn_enabled;
-      if (warn_temp_c !== undefined) updateData.warnTempC = warn_temp_c;
-      if (warn_voc_analog !== undefined) updateData.warnVocAnalog = warn_voc_analog;
-      if (warn_use_voc_digital !== undefined) updateData.warnUseVocDigital = warn_use_voc_digital;
-      if (raw_swap_bytes !== undefined) updateData.rawSwapBytes = raw_swap_bytes;
-
-      let config = await storage.getDeviceConfig(shopId);
-      if (!config) {
-        config = await storage.upsertDeviceConfig({ shopId, ...updateData });
-      } else {
-        config = (await storage.updateDeviceConfig(shopId, updateData))!;
-      }
-
-      res.json({ ok: true, config: serializeShopDeviceConfig(config) });
-    } catch (error) {
-      console.error("V2 device-config update error:", error);
-      res.status(500).json({ ok: false, error: "Config update failed" });
-    }
-  });
-
-  // V2 Staff/Partner — Get device config for a shop
-  app.get("/api/v2/shop/:shopId/device-config", authMiddleware, async (req, res) => {
-    try {
-      const user = req.user!;
-      const shopId = parseInt(req.params.shopId);
-
-      if (user.role === "PARTNER") {
-        const memberShops = await storage.getShopsByMemberId(user.id);
-        if (!memberShops.find(s => s.id === shopId)) {
-          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
-        }
-      } else if (user.role !== "STAFF") {
-        return res.status(403).json({ ok: false, error: "Access denied" });
-      }
-
-      let config = await storage.getDeviceConfig(shopId);
-      if (!config) {
-        config = await storage.upsertDeviceConfig({ shopId });
-      }
-
-      res.json({ ok: true, config: serializeShopDeviceConfig(config) });
-    } catch (error) {
-      console.error("V2 get device-config error:", error);
-      res.status(500).json({ ok: false, error: "Config fetch failed" });
-    }
-  });
-
-  // V2 Partner Points Ledger
-  app.get("/api/v2/shop/:shopId/points-ledger", authMiddleware, async (req, res) => {
-    try {
-      const user = req.user!;
-      const shopId = parseInt(req.params.shopId);
-
-      if (user.role === "PARTNER") {
-        const memberShops = await storage.getShopsByMemberId(user.id);
-        if (!memberShops.find(s => s.id === shopId)) {
-          return res.status(403).json({ ok: false, error: "Not a member of this shop" });
-        }
-      } else if (user.role !== "STAFF") {
-        return res.status(403).json({ ok: false, error: "Access denied" });
-      }
-
-      const [ledger, total] = await Promise.all([
-        storage.getPartnerPointsLedger(shopId),
-        storage.getPartnerPointsTotal(shopId),
-      ]);
-
-      res.json({ ok: true, total, entries: ledger });
-    } catch (error) {
-      console.error("V2 points-ledger error:", error);
-      res.status(500).json({ ok: false, error: "Ledger fetch failed" });
-    }
-  });
-
-  // V2 Staff — list all pair requests
-  // ==================== STAFF BIN SETUP (Task #6) ====================
-
-  app.get("/api/staff/bins/pending-setup", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const pending = await storage.listPendingSetupBins();
-      const shops = await storage.getAllShops();
-      const enriched = await Promise.all(pending.map(async (bin) => {
-        const device = bin.deviceId ? await storage.getDevice(bin.deviceId) : undefined;
-        const shop = shops.find(s => s.id === bin.shopId);
-        return {
-          ...bin,
-          shop: shop ? { id: shop.id, name: shop.name, address: shop.address } : null,
-          device: device ? { id: device.id, name: device.name, uid: device.uid, lastSeenAt: device.lastSeenAt } : null,
-        };
-      }));
-      res.json(enriched);
-    } catch (error) {
-      console.error('pending-setup error:', error);
-      res.status(500).json({ ok: false, error: 'Failed to list pending-setup bins' });
-    }
-  });
-
-  app.patch("/api/staff/bins/:id/setup", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const binId = parseInt(req.params.id);
-      const { mode, cameraModel, name } = req.body ?? {};
-      if (mode && !['demo', 'normal'].includes(mode)) {
-        return res.status(400).json({ ok: false, error: 'mode must be "demo" or "normal"' });
-      }
-      if (cameraModel && !['none', 's3cam', 'android_cam'].includes(cameraModel)) {
-        return res.status(400).json({ ok: false, error: 'cameraModel must be one of none, s3cam, android_cam' });
-      }
-      const bin = await storage.getBin(binId);
-      if (!bin) return res.status(404).json({ ok: false, error: 'Bin not found' });
-      // Activate: PENDING_SETUP → OFFLINE (telemetry will flip to ONLINE on first heartbeat)
-      const nextStatus = bin.status === 'PENDING_SETUP' ? 'OFFLINE' : bin.status;
-      const updated = await storage.updateBinSetup(binId, { mode, cameraModel, name, status: nextStatus });
-      res.json({ ok: true, data: updated });
-    } catch (error) {
-      console.error('bin setup error:', error);
-      res.status(500).json({ ok: false, error: 'Failed to update bin setup' });
-    }
-  });
-
-  app.get("/api/v2/staff/pair-requests", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const requests = await storage.getAllPairRequests();
-      res.json(requests);
-    } catch (error) {
-      console.error("V2 staff pair-requests error:", error);
-      res.status(500).json({ error: "Failed to fetch pair requests" });
-    }
-  });
-
-  // V2 Staff — assign a pending pair request to a shop AND configure the bin
-  // in one atomic step. This is the canonical way to bring a new bin online:
-  // the pair request, the device, and the fully-configured bin row are all
-  // created/updated together. The bin lands in OFFLINE (not PENDING_SETUP);
-  // telemetry will flip it to ONLINE on first heartbeat.
-  app.post("/api/v2/staff/pair-requests/:id/assign", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const user = req.user!;
-      const prId = parseInt(req.params.id);
-      const { shopId, name, mode, cameraModel } = req.body ?? {};
-
-      if (!shopId || !name || !mode || !cameraModel) {
-        return res.status(400).json({ ok: false, error: "shopId, name, mode, and cameraModel are required" });
-      }
-      if (!['demo', 'normal'].includes(mode)) {
-        return res.status(400).json({ ok: false, error: 'mode must be "demo" or "normal"' });
-      }
-      if (!['none', 's3cam', 'android_cam'].includes(cameraModel)) {
-        return res.status(400).json({ ok: false, error: 'cameraModel must be one of none, s3cam, android_cam' });
-      }
-
-      const shop = await storage.getShop(parseInt(shopId));
-      if (!shop || shop.status !== "VERIFIED") {
-        return res.status(400).json({ ok: false, error: "Shop not found or not verified" });
-      }
-
-      const pr = await storage.getPairRequest(prId);
-      if (!pr) return res.status(404).json({ ok: false, error: "Pair request not found" });
-      if (pr.claimed) return res.status(400).json({ ok: false, error: "Pair request already claimed" });
-      if (new Date(pr.expiresAt) < new Date()) {
-        return res.status(400).json({ ok: false, error: "Pair request expired" });
-      }
-
-      // 1. Device: create or update
-      let device = await storage.getDeviceByUid(pr.uid);
-      if (!device) {
-        const deviceKey = generateDeviceKey();
-        const deviceKeyHash = hashDeviceKey(deviceKey);
-        device = await storage.createDevice({
-          shopId: shop.id,
-          name,
-          deviceKeyHash,
-          uid: pr.uid,
-          status: "ACTIVE",
-        });
-      } else {
-        device = (await storage.updateDevice(device.id, { shopId: shop.id, status: "ACTIVE", name }))!;
-      }
-
-      // 2. Shop device config (created on demand for downstream endpoints)
-      const existingConfig = await storage.getDeviceConfig(shop.id);
-      if (!existingConfig) await storage.upsertDeviceConfig({ shopId: shop.id });
-
-      // 3. Bin: create directly in OFFLINE with full config — skip PENDING_SETUP entirely
-      let bin = await storage.getBinByDeviceId(device.id);
-      if (!bin) {
-        bin = await storage.createBin({
-          shopId: shop.id,
-          deviceId: device.id,
-          name,
-          binType: "vape",
-          status: "OFFLINE",
-          fillLevel: 0,
-          vapeCount: 0,
-          mode,
-          cameraModel,
-        });
-        await storage.updateBinSetup(bin.id, { name, mode, cameraModel, status: "OFFLINE" });
-      } else {
-        await storage.updateBinSetup(bin.id, { name, mode, cameraModel, status: "OFFLINE" });
-      }
-
-      // 4. Claim pair request last — race-safe (conditional WHERE claimed=false).
-      // If another staff member won the race, abort with 409 so the UI can refresh.
-      const claimed = await storage.claimPairRequest(pr.id, user.id, shop.id, device.id);
-      if (!claimed) {
-        return res.status(409).json({ ok: false, error: "Pair request was claimed by another staff member; refresh and retry" });
-      }
-
-      const finalBin = await storage.getBin(bin.id);
-      res.json({
-        ok: true,
-        data: {
-          deviceId: device.id,
-          shopId: shop.id,
-          shopName: shop.name,
-          bin: finalBin,
-        },
-      });
-    } catch (error) {
-      console.error("V2 staff pair-request assign error:", error);
-      res.status(500).json({ ok: false, error: "Pair request assignment failed" });
-    }
-  });
-
-  // Background job: void expired unclaimed sessions every 10 minutes
-  setInterval(async () => {
-    try {
-      const count = await storage.expireOldSessions();
-      if (count > 0) {
-        console.log(`[cleanup] Voided ${count} expired unclaimed session(s)`);
-      }
-    } catch (error) {
-      console.error("[cleanup] Session expiry error:", error);
-    }
-  }, 600_000);
-
-  // ==================== MODULES & CAPABILITIES ====================
-
-  app.get("/api/staff/modules", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const caps = await storage.listAllBinCapabilities();
-      const enriched = await Promise.all(caps.map(async (cap) => {
-        const bin = await storage.getBin(cap.binId);
-        return {
-          ...cap,
-          moduleToken: cap.moduleToken ? `...${cap.moduleToken.slice(-8)}` : null,
-          bin: bin ? { id: bin.id, name: bin.name, shopId: bin.shopId, status: bin.status } : null,
-        };
-      }));
-      res.json({ ok: true, data: enriched });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch modules" });
-    }
-  });
-
-  app.post("/api/staff/modules/register", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { binId, moduleType } = req.body;
-      if (!binId || !moduleType) return res.status(400).json({ ok: false, error: "binId and moduleType required" });
-      const bin = await storage.getBin(binId);
-      if (!bin) return res.status(404).json({ ok: false, error: "Bin not found" });
-      const crypto = await import("crypto");
-      const moduleToken = crypto.randomBytes(32).toString("hex");
-      const cap = await storage.upsertBinCapabilities({
-        binId,
-        cameraMode: moduleType,
-        moduleToken,
-      });
-      res.json({ ok: true, data: { moduleToken, binId, capabilities: cap } });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to register module" });
-    }
-  });
-
-  app.delete("/api/staff/modules/:binId", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const binId = parseInt(req.params.binId);
-      await storage.updateBinCapabilities(binId, { cameraMode: "none", moduleToken: null } as any);
-      res.json({ ok: true });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to deregister module" });
-    }
-  });
-
-  // ==================== DROP PIPELINE (T004) ====================
-
-  app.patch("/api/bins/:binId/capabilities", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const binId = parseInt(req.params.binId);
-      const { hasWeight, cameraMode, cameraCadenceJson, uploadPolicy, debugMode } = req.body;
-      const cap = await storage.upsertBinCapabilities({ binId, hasWeight, cameraMode, cameraCadenceJson, uploadPolicy, debugMode });
-      res.json(cap);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update bin capabilities" });
-    }
-  });
-
-  app.post("/api/drops/start", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const { binId, shopId, eventId } = req.body;
-      if (!shopId) return res.status(400).json({ error: "shopId required" });
-
-      // If an eventId is supplied and captures arrived first, prefer the
-      // pre-existing drop row (race-safe) instead of creating a duplicate.
-      let drop: any;
-      if (eventId) {
-        drop = await storage.findOrCreateDropByEventId(eventId, {
-          eventId,
-          binId: binId || null,
-          shopId,
-          userId: req.user?.id || null,
-          status: "awaiting_ai",
-          category: "Unknown",
-          pointsAwarded: 0,
-        } as any);
-
-        // Backfill any captures queued under this eventId without a dropId,
-        // and trigger the classifier for ones that haven't run yet.
-        try {
-          const linked = await storage.linkOrphanCapturesByEventId(eventId, drop.id);
-          // Guard: processCapture needs a concrete binId to load bin policy.
-          // drops.binId is NOT NULL at the schema level, but defensively skip
-          // if it is somehow missing so the trigger never silently no-ops on
-          // a wrong/null bin.
-          const triggerBinId: number | null = (drop.binId ?? null) as number | null;
-          for (const img of linked) {
-            const needs = (img.imageRole === "after" || img.imageRole === "crop") && !img.classifierRanAt;
-            if (needs && triggerBinId != null) {
-              queueMicrotask(async () => {
-                try {
-                  const { processCapture } = await import("./classifier/worker");
-                  await processCapture({
-                    eventId,
-                    binId: triggerBinId,
-                    imageId: img.id,
-                    storageUrl: img.storageUrl,
-                  });
-                } catch (err) {
-                  console.error("[drops/start] processCapture trigger failed:", err instanceof Error ? err.message : String(err));
-                }
-              });
-            } else if (needs && triggerBinId == null) {
-              console.error("[drops/start] skipping processCapture: drop has no binId", { dropId: drop.id, eventId });
-            }
-          }
-        } catch (err) {
-          console.error("[drops/start] orphan capture sweep failed:", err instanceof Error ? err.message : String(err));
-        }
-      } else {
-        drop = await storage.createDrop({
-          binId: binId || null,
-          shopId,
-          userId: req.user?.id || null,
-          status: "awaiting_ai",
-          category: "Unknown",
-          pointsAwarded: 0,
-        });
-      }
-      res.json({ ok: true, data: drop });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to start drop" });
-    }
-  });
-
-  app.post("/api/drops/:dropId/weight", async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.dropId);
-      const { weightGrams } = req.body;
-      if (weightGrams == null) return res.status(400).json({ error: "weightGrams required" });
-      const drop = await storage.updateDrop(dropId, { weightGrams });
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      res.json({ ok: true, data: drop });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to update weight" });
-    }
-  });
-
-  app.post("/api/drops/:dropId/images", async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.dropId);
-      const { imageRole, storageUrl, hash } = req.body;
-      if (!imageRole || !storageUrl) return res.status(400).json({ error: "imageRole and storageUrl required" });
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      const image = await storage.createDropImage({ dropId, imageRole, storageUrl, hash });
-      res.json({ ok: true, data: image });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to add image" });
-    }
-  });
-
-  app.post("/api/drops/:dropId/submit", async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.dropId);
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      const images = await storage.getDropImages(dropId);
-      const hasClassifiable = images.some(img => img.imageRole === "crop" || img.imageRole === "after");
-      // Classifier (Task #5) is the source of truth for any drop with an
-      // eventId. Skip the legacy AI path in that case to avoid divergent
-      // status/category/points writes.
-      const classifierManaged = !!drop.eventId;
-      if (hasClassifiable && !classifierManaged) {
-        const job = await storage.createAiJob({ dropId, provider: process.env.OPENAI_API_KEY ? "openai" : "null", status: "queued" });
-        await storage.updateDrop(dropId, { status: "awaiting_ai" });
-
-        try {
-          const { runAiJobForDrop } = await import("./ai");
-          const result = await runAiJobForDrop(dropId);
-          if (result) {
-            await storage.updateAiJob(job.id, {
-              status: "done",
-              finishedAt: new Date(),
-              resultJson: result as any,
-            });
-            await storage.updateDrop(dropId, {
-              status: result.category === "Nicotine" ? "approved" : "denied",
-              category: result.category as any,
-              brand: result.brand,
-              subtype: result.subtype,
-              flavor: result.flavor,
-              aiConfidence: result.confidence,
-              aiModelVersion: result.modelVersion || "unknown",
-              pointsAwarded: result.category === "Nicotine" ? 1 : 0,
-            });
-          }
-        } catch (aiError) {
-          console.error("AI classification error:", aiError);
-          await storage.updateAiJob(job.id, { status: "failed", finishedAt: new Date(), error: String(aiError) });
-        }
-      } else if (!classifierManaged) {
-        await storage.updateDrop(dropId, { status: "approved", category: "Unknown", pointsAwarded: 1 });
-      }
-
-      // Task #5 dual-trigger: if a capture (after/crop) arrived via the bin
-      // module BEFORE the drop was submitted, the classifier hasn't run yet.
-      // Link any orphan captures (dropId null) by eventId, then trigger
-      // processCapture for every after/crop image so the verdict is always
-      // finalized once the drop appears (avoids the race where classifierRanAt
-      // gate would skip needed work).
-      try {
-        if (drop.eventId) {
-          await storage.linkOrphanCapturesByEventId(drop.eventId, dropId);
-          const linked = await storage.getDropImages(dropId);
-          const triggerBinId: number | null = (drop.binId ?? null) as number | null;
-          if (triggerBinId == null) {
-            console.error("[drops/submit] skipping processCapture: drop has no binId", { dropId, eventId: drop.eventId });
-          } else {
-            for (const img of linked) {
-              if (img.imageRole !== "after" && img.imageRole !== "crop") continue;
-              // Skip images the worker has already classified to avoid
-              // duplicate runs / churn on resubmits. Worker still dedupes by
-              // pHash, but this is a cheaper short-circuit.
-              if (img.classifierRanAt) continue;
-              queueMicrotask(async () => {
-                try {
-                  const { processCapture } = await import("./classifier/worker");
-                  await processCapture({
-                    eventId: drop.eventId!,
-                    binId: triggerBinId,
-                    imageId: img.id,
-                    storageUrl: img.storageUrl,
-                  });
-                } catch (err: any) {
-                  console.error("[drops/submit] processCapture trigger failed:", err?.message || err);
-                }
-              });
-            }
-          }
-        }
-      } catch (err: any) {
-        console.error("[drops/submit] capture-before-drop sweep failed:", err?.message || err);
-      }
-
-      const updated = await storage.getDrop(dropId);
-      res.json({ ok: true, data: updated });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to submit drop" });
-    }
-  });
-
-  app.get("/api/drops/:dropId", async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.dropId);
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      const images = await storage.getDropImages(dropId);
-      const jobs = await storage.getAiJobsByDrop(dropId);
-      const dropAppeals = await storage.getAppealsByDrop(dropId);
-      res.json({ ok: true, data: { ...drop, images, aiJobs: jobs, appeals: dropAppeals } });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch drop" });
-    }
-  });
-
-  app.post("/api/drops/:dropId/appeal", authMiddleware, async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.dropId);
-      const { reason } = req.body;
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      const appeal = await storage.createAppeal({
-        dropId,
-        userId: req.user!.id,
-        type: "appeal",
-        payloadJson: { reason },
-      });
-      await storage.updateDrop(dropId, { status: "appealed" });
-      res.json({ ok: true, data: appeal });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to create appeal" });
-    }
-  });
-
-  app.post("/api/drops/:dropId/self-report", authMiddleware, async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.dropId);
-      const { brand, subtype, flavor } = req.body;
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      const appeal = await storage.createAppeal({
-        dropId,
-        userId: req.user!.id,
-        type: "self_report",
-        payloadJson: { brand, subtype, flavor },
-      });
-      res.json({ ok: true, data: appeal });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to create self-report" });
-    }
-  });
-
-  // ==================== VERISCAN (T005) ====================
-
-  app.get("/api/veriscan", async (req, res) => {
-    try {
-      const { binId, shopId, sig } = req.query;
-      if (!shopId) return res.status(400).json({ error: "shopId required" });
-      const shop = await storage.getShop(parseInt(shopId as string));
-      if (!shop) return res.status(404).json({ error: "Shop not found" });
-      let bin = null;
-      if (binId) {
-        bin = await storage.getBin(parseInt(binId as string));
-      }
-      const shopBins = await storage.getBinsByShop(shop.id);
-      res.json({
-        ok: true,
-        data: {
-          shop: { id: shop.id, name: shop.name, address: shop.address },
-          bin: bin ? { id: bin.id, name: bin.name } : null,
-          bins: shopBins.map(b => ({ id: b.id, name: b.name })),
-          multiplesBins: shopBins.length > 1,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to validate VeriScan" });
-    }
-  });
-
-  app.post("/api/veriscan/session/start", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const { shopId, binId } = req.body;
-      if (!shopId) return res.status(400).json({ error: "shopId required" });
-      const session = await storage.createVeriscanSession({
-        userId: req.user?.id || null,
-        shopId,
-        binId: binId || null,
-        status: "active",
-        expectedItemCount: 0,
-      });
-      res.json({ ok: true, data: session });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to start VeriScan session" });
-    }
-  });
-
-  app.post("/api/veriscan/session/:id/items", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const sessionId = parseInt(req.params.id);
-      const session = await storage.getVeriscanSession(sessionId);
-      if (!session) return res.status(404).json({ error: "Session not found" });
-      const { imageUrl } = req.body;
-      let aiResult = { brand: null as string | null, subtype: null as string | null, flavor: null as string | null, confidence: 0 };
-      if (imageUrl && process.env.OPENAI_API_KEY) {
-        try {
-          const { classifyDrop } = await import("./ai");
-          const result = await classifyDrop(imageUrl);
-          aiResult = { brand: result.brand, subtype: result.subtype, flavor: result.flavor, confidence: result.confidence };
-        } catch (e) {
-          console.error("VeriScan AI error:", e);
-        }
-      }
-      const item = await storage.createVeriscanItem({
-        sessionId,
-        imageUrl,
-        aiBrand: aiResult.brand,
-        aiSubtype: aiResult.subtype,
-        aiFlavor: aiResult.flavor,
-        aiConfidence: aiResult.confidence,
-        modifier: 2.0,
-      });
-      await storage.updateVeriscanSession(sessionId, { expectedItemCount: session.expectedItemCount + 1 });
-      res.json({ ok: true, data: item });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to add VeriScan item" });
-    }
-  });
-
-  app.post("/api/veriscan/session/:id/items/:itemId/confirm", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const itemId = parseInt(req.params.itemId);
-      const { brand, subtype, flavor } = req.body;
-      if (!brand) return res.status(400).json({ error: "brand required" });
-      const item = await storage.updateVeriscanItem(itemId, {
-        finalBrand: brand,
-        finalSubtype: subtype || null,
-        finalFlavor: flavor || null,
-        confirmedAt: new Date(),
-        modifier: 2.0,
-      });
-      if (!item) return res.status(404).json({ error: "Item not found" });
-      res.json({ ok: true, data: item });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to confirm item" });
-    }
-  });
-
-  app.post("/api/veriscan/session/:id/arm", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const sessionId = parseInt(req.params.id);
-      const session = await storage.getVeriscanSession(sessionId);
-      if (!session) return res.status(404).json({ error: "Session not found" });
-      const { timeoutSeconds = 60 } = req.body;
-      const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
-      const updated = await storage.updateVeriscanSession(sessionId, {
-        status: "armed",
-        expiresAt,
-      });
-      const { getRealtimeAdapter } = await import("./realtime");
-      const adapter = getRealtimeAdapter();
-      if (session.binId) {
-        adapter.sendArmVeriScan(session.binId, sessionId, expiresAt, session.expectedItemCount);
-      }
-      res.json({ ok: true, data: { ...updated, armStatus: "armed", expiresAt } });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to arm bin" });
-    }
-  });
-
-  // ==================== TAXONOMY & STAFF TOOLS (T006) ====================
-
-  app.get("/api/staff/brands", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allBrands = await storage.getAllBrands();
-      res.json({ ok: true, data: allBrands });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch brands" });
-    }
-  });
-
-  app.post("/api/staff/brands", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { name, suggested } = req.body;
-      if (!name) return res.status(400).json({ error: "name required" });
-      const brand = await storage.createBrand({ name, suggested: suggested || false });
-      res.json({ ok: true, data: brand });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to create brand" });
-    }
-  });
-
-  app.patch("/api/staff/brands/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const brand = await storage.updateBrand(id, req.body);
-      if (!brand) return res.status(404).json({ error: "Brand not found" });
-      res.json({ ok: true, data: brand });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to update brand" });
-    }
-  });
-
-  app.delete("/api/staff/brands/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const deleted = await storage.deleteBrand(parseInt(req.params.id));
-      res.json({ ok: true, deleted });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to delete brand" });
-    }
-  });
-
-  app.get("/api/staff/subtypes", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const brandId = req.query.brandId ? parseInt(req.query.brandId as string) : null;
-      const allSubtypes = brandId ? await storage.getSubtypesByBrand(brandId) : await storage.getAllSubtypes();
-      res.json({ ok: true, data: allSubtypes });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch subtypes" });
-    }
-  });
-
-  app.post("/api/staff/subtypes", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { brandId, name, suggested } = req.body;
-      if (!brandId || !name) return res.status(400).json({ error: "brandId and name required" });
-      const sub = await storage.createSubtype({ brandId, name, suggested: suggested || false });
-      res.json({ ok: true, data: sub });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to create subtype" });
-    }
-  });
-
-  app.delete("/api/staff/subtypes/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const deleted = await storage.deleteSubtype(parseInt(req.params.id));
-      res.json({ ok: true, deleted });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to delete subtype" });
-    }
-  });
-
-  app.get("/api/staff/flavors", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allFlavors = await storage.getAllFlavors();
-      res.json({ ok: true, data: allFlavors });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch flavors" });
-    }
-  });
-
-  app.post("/api/staff/flavors", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { name, suggested } = req.body;
-      if (!name) return res.status(400).json({ error: "name required" });
-      const flavor = await storage.createFlavor({ name, suggested: suggested || false });
-      res.json({ ok: true, data: flavor });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to create flavor" });
-    }
-  });
-
-  app.delete("/api/staff/flavors/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const deleted = await storage.deleteFlavor(parseInt(req.params.id));
-      res.json({ ok: true, deleted });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to delete flavor" });
-    }
-  });
-
-  app.get("/api/staff/drops", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 200;
-      const allDrops = await storage.getAllDrops(limit);
-      res.json({ ok: true, data: allDrops });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
-    }
-  });
-
-  app.patch("/api/staff/drops/:id/override", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { category, brand, subtype, flavor, status } = req.body;
-      const drop = await storage.updateDrop(id, {
-        category: category || undefined,
-        brand: brand || undefined,
-        subtype: subtype || undefined,
-        flavor: flavor || undefined,
-        status: status || undefined,
-        overrideSource: `staff:${req.user!.email}`,
-      });
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      res.json({ ok: true, data: drop });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to override drop" });
-    }
-  });
-
-  app.post("/api/staff/drops/:id/rerun-ai", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.id);
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ error: "Drop not found" });
-      const job = await storage.createAiJob({ dropId, provider: process.env.OPENAI_API_KEY ? "openai" : "null", status: "queued" });
-      try {
-        const { runAiJobForDrop } = await import("./ai");
-        const result = await runAiJobForDrop(dropId);
-        if (result) {
-          await storage.updateAiJob(job.id, { status: "done", finishedAt: new Date(), resultJson: result as any });
-          await storage.updateDrop(dropId, {
-            category: result.category as any,
-            brand: result.brand,
-            subtype: result.subtype,
-            flavor: result.flavor,
-            aiConfidence: result.confidence,
-            aiModelVersion: result.modelVersion || "unknown",
-          });
-        }
-      } catch (aiError) {
-        await storage.updateAiJob(job.id, { status: "failed", finishedAt: new Date(), error: String(aiError) });
-      }
-      const updated = await storage.getDrop(dropId);
-      res.json({ ok: true, data: updated });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to rerun AI" });
-    }
-  });
-
-  app.get("/api/staff/appeals", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allAppeals = await storage.getAllAppeals();
-      res.json({ ok: true, data: allAppeals });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch appeals" });
-    }
-  });
-
-  app.patch("/api/staff/appeals/:id/resolve", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { resolution } = req.body;
-      if (!resolution) return res.status(400).json({ error: "resolution required" });
-      const appeal = await storage.resolveAppeal(id, resolution, req.user!.id);
-      if (!appeal) return res.status(404).json({ error: "Appeal not found" });
-      res.json({ ok: true, data: appeal });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to resolve appeal" });
-    }
-  });
-
-  // ==================== BIN MODULE API (T008) ====================
-
-  app.post("/api/bin-module/register", async (req, res) => {
-    try {
-      const { binId, moduleType, firmwareVersion } = req.body;
-      if (!binId || !moduleType) return res.status(400).json({ error: "binId and moduleType required" });
-      const bin = await storage.getBin(binId);
-      if (!bin) return res.status(404).json({ error: "Bin not found" });
-      const crypto = await import("crypto");
-      const moduleToken = crypto.randomBytes(32).toString("hex");
-      const cap = await storage.upsertBinCapabilities({
-        binId,
-        cameraMode: moduleType,
-        moduleToken,
-      });
-      res.json({ ok: true, data: { moduleToken, binId, capabilities: cap } });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to register module" });
-    }
-  });
-
-  const moduleAuth = async (req: any, res: any, next: any) => {
-    const token = req.headers["x-module-token"] as string;
-    if (!token) return res.status(401).json({ error: "Module token required" });
-    const cap = await storage.getBinCapabilitiesByToken(token);
-    if (!cap) return res.status(401).json({ error: "Invalid module token" });
-    req.binCapabilities = cap;
-    next();
-  };
-
-  app.get("/api/bin-module/config", moduleAuth, async (req: any, res) => {
-    try {
-      const cap = req.binCapabilities;
-      res.json({
-        ok: true,
-        data: {
-          binId: cap.binId,
-          cameraMode: cap.cameraMode,
-          hasWeight: cap.hasWeight,
-          cadence: cap.cameraCadenceJson,
-          uploadPolicy: cap.uploadPolicy,
-          debugMode: cap.debugMode,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch config" });
-    }
-  });
-
-  app.post("/api/bin-module/heartbeat", moduleAuth, async (req: any, res) => {
-    try {
-      const cap = req.binCapabilities;
-      const bin = await storage.getBin(cap.binId);
-      if (bin) {
-        await storage.updateBinSensorData(bin.id, {});
-      }
-      res.json({ ok: true });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to record heartbeat" });
-    }
-  });
-
-  app.post("/api/bin-module/drop-capture", moduleAuth, async (req: any, res) => {
-    try {
-      const cap = req.binCapabilities;
-      // Spec uses `image` (base64); we also accept legacy `imageBase64`.
-      const { eventId, imageRole, image, imageBase64, storageUrl: providedUrl, hash, dropId: legacyDropId } = req.body;
-      const imageB64: string | undefined = image ?? imageBase64;
-
-      // Legacy fast-path (no eventId) — pre-existing behavior, no classifier
-      if (!eventId && legacyDropId && providedUrl) {
-        const legacyImage = await storage.createDropImage({
-          dropId: legacyDropId, imageRole, storageUrl: providedUrl, hash, binId: cap.binId,
-        });
-        return res.json({ ok: true, data: legacyImage });
-      }
-
-      if (!eventId || !imageRole) {
-        return res.status(400).json({ error: "eventId and imageRole required" });
-      }
-
-      // Fast-path idempotency: if we already have this image, skip writing bytes.
-      // SECURITY: enforce bin ownership BEFORE returning any data — a module
-      // token for Bin B must not be able to read Bin A's capture by guessing
-      // its eventId (IDOR).
-      const existing = await storage.findDropImageByEventAndRole(eventId, imageRole);
-      if (existing) {
-        if (existing.binId != null && existing.binId !== cap.binId) {
-          return res.status(403).json({ error: "eventId belongs to a different bin" });
-        }
-        // Defense in depth: also block if a linked drop belongs to another bin.
-        if (existing.dropId != null) {
-          const owningDrop = await storage.getDrop(existing.dropId);
-          if (owningDrop && owningDrop.binId != null && owningDrop.binId !== cap.binId) {
-            return res.status(403).json({ error: "eventId belongs to a different bin" });
-          }
-        }
-        return res.json({ ok: true, data: existing, idempotent: true });
-      }
-
-      // Pre-write authz: same check before doing any byte writes or processCapture
-      const preExistingDrop = await storage.getDropByEventId(eventId);
-      if (preExistingDrop && preExistingDrop.binId != null && preExistingDrop.binId !== cap.binId) {
-        return res.status(403).json({ error: "eventId belongs to a different bin" });
-      }
-
-      // Persist image bytes if provided
-      let storageUrl = providedUrl;
-      if (imageB64) {
-        const { writeCaptureJpeg } = await import("./blob");
-        const buf = Buffer.from(imageB64, "base64");
-        const written = await writeCaptureJpeg(cap.binId, buf);
-        storageUrl = written.url;
-      }
-      if (!storageUrl) {
-        return res.status(400).json({ error: "image or storageUrl required" });
-      }
-
-      // Per spec: do NOT implicitly create a drop. If a drop already exists
-      // by eventId, link the capture to it. Otherwise queue the capture by
-      // eventId (dropId null) and the verdict will compute when the drop is
-      // POSTed by firmware via /api/drops/submit (see capture-before-drop sweep).
-      const existingDrop = await storage.getDropByEventId(eventId);
-      // Authz: a module token for Bin A may not submit captures for Bin B.
-      // Reject cross-bin eventId injection before writing or processing.
-      if (existingDrop && existingDrop.binId != null && existingDrop.binId !== cap.binId) {
-        return res.status(403).json({ error: "eventId belongs to a different bin" });
-      }
-      const drop = existingDrop ?? null;
-
-      const { image: createdImage, created } = await storage.createDropImageIdempotent({
-        dropId: existingDrop?.id ?? null,
-        eventId,
-        binId: cap.binId,
-        imageRole,
-        storageUrl,
-        hash,
-      });
-
-      // Only trigger classifier when (a) first insert, (b) role is after/crop,
-      // AND (c) the drop already exists. If the drop hasn't arrived yet, leave
-      // classifierRanAt null so the orphan-link sweep in /api/drops/start or
-      // /api/drops/:dropId/submit will trigger processCapture once the drop is
-      // created — guaranteeing verdictReady is set.
-      if (created && existingDrop && (imageRole === "after" || imageRole === "crop")) {
-        queueMicrotask(async () => {
-          try {
-            const { processCapture } = await import("./classifier/worker");
-            await processCapture({ eventId, binId: cap.binId, imageId: createdImage.id, storageUrl: storageUrl! });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.error("[bin-module] processCapture trigger failed:", msg);
-          }
-        });
-      }
-
-      res.json({ ok: true, data: { image: createdImage, drop }, idempotent: !created });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error("drop-capture error:", msg);
-      res.status(500).json({ ok: false, error: "Failed to store drop capture" });
-    }
-  });
-
-  // ==================== ADMIN REVIEW (Task #5) ====================
-
-  app.get("/api/admin/review", authMiddleware, requireRole("STAFF", "ADMIN"), async (req, res) => {
-    try {
-      const page = Math.max(1, parseInt((req.query.page as string) || "1") || 1);
-      const limit = Math.min(200, Math.max(1, parseInt((req.query.limit as string) || "50") || 50));
-      const offset = (page - 1) * limit;
-      const [queue, total] = await Promise.all([
-        storage.getReviewQueue(limit, offset),
-        storage.getReviewQueueCount(),
-      ]);
-      res.json({
-        ok: true,
-        data: queue,
-        pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch review queue" });
-    }
-  });
-
-  app.get("/api/admin/review/budget", authMiddleware, requireRole("STAFF", "ADMIN"), async (_req, res) => {
-    try {
-      const day = new Date().toISOString().slice(0, 10);
-      const spentMicros = await storage.getClassifierCostMicrosForDay(day);
-      const { classifierConfig } = await import("./config");
-      const capUsd = classifierConfig.dailyBudgetUsd;
-      res.json({
-        ok: true,
-        data: {
-          day,
-          spentUsd: spentMicros / 1_000_000,
-          capUsd,
-          provider: classifierConfig.provider,
-          hasApiKey: classifierConfig.hasApiKey,
-          dedupeHours: classifierConfig.dedupeHours,
-        },
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch budget" });
-    }
-  });
-
-  app.post("/api/admin/review/:dropId/correct", authMiddleware, requireRole("STAFF", "ADMIN"), async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.dropId);
-      // Spec body: { correctedLabel }. Accept legacy { humanLabel } too.
-      // NOTE: client-supplied acceptOverride is intentionally ignored on this
-      // path. The corrected verdict MUST be derived server-side from the
-      // human label + the bin's reject toggles so corrections always honor
-      // bin policy. (Reviewer round 12.)
-      const body = req.body || {};
-      const rawCorrectedLabel: unknown = body.correctedLabel ?? body.humanLabel;
-      const { imageId, notes } = body;
-      const VALID_CORRECTION_LABELS = ["vape", "thc_vape", "not_a_vape", "uncertain"] as const;
-      type CorrectionLabel = (typeof VALID_CORRECTION_LABELS)[number];
-      if (
-        typeof rawCorrectedLabel !== "string" ||
-        !(VALID_CORRECTION_LABELS as readonly string[]).includes(rawCorrectedLabel)
-      ) {
-        return res.status(400).json({
-          error: "correctedLabel required",
-          allowed: VALID_CORRECTION_LABELS,
-        });
-      }
-      const correctedLabel: CorrectionLabel = rawCorrectedLabel as CorrectionLabel;
-
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
-
-      let modelLabel: string | null = null;
-      let modelConfidence: number | null = null;
-      let modelVersion: string | null = null;
-      if (imageId) {
-        const imgs = await storage.getDropImages(dropId);
-        const img = imgs.find((i) => i.id === imageId);
-        if (img) {
-          modelLabel = img.classifierLabel ?? null;
-          modelConfidence = img.classifierConfidence ?? null;
-          modelVersion = img.classifierVersion ?? null;
-        }
-      }
-
-      const correction = await storage.createClassifierCorrection({
-        dropId,
-        imageId: imageId || null,
-        modelLabel,
-        modelConfidence,
-        modelVersion,
-        humanLabel: correctedLabel,
-        reviewerId: req.user!.id,
-        notes: notes || null,
-      });
-
-      // Always clear the review flag.
-      const update: Partial<typeof drop> = {
-        verdictReviewNeeded: false,
-        overrideSource: `staff:${req.user!.email}`,
-      };
-
-      // Corrected verdict derived server-side from corrected label + bin
-      // policy toggles (rejectNonVapes / rejectThcVapes). Client-supplied
-      // acceptOverride is intentionally ignored on this path so corrections
-      // can never bypass bin policy.
-      let correctedAccepted: boolean;
-      {
-        const bin = drop.binId ? await storage.getBin(drop.binId) : null;
-        const rejectNonVapes = bin ? bin.rejectNonVapes !== false : true;
-        const rejectThcVapes = bin ? bin.rejectThcVapes !== false : true;
-        if (correctedLabel === "vape") {
-          correctedAccepted = true;
-        } else if (correctedLabel === "thc_vape") {
-          correctedAccepted = !rejectThcVapes;
-        } else if (correctedLabel === "not_a_vape") {
-          correctedAccepted = !rejectNonVapes;
-        } else {
-          correctedAccepted = true; // uncertain → accept once human-touched
-        }
-      }
-
-      // Reward-lock signal: only true once the customer has actually claimed
-      // the points for this drop. Until a real claim event flips this flag,
-      // staff corrections may freely flip the verdict and adjust points.
-      // Verdict-decided != claimed.
-      const rewardClaimed = drop.rewardClaimed === true;
-      const verdictChanged = drop.verdictAccepted !== correctedAccepted;
-
-      if (!rewardClaimed && verdictChanged) {
-        update.verdictAccepted = correctedAccepted;
-        update.verdictReason = `human:${correctedLabel}`;
-        update.verdictDecidedAt = new Date();
-        update.status = correctedAccepted ? "approved" : "denied";
-        // Points adjustment: rejected drops earn 0; accepted drops earn at least 1.
-        if (!correctedAccepted) {
-          update.pointsAwarded = 0;
-        } else if ((drop.pointsAwarded ?? 0) === 0) {
-          update.pointsAwarded = 1;
-        }
-      }
-
-      // Reverse partner ledger credit and adjust/void the reward session when
-      // the correction denies a previously accepted drop that had points awarded.
-      // Only triggered when rewardClaimed is false (not yet locked) and the drop
-      // had points to reverse. Drop update + reversal execute in one transaction.
-      const shouldReversePoints =
-        !rewardClaimed &&
-        verdictChanged &&
-        !correctedAccepted &&
-        (drop.pointsAwarded ?? 0) > 0;
-
-      const { ledgerReversed, sessionAdjusted, sessionVoided } =
-        await storage.applyStaffCorrectionAtomic(dropId, update, shouldReversePoints);
-
-      res.json({
-        ok: true,
-        data: {
-          correction,
-          verdictChanged: !rewardClaimed && verdictChanged,
-          rewardLocked: rewardClaimed,
-          pointsReversed: ledgerReversed,
-          sessionAdjusted,
-          sessionVoided,
-        },
-      });
-    } catch (error: any) {
-      console.error("admin review error:", error?.message || error);
-      res.status(500).json({ ok: false, error: "Failed to submit correction" });
-    }
-  });
-
-  app.get("/api/bin-module/drop-verdict", moduleAuth, async (req: any, res) => {
-    try {
-      const eventId = (req.query.eventId as string) || "";
-      if (!eventId) return res.status(400).json({ error: "eventId required" });
-      const drop = await storage.getDropByEventId(eventId);
-      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
-      if (drop.binId !== req.binCapabilities.binId) {
-        return res.status(403).json({ ok: false, error: "Forbidden" });
-      }
-      res.json({
-        ok: true,
-        data: {
-          eventId,
-          ready: drop.verdictReady,
-          accepted: drop.verdictAccepted,
-          reason: drop.verdictReason,
-          reviewNeeded: drop.verdictReviewNeeded,
-          decidedAt: drop.verdictDecidedAt,
-        },
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch verdict" });
-    }
-  });
-
-  app.post("/api/bin-module/baseline", moduleAuth, async (req: any, res) => {
-    try {
-      const cap = req.binCapabilities;
-      if (cap.uploadPolicy === "drop_only") {
-        return res.json({ ok: true, skipped: true, reason: "uploadPolicy is drop_only" });
-      }
-      const { storageUrl, hash } = req.body;
-      if (!storageUrl) return res.status(400).json({ error: "storageUrl required" });
-      res.json({ ok: true, stored: true });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to store baseline" });
-    }
-  });
-
-  app.get("/api/bin-module/pending-drops", moduleAuth, async (req: any, res) => {
-    try {
-      const cap = req.binCapabilities;
-      const bin = await storage.getBin(cap.binId);
-      if (!bin) return res.json({ ok: true, data: [] });
-      const shopDrops = await storage.getDropsByShop(bin.shopId, 10);
-      const pending = shopDrops.filter(d => d.status === "awaiting_ai" && d.binId === bin.id);
-      res.json({ ok: true, data: pending.map(d => ({ dropId: d.id, createdAt: d.createdAt })) });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch pending drops" });
-    }
-  });
-
-  // ==================== LITTR APP API (T009) ====================
-
-  // --- Guest endpoints ---
-  app.get("/api/app/shops", async (req, res) => {
-    try {
-      const allShops = await storage.getVerifiedShopsWithCoordinates();
-      const shopList = allShops.map(s => ({
-        id: s.id, name: s.name, address: s.address, city: s.city,
-        latitude: s.latitude, longitude: s.longitude,
-      }));
-      res.json({ ok: true, data: shopList });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch shops" });
-    }
-  });
-
-  app.get("/api/app/shops/:id", async (req, res) => {
-    try {
-      const shop = await storage.getShop(parseInt(req.params.id));
-      if (!shop) return res.status(404).json({ ok: false, error: "Shop not found" });
-      const shopBins = await storage.getBinsByShop(shop.id);
-      const rewardConfig = await storage.getRewardConfig(shop.id);
-      res.json({
-        ok: true,
-        data: {
-          id: shop.id, name: shop.name, address: shop.address, city: shop.city,
-          latitude: shop.latitude, longitude: shop.longitude,
-          binsCount: shopBins.length,
-          rewardConfig: rewardConfig ? { enabled: rewardConfig.enabled } : null,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch shop" });
-    }
-  });
-
-  app.get("/api/app/brands", async (req, res) => {
-    try {
-      const allBrands = await storage.getAllBrands();
-      const allSubtypes = await storage.getAllSubtypes();
-      const brandsWithSubs = allBrands.map(b => ({
-        ...b,
-        subtypes: allSubtypes.filter(s => s.brandId === b.id),
-      }));
-      res.json({ ok: true, data: brandsWithSubs });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch brands" });
-    }
-  });
-
-  app.post("/api/app/auth/register", async (req, res) => {
-    try {
-      const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ ok: false, error: "Email and password required" });
-      const existing = await storage.getUserByEmail(email);
-      if (existing) return res.status(409).json({ ok: false, error: "Email already registered" });
-      const result = await register(email, password, "CUSTOMER");
-      res.json({
-        ok: true,
-        data: {
-          sessionId: result.sessionId,
-          user: { id: result.user.id, email: result.user.email, role: result.user.role },
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Registration failed" });
-    }
-  });
-
-  app.post("/api/app/auth/login", async (req, res) => {
-    try {
-      const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ ok: false, error: "Email and password required" });
-      const result = await login(email, password);
-      if (!result) return res.status(401).json({ ok: false, error: "Invalid credentials" });
-      res.json({
-        ok: true,
-        data: {
-          sessionId: result.sessionId,
-          user: { id: result.user.id, email: result.user.email, role: result.user.role },
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Login failed" });
-    }
-  });
-
-  app.post("/api/app/auth/forgot-password", async (req, res) => {
-    try {
-      res.json({ ok: true, message: "If the email exists, a reset link has been sent." });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to process request" });
-    }
-  });
-
-  // --- Customer endpoints ---
-  app.get("/api/app/me", authMiddleware, async (req, res) => {
-    try {
-      const user = req.user!;
-      let walletData = null;
-      if (user.role === "CUSTOMER") {
-        const customer = await storage.getCustomerByUserId(user.id);
-        if (customer) {
-          const wallet = await storage.getWallet(customer.id);
-          walletData = { publicId: customer.publicId, balance: wallet?.pointsBalance || 0, lifetimeEarned: wallet?.lifetimeEarned || 0 };
-        }
-      }
-      res.json({
-        ok: true,
-        data: { id: user.id, email: user.email, role: user.role, wallet: walletData }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch profile" });
-    }
-  });
-
-  app.patch("/api/app/me/password", authMiddleware, async (req, res) => {
-    try {
-      const { currentPassword, newPassword } = req.body;
-      if (!currentPassword || !newPassword) return res.status(400).json({ ok: false, error: "Current and new password required" });
-      const user = req.user!;
-      if (!user.passwordHash) return res.status(400).json({ ok: false, error: "No password set" });
-      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
-      if (!valid) return res.status(401).json({ ok: false, error: "Current password incorrect" });
-      const hash = await hashPassword(newPassword);
-      await storage.updateUserPassword(user.id, hash);
-      res.json({ ok: true });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to change password" });
-    }
-  });
-
-  app.get("/api/app/wallet", authMiddleware, async (req, res) => {
-    try {
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) return res.status(404).json({ ok: false, error: "Customer profile not found" });
-      const wallet = await storage.getWallet(customer.id);
-      const txns = await storage.getTransactionsByWallet(wallet!.id);
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const paginated = txns.slice((page - 1) * limit, page * limit);
-      res.json({
-        ok: true,
-        data: {
-          balance: wallet?.pointsBalance || 0,
-          lifetimeEarned: wallet?.lifetimeEarned || 0,
-          transactions: paginated,
-          total: txns.length,
-          page,
-          limit,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch wallet" });
-    }
-  });
-
-  app.get("/api/app/drops", authMiddleware, async (req, res) => {
-    try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const allDrops = await storage.getDropsByUser(req.user!.id, 500);
-      const filtered = req.query.status ? allDrops.filter(d => d.status === req.query.status) : allDrops;
-      const paginated = filtered.slice((page - 1) * limit, page * limit);
-      res.json({ ok: true, data: paginated, total: filtered.length, page, limit });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
-    }
-  });
-
-  app.get("/api/app/drops/:id", authMiddleware, async (req, res) => {
-    try {
-      const drop = await storage.getDrop(parseInt(req.params.id));
-      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
-      const images = await storage.getDropImages(drop.id);
-      const dropAppeals = await storage.getAppealsByDrop(drop.id);
-      res.json({ ok: true, data: { ...drop, images, appeals: dropAppeals } });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch drop" });
-    }
-  });
-
-  app.post("/api/app/drops/:id/appeal", authMiddleware, async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.id);
-      const { reason } = req.body;
-      const drop = await storage.getDrop(dropId);
-      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
-      const appeal = await storage.createAppeal({ dropId, userId: req.user!.id, type: "appeal", payloadJson: { reason } });
-      await storage.updateDrop(dropId, { status: "appealed" });
-      res.json({ ok: true, data: appeal });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to create appeal" });
-    }
-  });
-
-  app.post("/api/app/drops/:id/self-report", authMiddleware, async (req, res) => {
-    try {
-      const dropId = parseInt(req.params.id);
-      const { brand, subtype, flavor } = req.body;
-      const appeal = await storage.createAppeal({ dropId, userId: req.user!.id, type: "self_report", payloadJson: { brand, subtype, flavor } });
-      res.json({ ok: true, data: appeal });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to self-report" });
-    }
-  });
-
-  app.get("/api/app/store", async (req, res) => {
-    try {
-      const items = await storage.getStoreItemsByCategory("customer");
-      res.json({ ok: true, data: items.filter(i => i.active) });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch store" });
-    }
-  });
-
-  app.post("/api/app/store/redeem", authMiddleware, async (req, res) => {
-    try {
-      const { itemId } = req.body;
-      if (!itemId) return res.status(400).json({ ok: false, error: "itemId required" });
-      const item = await storage.getStoreItem(itemId);
-      if (!item) return res.status(404).json({ ok: false, error: "Item not found" });
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) return res.status(404).json({ ok: false, error: "Customer not found" });
-      const wallet = await storage.getWallet(customer.id);
-      if (!wallet || wallet.pointsBalance < item.pointsCost) {
-        return res.status(400).json({ ok: false, error: "Insufficient balance" });
-      }
-      const redemption = await storage.createRedemption({ customerId: customer.id, storeItemId: item.id, pointsSpent: item.pointsCost, status: "PENDING" });
-      await storage.updateWalletBalance(customer.id, -item.pointsCost, false);
-      await storage.createTransaction({ walletId: wallet.id, amount: -item.pointsCost, type: "REDEEM", description: `Redeemed: ${item.name}` });
-      res.json({ ok: true, data: redemption });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to redeem" });
-    }
-  });
-
-  app.get("/api/app/redemptions", authMiddleware, async (req, res) => {
-    try {
-      const customer = await storage.getCustomerByUserId(req.user!.id);
-      if (!customer) return res.json({ ok: true, data: [] });
-      const redemptionsList = await storage.getRedemptionsByCustomer(customer.id);
-      res.json({ ok: true, data: redemptionsList });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch redemptions" });
-    }
-  });
-
-  app.post("/api/app/claim", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const { token, email, password } = req.body;
-      if (!token) return res.status(400).json({ ok: false, error: "Token required" });
-      res.json({ ok: true, message: "Use the existing /api/claim or /api/v2/claim endpoint" });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to claim" });
-    }
-  });
-
-  app.post("/api/app/scan", authMiddleware, async (req, res) => {
-    try {
-      const { imageUrl } = req.body;
-      if (!imageUrl) return res.status(400).json({ ok: false, error: "imageUrl required" });
-      let result = { category: "Unknown", brand: null as string | null, subtype: null as string | null, flavor: null as string | null, confidence: 0 };
-      if (process.env.OPENAI_API_KEY) {
-        try {
-          const { classifyDrop } = await import("./ai");
-          result = await classifyDrop(imageUrl);
-        } catch (e) {
-          console.error("App scan AI error:", e);
-        }
-      }
-      res.json({ ok: true, data: result });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to scan" });
-    }
-  });
-
-  app.get("/api/app/notifications", authMiddleware, async (req, res) => {
-    try {
-      res.json({ ok: true, data: [] });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch notifications" });
-    }
-  });
-
-  // --- VeriScan app endpoints ---
-  app.get("/api/app/veriscan/validate", async (req, res) => {
-    try {
-      const { binId, shopId, sig } = req.query;
-      if (!shopId) return res.status(400).json({ ok: false, error: "shopId required" });
-      const shop = await storage.getShop(parseInt(shopId as string));
-      if (!shop) return res.status(404).json({ ok: false, error: "Shop not found" });
-      const shopBins = await storage.getBinsByShop(shop.id);
-      let bin = null;
-      if (binId) bin = await storage.getBin(parseInt(binId as string));
-      res.json({
-        ok: true,
-        data: {
-          shop: { id: shop.id, name: shop.name, address: shop.address },
-          bin: bin ? { id: bin.id, name: bin.name } : null,
-          bins: shopBins.map(b => ({ id: b.id, name: b.name })),
-          multipleBins: shopBins.length > 1,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to validate" });
-    }
-  });
-
-  app.post("/api/app/veriscan/session/start", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const { shopId, binId } = req.body;
-      if (!shopId) return res.status(400).json({ ok: false, error: "shopId required" });
-      const session = await storage.createVeriscanSession({ userId: req.user?.id || null, shopId, binId: binId || null, status: "active", expectedItemCount: 0 });
-      res.json({ ok: true, data: session });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to start session" });
-    }
-  });
-
-  app.post("/api/app/veriscan/session/:id/items", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const sessionId = parseInt(req.params.id);
-      const session = await storage.getVeriscanSession(sessionId);
-      if (!session) return res.status(404).json({ ok: false, error: "Session not found" });
-      const { imageUrl } = req.body;
-      let aiResult = { brand: null as string | null, subtype: null as string | null, flavor: null as string | null, confidence: 0 };
-      if (imageUrl && process.env.OPENAI_API_KEY) {
-        try {
-          const { classifyDrop } = await import("./ai");
-          const result = await classifyDrop(imageUrl);
-          aiResult = { brand: result.brand, subtype: result.subtype, flavor: result.flavor, confidence: result.confidence };
-        } catch (e) { console.error("VeriScan AI error:", e); }
-      }
-      const item = await storage.createVeriscanItem({ sessionId, imageUrl, aiBrand: aiResult.brand, aiSubtype: aiResult.subtype, aiFlavor: aiResult.flavor, aiConfidence: aiResult.confidence, modifier: 2.0 });
-      await storage.updateVeriscanSession(sessionId, { expectedItemCount: session.expectedItemCount + 1 });
-      res.json({ ok: true, data: item });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to add item" });
-    }
-  });
-
-  app.post("/api/app/veriscan/session/:id/items/:itemId/confirm", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const { brand, subtype, flavor } = req.body;
-      if (!brand) return res.status(400).json({ ok: false, error: "brand required" });
-      const item = await storage.updateVeriscanItem(parseInt(req.params.itemId), { finalBrand: brand, finalSubtype: subtype || null, finalFlavor: flavor || null, confirmedAt: new Date(), modifier: 2.0 });
-      if (!item) return res.status(404).json({ ok: false, error: "Item not found" });
-      res.json({ ok: true, data: item });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to confirm" });
-    }
-  });
-
-  app.post("/api/app/veriscan/session/:id/arm", optionalAuthMiddleware, async (req, res) => {
-    try {
-      const sessionId = parseInt(req.params.id);
-      const session = await storage.getVeriscanSession(sessionId);
-      if (!session) return res.status(404).json({ ok: false, error: "Session not found" });
-      const { timeoutSeconds = 60 } = req.body;
-      const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
-      const updated = await storage.updateVeriscanSession(sessionId, { status: "armed", expiresAt });
-      const { getRealtimeAdapter } = await import("./realtime");
-      if (session.binId) getRealtimeAdapter().sendArmVeriScan(session.binId, sessionId, expiresAt, session.expectedItemCount);
-      res.json({ ok: true, data: { ...updated, armStatus: "armed", expiresAt } });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to arm" });
-    }
-  });
-
-  app.get("/api/app/veriscan/sessions", authMiddleware, async (req, res) => {
-    try {
-      const userSessions = await storage.getVeriscanSessionsByUser(req.user!.id);
-      res.json({ ok: true, data: userSessions });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch sessions" });
-    }
-  });
-
-  // --- Partner app endpoints ---
-  app.get("/api/app/partner/shops", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const partnerShops = await storage.getShopsByMemberId(req.user!.id);
-      const shopsWithStats = await Promise.all(partnerShops.map(async (shop) => {
-        const events = await storage.getDropEventsByShop(shop.id);
-        const shopBins = await storage.getBinsByShop(shop.id);
-        return {
-          id: shop.id, name: shop.name, address: shop.address,
-          totalDrops: events.length,
-          binsCount: shopBins.length,
-          status: shop.status,
-        };
-      }));
-      res.json({ ok: true, data: shopsWithStats });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch shops" });
-    }
-  });
-
-  app.get("/api/app/partner/shops/:id", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.id);
-      const shop = await storage.getShop(shopId);
-      if (!shop) return res.status(404).json({ ok: false, error: "Shop not found" });
-      const shopBins = await storage.getBinsByShop(shopId);
-      const alerts = await storage.getFireAlertsByShop(shopId);
-      const recentDrops = await storage.getDropsByShop(shopId, 20);
-      res.json({
-        ok: true,
-        data: {
-          ...shop,
-          bins: shopBins.map(b => ({ id: b.id, name: b.name, status: b.status, fillLevel: b.fillLevel })),
-          activeAlerts: alerts.filter(a => !a.resolvedAt).length,
-          recentDrops: recentDrops.length,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch shop" });
-    }
-  });
-
-  app.get("/api/app/partner/shops/:id/stats", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.id);
-      const events = await storage.getDropEventsByShop(shopId);
-      const shopDevices = await storage.getDevicesByShop(shopId);
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const thisWeek = new Date(today); thisWeek.setDate(thisWeek.getDate() - 7);
-      const thisMonth = new Date(today); thisMonth.setDate(1);
-      res.json({
-        ok: true,
-        data: {
-          totalDrops: events.length,
-          dropsToday: events.filter(e => new Date(e.createdAt) >= today).length,
-          dropsThisWeek: events.filter(e => new Date(e.createdAt) >= thisWeek).length,
-          dropsThisMonth: events.filter(e => new Date(e.createdAt) >= thisMonth).length,
-          totalPoints: events.reduce((s, e) => s + e.pointsAwarded, 0),
-          activeDevices: shopDevices.filter(d => d.status === "ACTIVE").length,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch stats" });
-    }
-  });
-
-  app.get("/api/app/partner/shops/:id/drops", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopId = parseInt(req.params.id);
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const shopDrops = await storage.getDropsByShop(shopId, 500);
-      const paginated = shopDrops.slice((page - 1) * limit, page * limit);
-      res.json({ ok: true, data: paginated, total: shopDrops.length, page, limit });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
-    }
-  });
-
-  app.get("/api/app/partner/shops/:id/bins", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const shopBins = await storage.getBinsByShop(parseInt(req.params.id));
-      const binsWithCaps = await Promise.all(shopBins.map(async (bin) => {
-        const cap = await storage.getBinCapabilities(bin.id);
-        return { ...bin, capabilities: cap || null };
-      }));
-      res.json({ ok: true, data: binsWithCaps });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch bins" });
-    }
-  });
-
-  app.get("/api/app/partner/shops/:id/alerts", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const alerts = await storage.getFireAlertsByShop(parseInt(req.params.id));
-      res.json({ ok: true, data: alerts });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch alerts" });
-    }
-  });
-
-  app.post("/api/app/partner/shops/:id/alerts/:alertId/acknowledge", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const alert = await storage.acknowledgeFireAlert(parseInt(req.params.alertId), req.user!.id);
-      if (!alert) return res.status(404).json({ ok: false, error: "Alert not found" });
-      res.json({ ok: true, data: alert });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to acknowledge" });
-    }
-  });
-
-  app.post("/api/app/partner/shops/:id/pickup", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const { notes } = req.body;
-      const pickup = await storage.createPickupRequest({ shopId: parseInt(req.params.id), requestedById: req.user!.id, notes, status: "PENDING" });
-      res.json({ ok: true, data: pickup });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to request pickup" });
-    }
-  });
-
-  app.get("/api/app/partner/shops/:id/reward-config", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const config = await storage.getRewardConfig(parseInt(req.params.id));
-      res.json({ ok: true, data: config });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch config" });
-    }
-  });
-
-  app.patch("/api/app/partner/shops/:id/reward-config", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      const config = await storage.updateRewardConfig(parseInt(req.params.id), req.body);
-      res.json({ ok: true, data: config });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to update config" });
-    }
-  });
-
-  app.get("/api/app/partner/notifications", authMiddleware, requireRole("PARTNER"), async (req, res) => {
-    try {
-      res.json({ ok: true, data: [] });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch notifications" });
-    }
-  });
-
-  // --- Staff app endpoints ---
-  app.get("/api/app/staff/dashboard", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allDrops = await storage.getAllDrops(1000);
-      const allBins = await storage.getAllBins();
-      const pendingAppeals = await storage.getAllAppeals();
-      const pending = pendingAppeals.filter(a => !a.resolvedAt);
-      const denied = allDrops.filter(d => d.status === "denied");
-      const userViolations: Record<string, number> = {};
-      denied.forEach(d => { if (d.userId) userViolations[d.userId] = (userViolations[d.userId] || 0) + 1; });
-      const flaggedCount = Object.values(userViolations).filter(c => c >= 3).length;
-      res.json({
-        ok: true,
-        data: {
-          totalDrops: allDrops.length,
-          activeBins: allBins.filter(b => b.status === "ONLINE").length,
-          pendingAppeals: pending.length,
-          flaggedUsers: flaggedCount,
-          dropsToday: allDrops.filter(d => { const t = new Date(); t.setHours(0,0,0,0); return new Date(d.createdAt) >= t; }).length,
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch dashboard" });
-    }
-  });
-
-  app.get("/api/app/staff/drops", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const allDrops = await storage.getAllDrops(1000);
-      let filtered = allDrops;
-      if (req.query.status) filtered = filtered.filter(d => d.status === req.query.status);
-      if (req.query.shopId) filtered = filtered.filter(d => d.shopId === parseInt(req.query.shopId as string));
-      const paginated = filtered.slice((page - 1) * limit, page * limit);
-      res.json({ ok: true, data: paginated, total: filtered.length, page, limit });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch drops" });
-    }
-  });
-
-  app.get("/api/app/staff/drops/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const drop = await storage.getDrop(parseInt(req.params.id));
-      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
-      const images = await storage.getDropImages(drop.id);
-      const jobs = await storage.getAiJobsByDrop(drop.id);
-      const dropAppeals = await storage.getAppealsByDrop(drop.id);
-      res.json({ ok: true, data: { ...drop, images, aiJobs: jobs, appeals: dropAppeals } });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch drop" });
-    }
-  });
-
-  app.patch("/api/app/staff/drops/:id/override", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { category, brand, subtype, flavor, status } = req.body;
-      const drop = await storage.updateDrop(parseInt(req.params.id), {
-        category: category || undefined, brand: brand || undefined,
-        subtype: subtype || undefined, flavor: flavor || undefined,
-        status: status || undefined, overrideSource: `staff:${req.user!.email}`,
-      });
-      if (!drop) return res.status(404).json({ ok: false, error: "Drop not found" });
-      res.json({ ok: true, data: drop });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to override" });
-    }
-  });
-
-  app.get("/api/app/staff/appeals", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allAppeals = await storage.getAllAppeals();
-      res.json({ ok: true, data: allAppeals });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch appeals" });
-    }
-  });
-
-  app.patch("/api/app/staff/appeals/:id/resolve", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { resolution } = req.body;
-      if (!resolution) return res.status(400).json({ ok: false, error: "resolution required" });
-      const appeal = await storage.resolveAppeal(parseInt(req.params.id), resolution, req.user!.id);
-      if (!appeal) return res.status(404).json({ ok: false, error: "Appeal not found" });
-      res.json({ ok: true, data: appeal });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to resolve" });
-    }
-  });
-
-  app.get("/api/app/staff/flagged-users", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allDrops = await storage.getAllDrops(5000);
-      const denied = allDrops.filter(d => d.status === "denied" && d.userId);
-      const userCounts: Record<string, { count: number; categories: string[] }> = {};
-      denied.forEach(d => {
-        if (!d.userId) return;
-        if (!userCounts[d.userId]) userCounts[d.userId] = { count: 0, categories: [] };
-        userCounts[d.userId].count++;
-        userCounts[d.userId].categories.push(d.category);
-      });
-      const flagged = Object.entries(userCounts)
-        .filter(([, v]) => v.count >= 3)
-        .map(([userId, v]) => ({ userId, deniedCount: v.count, categories: v.categories }));
-      res.json({ ok: true, data: flagged });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch flagged users" });
-    }
-  });
 
-  app.get("/api/app/staff/bins", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const allBins = await storage.getAllBins();
-      const binsWithCaps = await Promise.all(allBins.map(async (bin) => {
-        const cap = await storage.getBinCapabilities(bin.id);
-        return { ...bin, capabilities: cap || null };
-      }));
-      res.json({ ok: true, data: binsWithCaps });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to fetch bins" });
-    }
+  app.get("/api/staff/volunteers", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    res.json(await storage.getAllVolunteers());
   });
 
-  app.post("/api/app/staff/pair-claim", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    try {
-      const { pairCode, shopId } = req.body;
-      if (!pairCode || !shopId) return res.status(400).json({ ok: false, error: "pairCode and shopId required" });
-      const request = await storage.getPairRequestByCode(pairCode);
-      if (!request) return res.status(404).json({ ok: false, error: "Pair request not found" });
-      if (request.claimed) return res.status(400).json({ ok: false, error: "Already claimed" });
-      res.json({ ok: true, message: "Use /api/v2/device/pair-claim for full pairing flow" });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: "Failed to claim" });
-    }
+  app.get("/api/staff/pickups", authMiddleware, requireRole("STAFF"), async (_req, res) => {
+    res.json(await storage.getAllPickupRequests());
   });
 
   return httpServer;
