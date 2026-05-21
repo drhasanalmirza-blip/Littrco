@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation, Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,8 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const { setAuth } = useStore();
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const nextParam = new URLSearchParams(search).get('next');
   const { executeRecaptcha } = useRecaptcha();
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -65,8 +67,9 @@ export default function RegisterPage() {
       setSuccess(true);
       setAuth(data.user, data.sessionId);
 
+      const safeNext = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : null;
       setTimeout(() => {
-        setLocation('/app');
+        setLocation(safeNext || '/app');
       }, 1500);
     } catch (err) {
       setError('Connection error. Please try again.');

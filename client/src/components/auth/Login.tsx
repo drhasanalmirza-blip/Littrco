@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import { useState } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation, Link, useSearch } from "wouter";
 import { Lock, Mail, LogIn, Recycle, ArrowLeft } from "lucide-react";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
 
@@ -16,6 +16,8 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
   const [loading, setLoading] = useState(false);
   const { setAuth, clearAuth } = useStore();
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const nextParam = new URLSearchParams(search).get('next');
   const { executeRecaptcha } = useRecaptcha();
 
   const needsCaptcha = type === 'customer';
@@ -54,7 +56,10 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
       };
       
       const dashboardPath = roleMap[data.user.role] === 'app' ? '/app' : `/${roleMap[data.user.role] || type}/dashboard`;
-      setLocation(dashboardPath);
+      // Honor ?next= so post-claim sign-in returns to /claim/:token.
+      // Only allow same-origin internal paths.
+      const safeNext = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : null;
+      setLocation(safeNext || dashboardPath);
     } catch (err) {
       setError('Connection error. Please try again.');
     } finally {

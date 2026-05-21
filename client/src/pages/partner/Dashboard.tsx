@@ -326,17 +326,32 @@ function AddBinDialog({ shop, onClose, onPaired }: { shop: Shop; onClose: () => 
     try {
       const r = await apiRequest("/api/partner/bins/pair-init", { method: "POST", body: JSON.stringify({ shopId: shop.id }) });
       if (!r.ok) throw new Error("pair-init failed");
-      const { deviceKey, nonce, serial } = await r.json();
+      const { deviceId, deviceKey, nonce, serial } = await r.json();
       setMsg("Pick your bin in the Bluetooth picker…");
       setState("bt");
       await pairBinOverBLE({ deviceKey, nonce, serial });
-      setMsg("Waiting for bin to come online…");
+      setMsg(`Waiting for bin ${serial} to come online…`);
       setState("waiting");
-      // Poll devices for ~30s
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 1000));
+      // Poll devices list for this serial reaching LIVE. Up to 60s.
+      let live = false;
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
         onPaired();
+        try {
+          const dr = await apiRequest(`/api/partner/shops/${shop.id}/devices`);
+          if (dr.ok) {
+            const devs: any[] = await dr.json();
+            const me = devs.find((d) => d.id === deviceId || d.serial === serial);
+            if (me && me.status === "LIVE") { live = true; break; }
+          }
+        } catch { /* keep polling */ }
       }
+      if (!live) {
+        setMsg("Bin didn't come online. Check WiFi and try again.");
+        setState("error");
+        return;
+      }
+      setMsg(`${serial} is Live ✓`);
       setState("done");
     } catch (e: any) {
       setMsg(e.message || "Pairing failed");
