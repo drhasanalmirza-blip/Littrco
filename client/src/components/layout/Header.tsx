@@ -8,7 +8,13 @@ import { useStore } from "@/lib/store";
 export function Header() {
   const [location] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const { user, theme, toggleTheme } = useStore();
+  const { user, role, theme, toggleTheme } = useStore();
+
+  // Logged-in users go straight to their own dashboard (session persists in
+  // localStorage, so this works across visits until they log out).
+  const dashboardHref =
+    role === "staff" ? "/staff/dashboard" : role === "partner" ? "/partner/dashboard" : "/app";
+  const dashboardLabel = role === "staff" || role === "partner" ? "Dashboard" : "My Wallet";
 
   const links = [
     { href: "/", label: "Home" },
@@ -64,14 +70,14 @@ export function Header() {
               <Moon className="h-4 w-4 text-gray-600" />
             )}
           </button>
-          <Link href={user ? "/app" : "/app/login"} aria-label={user ? "Open my wallet" : "Log in to your LITTR account"}>
+          <Link href={user ? dashboardHref : "/app/login"} aria-label={user ? `Open your ${dashboardLabel.toLowerCase()}` : "Log in to your LITTR account"}>
             <Button variant="outline" size="sm" className={cn(
               "transition-colors duration-500",
-              user 
-                ? "border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950" 
+              user
+                ? "border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950"
                 : "border-gray-400 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
             )}>
-              {user ? "My Wallet" : "Login"}
+              {user ? dashboardLabel : "Login"}
             </Button>
           </Link>
           <Link href="/business" aria-label="Request a free recycling bin for your business">
@@ -128,14 +134,14 @@ export function Header() {
             </Link>
           ))}
           <div className="pt-2 border-t dark:border-gray-800 mt-2 space-y-2">
-            <Link href={user ? "/app" : "/app/login"} onClick={() => setIsOpen(false)} aria-label={user ? "Open my wallet" : "Log in to your LITTR account"}>
+            <Link href={user ? dashboardHref : "/app/login"} onClick={() => setIsOpen(false)} aria-label={user ? `Open your ${dashboardLabel.toLowerCase()}` : "Log in to your LITTR account"}>
               <Button variant="outline" className={cn(
                 "w-full transition-colors duration-500",
-                user 
-                  ? "border-green-500 text-green-600" 
+                user
+                  ? "border-green-500 text-green-600"
                   : "border-gray-400 text-gray-600 dark:border-gray-600 dark:text-gray-300"
               )}>
-                {user ? "My Wallet" : "Login"}
+                {user ? dashboardLabel : "Login"}
               </Button>
             </Link>
             <Link href="/business" onClick={() => setIsOpen(false)} aria-label="Request a free recycling bin for your business">

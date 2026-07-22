@@ -25,6 +25,11 @@ import {
   DEFAULT_DEVICE_SETTINGS,
   mergeDeviceSettings,
   fireActionSchema,
+  vocPctFromAnalog,
+  vocAnalogFromPct,
+  VOC_RECOMMENDED_PCT,
+  celsiusToFahrenheit,
+  fahrenheitToCelsius,
   type DeviceSettingsJson,
   type FireAction,
 } from "@shared/deviceSettings";
@@ -45,7 +50,13 @@ interface LiveFill {
   lastHeartbeatAt: string | null;
 }
 
-const ACTIONS = fireActionSchema.options; // ["NOTIFY","SMS","CALL","BIN_ALARM"]
+// Bin-local fire actions only (what the bin itself does). Emails/SMS/calls are
+// configured per-user in the Notifications tab, not here.
+const ACTIONS = fireActionSchema.options; // ["DISPLAY","ALARM"]
+const ACTION_LABELS: Record<FireAction, string> = {
+  DISPLAY: "Show warning on screen",
+  ALARM: "Sound the bin alarm",
+};
 
 const FIRE_MODES = [
   { value: "0", label: "Temperature only" },
@@ -144,6 +155,8 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
     setForm((f) =>
       f ? ({ ...f, [section]: { ...((f[section] as any) ?? {}), ...values } }) : f,
     );
+
+  const [tempUnit, setTempUnit] = useState<"C" | "F">("C");
 
   const toggleAction = (
     group: "onBoth" | "onTempOnly" | "onVocOnly",
@@ -458,13 +471,25 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                 />
               </Row>
 
-              <Row label="Fire detection" hint="Master enable for over-temp / VOC alarms.">
+              <Row
+                label="Fire detection"
+                hint="On by default and should stay on. Turning it off sends an immediate notification to LITTR staff."
+              >
                 <Switch
-                  checked={!!fire.enabled}
+                  checked={fire.enabled !== false}
                   onCheckedChange={(v) => setSection("fire", { enabled: v })}
                   data-testid="switch-fire-enabled"
                 />
               </Row>
+              {fire.enabled === false && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
+                  <span>
+                    Fire detection is OFF for this bin. LITTR staff are notified whenever a partner
+                    disables it — re-enable it unless there's a specific reason.
+                  </span>
+                </div>
+              )}
 
               <Row label="Trigger mode" hint="Which sensor(s) raise a fire event.">
                 <Select
@@ -484,26 +509,77 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                 </Select>
               </Row>
 
-              <Row label="Temperature threshold" hint="°C that triggers a temp alarm.">
-                <NumInput
-                  value={fire.tempC}
-                  min={0}
-                  max={150}
-                  step={0.5}
-                  onChange={(n) => setSection("fire", { tempC: n })}
-                  testid="input-fire-tempc"
-                />
+              <Row
+                label="Temperature threshold"
+                hint={`Reading that triggers a temp alarm (stored in °C, shown in °${tempUnit}).`}
+              >
+                <div className="flex items-center gap-2">
+                  <NumInput
+                    value={
+                      fire.tempC == null
+                        ? undefined
+                        : tempUnit === "C"
+                          ? fire.tempC
+                          : Math.round(celsiusToFahrenheit(fire.tempC))
+                    }
+                    min={tempUnit === "C" ? 0 : 32}
+                    max={tempUnit === "C" ? 150 : 302}
+                    step={tempUnit === "C" ? 0.5 : 1}
+                    onChange={(n) =>
+                      setSection("fire", {
+                        tempC: tempUnit === "C" ? n : Math.round(fahrenheitToCelsius(n) * 2) / 2,
+                      })
+                    }
+                    testid="input-fire-tempc"
+                  />
+                  <div className="flex overflow-hidden rounded-md border">
+                    {(["C", "F"] as const).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setTempUnit(u)}
+                        className={cn(
+                          "px-2.5 py-1.5 text-sm",
+                          tempUnit === u ? "bg-green-500 text-white" : "bg-background hover:bg-muted",
+                        )}
+                        data-testid={`button-fire-temp-unit-${u}`}
+                      >
+                        °{u}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </Row>
 
-              <Row label="VOC threshold" hint="Raw analog VOC level (0–65535).">
-                <NumInput
-                  value={fire.vocAnalog}
-                  min={0}
-                  max={65535}
-                  step={1}
-                  onChange={(n) => setSection("fire", { vocAnalog: n })}
-                  testid="input-fire-voc"
-                />
+              <Row
+                label="VOC threshold"
+                hint={`Air-quality level (as % of sensor range) that triggers a VOC alarm. Recommended: ${VOC_RECOMMENDED_PCT}% to avoid frequent false alarms from nearby vaping or smoke.`}
+              >
+                <div className="w-full space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium" data-testid="text-fire-voc-pct">
+                      {vocPctFromAnalog(fire.vocAnalog ?? vocAnalogFromPct(VOC_RECOMMENDED_PCT))}%
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs text-green-600 underline dark:text-green-500"
+                      onClick={() =>
+                        setSection("fire", { vocAnalog: vocAnalogFromPct(VOC_RECOMMENDED_PCT) })
+                      }
+                      data-testid="button-fire-voc-recommended"
+                    >
+                      Use recommended ({VOC_RECOMMENDED_PCT}%)
+                    </button>
+                  </div>
+                  <Slider
+                    value={[vocPctFromAnalog(fire.vocAnalog ?? vocAnalogFromPct(VOC_RECOMMENDED_PCT))]}
+                    min={0}
+                    max={100}
+                    step={1}
+                    onValueChange={([v]) => setSection("fire", { vocAnalog: vocAnalogFromPct(v) })}
+                    data-testid="slider-fire-voc"
+                  />
+                </div>
               </Row>
 
               <Row label="VOC warm-up" hint="Seconds to ignore VOC after boot.">
@@ -518,7 +594,11 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               </Row>
 
               <div className="pt-3 space-y-1">
-                <p className="text-sm font-medium">Actions on fire event</p>
+                <p className="text-sm font-medium">Bin actions on a warning</p>
+                <p className="text-xs text-muted-foreground">
+                  What the bin itself does on-site. Who gets emailed, texted, or called is set per
+                  person in the <span className="font-medium">Notifications</span> tab.
+                </p>
                 <ActionPicker
                   id="onboth"
                   label="Both sensors tripped"
@@ -718,7 +798,7 @@ function ActionPicker({
               onCheckedChange={(c) => onToggle(a, c === true)}
               data-testid={`check-${id}-${a}`}
             />
-            {a}
+            {ACTION_LABELS[a]}
           </label>
         ))}
       </div>

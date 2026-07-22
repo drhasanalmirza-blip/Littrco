@@ -14,6 +14,7 @@ export type AlertType =
   | "TEMP_HIGH"
   | "VOC_HIGH"
   | "FIRE"
+  | "FIRE_DISABLED"
   | "OFFLINE"
   | "SD_ERROR"
   | "CAMERA_ERROR";
@@ -22,16 +23,24 @@ export type AlertSeverity = "INFO" | "WARNING" | "CRITICAL";
 
 // §5.2 per-type table. (§2.2's blanket "FIRE ⇒ CRITICAL, others WARNING" is
 // superseded by this closed set, which marks SD/CAMERA errors INFO.)
+// FIRE_DISABLED = a partner turned fire detection off; delivered to STAFF only.
 export const ALERT_SEVERITY: Record<AlertType, AlertSeverity> = {
   FILL_THRESHOLD: "WARNING",
   FULL: "CRITICAL",
   TEMP_HIGH: "WARNING",
   VOC_HIGH: "WARNING",
   FIRE: "CRITICAL",
+  FIRE_DISABLED: "WARNING",
   OFFLINE: "WARNING",
   SD_ERROR: "INFO",
   CAMERA_ERROR: "INFO",
 };
+
+const SEVERITY_RANK: Record<AlertSeverity, number> = { INFO: 0, WARNING: 1, CRITICAL: 2 };
+
+export function severityAtLeast(sev: AlertSeverity, min: AlertSeverity): boolean {
+  return SEVERITY_RANK[sev] >= SEVERITY_RANK[min];
+}
 
 export const DEVICE_EVENT_TYPES = ["FIRE", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR"] as const;
 export type DeviceEventType = (typeof DEVICE_EVENT_TYPES)[number];
@@ -133,6 +142,18 @@ export interface EventPrefs {
   vocHigh: boolean;
   offline: boolean;
   drops: boolean;
+  /** Personal gate: only notify TEMP_HIGH when the reading is ≥ this °C. null = any. */
+  tempThresholdC: number | null;
+  /** Personal gate: only notify VOC_HIGH when the reading is ≥ this % (of ADC max). null = any. */
+  vocThresholdPct: number | null;
+}
+
+/** One notification phone number with its own channels and minimum alert level. */
+export interface PhoneEntry {
+  number: string;
+  sms: boolean;
+  call: boolean;
+  minSeverity: AlertSeverity;
 }
 
 export const DEFAULT_CHANNELS: ChannelPrefs = { email: true, sms: false, call: false, push: false };
@@ -146,6 +167,8 @@ export const DEFAULT_EVENTS: EventPrefs = {
   vocHigh: true,
   offline: true,
   drops: false,
+  tempThresholdC: null,
+  vocThresholdPct: null,
 };
 
 /** Merge a stored channelsJson value (possibly missing/partial/junk) onto defaults. */
@@ -171,8 +194,77 @@ export function mergeEventPrefs(stored: unknown): EventPrefs {
         (n): n is number => typeof n === "number" && Number.isFinite(n),
       );
     }
+    for (const k of ["tempThresholdC", "vocThresholdPct"] as const) {
+      const v = stored[k];
+      if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+      else if (v === null) out[k] = null;
+    }
   }
   return out;
+}
+
+/** Merge a stored phonesJson value (possibly missing/partial/junk) into clean entries. */
+export function mergePhoneEntries(stored: unknown): PhoneEntry[] {
+  if (!Array.isArray(stored)) return [];
+  const out: PhoneEntry[] = [];
+  for (const raw of stored) {
+    if (!isRecord(raw) || typeof raw.number !== "string") continue;
+    const number = raw.number.trim();
+    if (number.length < 3) continue;
+    const sev = raw.minSeverity;
+    out.push({
+      number,
+      sms: raw.sms === true,
+      call: raw.call === true,
+      minSeverity: sev === "INFO" || sev === "WARNING" || sev === "CRITICAL" ? sev : "WARNING",
+    });
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+/** Canonical form for dedupe: digits only, preserving a leading +. */
+export function normalizePhoneNumber(number: string): string {
+  const trimmed = number.trim();
+  const digits = trimmed.replace(/[^\d]/g, "");
+  return trimmed.startsWith("+") ? `+${digits}` : digits;
+}
+
+export interface PhoneDispatchPlan {
+  number: string; // first-seen display form
+  sms: boolean;
+  call: boolean;
+  userIds: string[]; // accounts that contributed this number (for receipts)
+}
+
+/**
+ * Union SMS/CALL per phone number across every matching recipient, so a number
+ * shared by two accounts (e.g. manager set SMS, owner set CALL+SMS) is contacted
+ * once with the union (CALL+SMS) instead of duplicated. Entries whose
+ * minSeverity is above the alert's severity are skipped.
+ */
+export function planPhoneDispatch(
+  recipients: { userId: string; phones: PhoneEntry[] }[],
+  severity: AlertSeverity,
+): PhoneDispatchPlan[] {
+  const byNumber = new Map<string, PhoneDispatchPlan>();
+  for (const r of recipients) {
+    for (const p of r.phones) {
+      if (!severityAtLeast(severity, p.minSeverity)) continue;
+      if (!p.sms && !p.call) continue;
+      const key = normalizePhoneNumber(p.number);
+      if (!key) continue;
+      const existing = byNumber.get(key);
+      if (existing) {
+        existing.sms = existing.sms || p.sms;
+        existing.call = existing.call || p.call;
+        if (!existing.userIds.includes(r.userId)) existing.userIds.push(r.userId);
+      } else {
+        byNumber.set(key, { number: p.number, sms: p.sms, call: p.call, userIds: [r.userId] });
+      }
+    }
+  }
+  return Array.from(byNumber.values());
 }
 
 // Prefs PUT validation (spec §3.3/§4.1) — partial patches, unknown keys rejected
@@ -194,6 +286,17 @@ export const eventPrefsPatchSchema = z
     vocHigh: z.boolean().optional(),
     offline: z.boolean().optional(),
     drops: z.boolean().optional(),
+    tempThresholdC: z.number().min(0).max(150).nullable().optional(),
+    vocThresholdPct: z.number().min(0).max(100).nullable().optional(),
+  })
+  .strict();
+
+export const phoneEntrySchema = z
+  .object({
+    number: z.string().min(3).max(32),
+    sms: z.boolean(),
+    call: z.boolean(),
+    minSeverity: z.enum(["INFO", "WARNING", "CRITICAL"]),
   })
   .strict();
 
@@ -202,6 +305,7 @@ export const notificationPrefsPutSchema = z
     channelsJson: channelPrefsPatchSchema.optional(),
     eventsJson: eventPrefsPatchSchema.optional(),
     phone: z.string().min(3).max(32).nullable().optional(),
+    phonesJson: z.array(phoneEntrySchema).max(5).optional(), // replaces wholesale
   })
   .strict();
 
@@ -222,6 +326,28 @@ export function applyEventPrefsPatch(
   // fillLevels replaces wholesale when provided
   out.fillLevels = patch?.fillLevels !== undefined ? [...patch.fillLevels] : [...base.fillLevels];
   return out;
+}
+
+/**
+ * Which of a recipient's personal reading-thresholds (if set) gates this alert?
+ * Applies to TEMP_HIGH (°C) and VOC_HIGH (% of ADC max). When the alert carries
+ * no reading we deliver (can't compare); when the recipient has no threshold we
+ * deliver (opted into all).
+ */
+export function passesPersonalThresholds(
+  type: AlertType,
+  data: { tempC?: number; vocAnalog?: number } | null | undefined,
+  events: EventPrefs,
+  vocAnalogMax: number,
+): boolean {
+  if (type === "TEMP_HIGH" && events.tempThresholdC != null && typeof data?.tempC === "number") {
+    return data.tempC >= events.tempThresholdC;
+  }
+  if (type === "VOC_HIGH" && events.vocThresholdPct != null && typeof data?.vocAnalog === "number") {
+    const pct = (data.vocAnalog / vocAnalogMax) * 100;
+    return pct >= events.vocThresholdPct;
+  }
+  return true;
 }
 
 // ==================== Recipient filtering (spec §5.5) ====================
@@ -250,6 +376,10 @@ export function alertMatchesPrefs(
       return events.offline;
     case "FILL_THRESHOLD":
       return typeof data?.level === "number" && events.fillLevels.includes(data.level);
+    case "FIRE_DISABLED":
+      // Staff-only alert; recipient scoping happens in the dispatcher (staff
+      // recipients only), and there is no per-user opt-out for it.
+      return true;
     case "SD_ERROR":
     case "CAMERA_ERROR":
       return true;
@@ -280,9 +410,14 @@ export function withinDedupeWindow(alertCreatedAt: Date, now: Date): boolean {
   return now.getTime() - alertCreatedAt.getTime() < EVENT_DEDUPE_WINDOW_MS;
 }
 
-// ==================== Fire actions (spec §7) ====================
+// ==================== Fire actions (bin-local: DISPLAY / ALARM) ====================
+//
+// Fire actions belong to the BIN (warning screen, siren) and are deliberately
+// decoupled from the notification system — who gets emailed/texted/called is
+// each user's notification prefs. The server's only involvement is enqueueing
+// SOUND_ALARM as a backup when ALARM applies (the bin also acts locally).
 
-export type FireAction = "NOTIFY" | "SMS" | "CALL" | "BIN_ALARM";
+export type FireAction = "DISPLAY" | "ALARM";
 
 export interface FireRuleSettings {
   tempC?: number;
@@ -294,10 +429,10 @@ export interface FireRuleSettings {
 
 const FIRE_DEFAULTS: Required<Pick<FireRuleSettings, "tempC" | "vocAnalog" | "onBoth" | "onTempOnly" | "onVocOnly">> = {
   tempC: 40,
-  vocAnalog: 3000,
-  onBoth: ["NOTIFY", "BIN_ALARM"],
-  onTempOnly: ["NOTIFY"],
-  onVocOnly: ["NOTIFY"],
+  vocAnalog: 3072, // ≈75% of ADC range
+  onBoth: ["DISPLAY", "ALARM"],
+  onTempOnly: ["DISPLAY"],
+  onVocOnly: ["DISPLAY"],
 };
 
 /**
@@ -325,7 +460,14 @@ export function fireActionsForEvent(
 
 export function alertMessage(
   type: AlertType,
-  data: { level?: number; fillPercent?: number; tempC?: number; vocAnalog?: number; lastHeartbeatAt?: string },
+  data: {
+    level?: number;
+    fillPercent?: number;
+    tempC?: number;
+    vocAnalog?: number;
+    lastHeartbeatAt?: string;
+    disabledBy?: string;
+  },
 ): string {
   switch (type) {
     case "FILL_THRESHOLD":
@@ -338,6 +480,8 @@ export function alertMessage(
       return `High temperature${data.tempC != null ? `: ${data.tempC}°C` : ""}`;
     case "VOC_HIGH":
       return `High VOC reading${data.vocAnalog != null ? `: ${data.vocAnalog}` : ""}`;
+    case "FIRE_DISABLED":
+      return `Fire detection was turned OFF by ${data.disabledBy ?? "a partner"}`;
     case "OFFLINE":
       return `Bin offline — no heartbeat since ${data.lastHeartbeatAt ?? "unknown"}`;
     case "SD_ERROR":

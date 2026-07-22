@@ -440,7 +440,10 @@ export const notificationPrefs = pgTable("notification_prefs", {
     .default(sql`'{"email":true,"sms":false,"call":false,"push":false}'::jsonb`),
   eventsJson: jsonb("events_json").notNull()
     .default(sql`'{"full":true,"fillLevels":[],"fire":true,"tempHigh":true,"vocHigh":true,"offline":true,"drops":false}'::jsonb`),
-  phone: text("phone"),
+  phone: text("phone"), // legacy single number; superseded by phonesJson
+  // [{ number, sms, call, minSeverity }] — up to 5 numbers, each with its own
+  // channels and minimum alert level. Deduped across accounts at dispatch time.
+  phonesJson: jsonb("phones_json"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({
   userShopUniq: unique("notification_prefs_user_shop_uniq").on(t.userId, t.shopId),

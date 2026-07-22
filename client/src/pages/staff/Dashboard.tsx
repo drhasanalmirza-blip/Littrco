@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
+import DashboardHeader from "@/components/DashboardHeader";
 import ReviewQueue from "@/pages/staff/panels/ReviewQueue";
 import Sessions from "@/pages/staff/panels/Sessions";
 import Alerts from "@/pages/staff/panels/Alerts";
@@ -102,17 +103,9 @@ export default function StaffDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 md:p-8">
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Staff Dashboard</h1>
-            <p className="text-sm text-gray-500">{user.email}</p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={async () => { await apiRequest("/api/auth/logout", { method: "POST" }); clearAuth(); setLocation("/"); }} data-testid="button-logout">
-            <LogOut className="h-4 w-4" />
-          </Button>
-        </div>
+        <DashboardHeader title="Staff Dashboard" subtitle="LITTR One fleet control" />
 
         <Tabs defaultValue="devices">
           <TabsList className="mb-4 flex flex-wrap h-auto justify-start">

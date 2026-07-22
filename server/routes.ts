@@ -22,7 +22,7 @@ import { z } from "zod";
 import { writePhotoJpeg, decodeDataUrlOrBase64 } from "./blob";
 import { rateLimit, rateLimitByIp, deviceLimiter } from "./ratelimit";
 import { claimSessionForCustomer } from "./claims";
-import { evaluateTelemetry, handleDeviceEvent } from "./notify";
+import { evaluateTelemetry, handleDeviceEvent, notifyFireDisabled } from "./notify";
 import { validateDeviceSettings, mergeDeviceSettings } from "@shared/deviceSettings";
 import reviewRouter from "./routes/review";
 import { partnerRoleForShop } from "./routes/team";
@@ -404,11 +404,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!validated.ok) return res.status(400).json({ error: validated.error });
     // Spec §7: partial updates merge server-side onto the stored JSON
     const existing = await storage.getDeviceSettings(device.id);
-    const merged = mergeDeviceSettings(
-      (existing?.settingsJson as Record<string, unknown>) ?? {},
-      validated.value,
-    );
+    const storedJson = (existing?.settingsJson as Record<string, unknown>) ?? {};
+    const merged = mergeDeviceSettings(storedJson, validated.value);
     const s = await storage.upsertDeviceSettings(device.id, merged);
+
+    // Fire detection is on by default and staying on is a safety expectation.
+    // A PARTNER may turn it off, but doing so notifies LITTR staff (oversight).
+    const wasEnabled = (storedJson as any)?.fire?.enabled !== false; // default true
+    const nowDisabled = (merged as any)?.fire?.enabled === false;
+    if (wasEnabled && nowDisabled && req.user!.role !== "STAFF") {
+      void notifyFireDisabled(device, req.user!.email);
+    }
+
     res.json(s);
   });
 

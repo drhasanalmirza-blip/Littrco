@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiJson, apiSend } from "@/lib/apiJson";
 import { useToast } from "@/hooks/use-toast";
@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Copy, Check, RefreshCcw, Radio, CheckCircle2, Clock } from "lucide-react";
+import { Copy, Check, RefreshCcw, Radio, CheckCircle2, Clock, Globe, Wifi, KeyRound, Power } from "lucide-react";
+import littrOneImage from "@/assets/images/littr-one-official.png";
 
 interface Device {
   id: number;
@@ -28,12 +29,33 @@ function fmtRemaining(ms: number): string {
   return `${m}:${s}`;
 }
 
-const STEPS = [
-  "Power on the bin and wait for its screen to show the setup network.",
-  "On your phone, join the WiFi network shown on the bin's screen.",
-  "Open http://littr.bin in your phone's browser.",
-  "Enter your shop's WiFi name + password, and the pair code above.",
-  "The bin connects to WiFi and appears below as LIVE.",
+const STEPS: { icon: ComponentType<{ className?: string }>; text: ReactNode }[] = [
+  { icon: Power, text: "Power on your LITTR One and wait for its screen to show the setup network." },
+  { icon: Wifi, text: "On your phone, join the WiFi network shown on the bin's screen." },
+  {
+    icon: Globe,
+    text: (
+      <>
+        Open the bin's setup page:{" "}
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="ml-1 h-7 border-green-500 font-mono text-green-600 hover:bg-green-50 dark:hover:bg-green-950"
+        >
+          <a href="http://littr.bin" target="_blank" rel="noopener noreferrer" data-testid="link-littr-bin">
+            <Globe className="mr-1 h-3.5 w-3.5" />
+            littr.bin
+          </a>
+        </Button>
+        <span className="mt-1 block text-xs text-muted-foreground">
+          (only opens while your phone is on the bin's WiFi — from anywhere else it won't resolve)
+        </span>
+      </>
+    ),
+  },
+  { icon: KeyRound, text: "Enter your shop's WiFi name + password, and the pair code above." },
+  { icon: CheckCircle2, text: "The bin connects to WiFi and appears below as LIVE." },
 ];
 
 export default function Pairing({ shopId, enabled }: { shopId: number; enabled: boolean }) {
@@ -95,19 +117,33 @@ export default function Pairing({ shopId, enabled }: { shopId: number; enabled: 
         </CardHeader>
         <CardContent className="space-y-6">
           {!pairing ? (
-            <div className="flex flex-col items-center gap-4 py-6 text-center">
-              <Radio className="h-10 w-10 text-gray-400" />
-              <p className="max-w-md text-sm text-gray-500">
-                Generate a one-time pair code, then follow the on-screen steps to connect a
-                LITTR bin to this shop's WiFi.
-              </p>
-              <Button
-                onClick={() => genCode.mutate()}
-                disabled={!gated || genCode.isPending}
-                data-testid="button-generate-pair-code"
-              >
-                {genCode.isPending ? "Generating…" : "Pair a new bin"}
-              </Button>
+            <div className="flex flex-col items-center gap-6 py-4 sm:flex-row sm:justify-center sm:gap-10">
+              <img
+                src={littrOneImage}
+                alt="The LITTR One smart recycling bin"
+                className="h-56 w-auto rounded-xl object-contain sm:h-64"
+                data-testid="img-littr-one"
+              />
+              <div className="flex max-w-md flex-col items-center gap-4 text-center sm:items-start sm:text-left">
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    Set up your <span className="text-green-600 dark:text-green-500">LITTR One</span>
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Generate a one-time pair code, then follow the guided steps to connect the bin
+                    to your shop's WiFi. The whole setup takes about two minutes.
+                  </p>
+                </div>
+                <Button
+                  size="lg"
+                  className="bg-green-500 font-semibold text-white hover:bg-green-600"
+                  onClick={() => genCode.mutate()}
+                  disabled={!gated || genCode.isPending}
+                  data-testid="button-generate-pair-code"
+                >
+                  {genCode.isPending ? "Generating…" : "Generate pair code"}
+                </Button>
+              </div>
             </div>
           ) : (
             <>
@@ -167,16 +203,23 @@ export default function Pairing({ shopId, enabled }: { shopId: number; enabled: 
                   <Separator />
 
                   {/* Steps */}
-                  <ol className="space-y-3">
-                    {STEPS.map((step, i) => (
-                      <li key={i} className="flex gap-3">
-                        <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-gray-200 text-xs font-semibold dark:bg-gray-800">
-                          {i + 1}
-                        </span>
-                        <span className="text-sm">{step}</span>
-                      </li>
-                    ))}
-                  </ol>
+                  <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+                    <img
+                      src={littrOneImage}
+                      alt="The LITTR One smart recycling bin"
+                      className="mx-auto h-44 w-auto flex-none rounded-xl object-contain sm:mx-0"
+                    />
+                    <ol className="flex-1 space-y-3">
+                      {STEPS.map((step, i) => (
+                        <li key={i} className="flex gap-3">
+                          <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-green-500/15 text-green-600 dark:text-green-500">
+                            <step.icon className="h-4 w-4" />
+                          </span>
+                          <span className="pt-0.5 text-sm">{step.text}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
 
                   <div className="flex items-center gap-2 rounded-lg border bg-gray-50 p-3 text-sm dark:bg-gray-900">
                     <Radio className="h-4 w-4 flex-none animate-pulse text-blue-500" />

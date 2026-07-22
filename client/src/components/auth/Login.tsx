@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link, useSearch } from "wouter";
 import { Lock, Mail, LogIn, Recycle, ArrowLeft } from "lucide-react";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
@@ -14,11 +14,20 @@ export function Login({ type }: { type: 'admin' | 'staff' | 'partner' | 'custome
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { setAuth, clearAuth } = useStore();
+  const { user, role, setAuth, clearAuth } = useStore();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const nextParam = new URLSearchParams(search).get('next');
   const { executeRecaptcha } = useRecaptcha();
+
+  // Session persists in localStorage — an already-signed-in visitor skips the
+  // form and lands on their own dashboard (honoring ?next= when present).
+  useEffect(() => {
+    if (!user || !role) return;
+    const safeNext = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : null;
+    const dash = role === 'staff' ? '/staff/dashboard' : role === 'partner' ? '/partner/dashboard' : '/app';
+    setLocation(safeNext || dash);
+  }, [user, role, nextParam, setLocation]);
 
   const needsCaptcha = type === 'customer';
 

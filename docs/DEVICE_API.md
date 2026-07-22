@@ -115,9 +115,11 @@ Response: `202 { "alertId": 88 }` (or `{ "alertId": null }` if the event was ign
 An unresolved alert of the **same type on the same device within 10 minutes** is
 refreshed (its `dataJson` updated) rather than duplicated — so it is safe to re-post a
 sustained condition. `FIRE` is `CRITICAL`; `TEMP_HIGH`/`VOC_HIGH` are `WARNING`;
-`SD_ERROR`/`CAMERA_ERROR` are `INFO`. A `FIRE` event may also trigger server-side fire
-actions from device settings (see §7 of `docs/API_DESIGN.md`): `BIN_ALARM` enqueues a
-`SOUND_ALARM {seconds:60}` command back to the bin.
+`SD_ERROR`/`CAMERA_ERROR` are `INFO`. Fire **actions** in device settings are bin-local
+(`DISPLAY` = warning screen, `ALARM` = siren — legacy `NOTIFY`/`BIN_ALARM` values are
+normalized, `SMS`/`CALL` moved to per-user notification prefs). On a `FIRE` event with
+`ALARM` configured, the server also enqueues a `SOUND_ALARM {seconds:60}` command as
+backup; the bin should act locally without waiting for it.
 
 ---
 
@@ -136,10 +138,10 @@ optional):
 {
   "fill":      { "emptyDistanceMm": 500, "fullOffsetMm": 76 },   // calibration
   "policy":    { "allowThcVapes": false },
-  "fire":      { "enabled": true, "mode": 2, "tempC": 40, "vocAnalog": 3000,
-                 "vocWarmupSec": 300,
-                 "onBoth": ["NOTIFY","BIN_ALARM"], "onTempOnly": ["NOTIFY"],
-                 "onVocOnly": ["NOTIFY"] },                       // mode: 0 temp,1 voc,2 either,3 both
+  "fire":      { "enabled": true, "mode": 2, "tempC": 40, "vocAnalog": 3072,
+                 "vocWarmupSec": 300,                             // vocAnalog ≈75% of 0–4095 (UI shows a % slider)
+                 "onBoth": ["DISPLAY","ALARM"], "onTempOnly": ["DISPLAY"],
+                 "onVocOnly": ["DISPLAY"] },                      // mode: 0 temp,1 voc,2 either,3 both; actions are bin-local
   "hours":     { "enabled": false, "open": "09:00", "close": "21:00",
                  "tz": "America/New_York" },
   "ui":        { "theme": "default" },

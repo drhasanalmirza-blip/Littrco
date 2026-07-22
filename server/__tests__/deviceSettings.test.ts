@@ -18,9 +18,9 @@ describe("deviceSettingsSchema (spec §7)", () => {
       fire: {
         enabled: true, mode: 2,
         tempC: 40, vocAnalog: 3000, vocWarmupSec: 300,
-        onBoth: ["NOTIFY", "BIN_ALARM"],
-        onTempOnly: ["NOTIFY"],
-        onVocOnly: ["NOTIFY"],
+        onBoth: ["DISPLAY", "ALARM"],
+        onTempOnly: ["DISPLAY"],
+        onVocOnly: ["DISPLAY"],
       },
       hours: { enabled: false, open: "09:00", close: "21:00", tz: "America/New_York" },
       ui: { theme: "default" },
@@ -59,8 +59,19 @@ describe("deviceSettingsSchema (spec §7)", () => {
     expect(validateDeviceSettings({ hours: { open: "09:00" } }).ok).toBe(true);
   });
 
-  it("rejects unknown fire actions", () => {
-    expect(validateDeviceSettings({ fire: { onBoth: ["EXPLODE"] } }).ok).toBe(false);
+  it("silently drops unknown fire actions (legacy normalization)", () => {
+    // Unknown strings are filtered by normalizeFireActions rather than rejected,
+    // so stored legacy docs (NOTIFY/SMS/CALL/BIN_ALARM) keep validating.
+    const r = validateDeviceSettings({ fire: { onBoth: ["EXPLODE", "ALARM"] } });
+    expect(r.ok && (r.value.fire as any).onBoth).toEqual(["ALARM"]);
+  });
+
+  it("maps legacy fire actions: NOTIFY→DISPLAY, BIN_ALARM→ALARM, SMS/CALL dropped", () => {
+    const r = validateDeviceSettings({
+      fire: { onBoth: ["NOTIFY", "BIN_ALARM", "SMS", "CALL"], onTempOnly: ["NOTIFY"] },
+    });
+    expect(r.ok && (r.value.fire as any).onBoth).toEqual(["DISPLAY", "ALARM"]);
+    expect(r.ok && (r.value.fire as any).onTempOnly).toEqual(["DISPLAY"]);
   });
 
   it("rejects wrong types", () => {
@@ -87,10 +98,12 @@ describe("DEFAULT_DEVICE_SETTINGS", () => {
     expect(deviceSettingsSchema.safeParse(DEFAULT_DEVICE_SETTINGS).success).toBe(true);
   });
 
-  it("matches the spec §7 documented defaults", () => {
+  it("matches the documented defaults", () => {
     expect(DEFAULT_DEVICE_SETTINGS.fill).toEqual({ emptyDistanceMm: 500, fullOffsetMm: 76 });
     expect(DEFAULT_DEVICE_SETTINGS.fire?.mode).toBe(2);
-    expect(DEFAULT_DEVICE_SETTINGS.fire?.onBoth).toEqual(["NOTIFY", "BIN_ALARM"]);
+    expect(DEFAULT_DEVICE_SETTINGS.fire?.enabled).toBe(true); // fire detection on by default
+    expect(DEFAULT_DEVICE_SETTINGS.fire?.vocAnalog).toBe(3072); // ≈75% of ADC range
+    expect(DEFAULT_DEVICE_SETTINGS.fire?.onBoth).toEqual(["DISPLAY", "ALARM"]);
     expect(DEFAULT_DEVICE_SETTINGS.session).toEqual({ stackWindowSec: 6, qrTtlSec: 30 });
     expect(DEFAULT_DEVICE_SETTINGS.camera).toEqual({ idleSnapshotSec: 8 });
   });

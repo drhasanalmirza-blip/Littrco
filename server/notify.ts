@@ -10,21 +10,27 @@ import { and, desc, eq, gt, isNull, isNotNull, lt } from "drizzle-orm";
 import { storage } from "./storage";
 import { sendCustomEmail } from "./email";
 import { DEFAULT_DEVICE_SETTINGS, mergeDeviceSettings } from "@shared/deviceSettings";
+import { VOC_ANALOG_MAX } from "@shared/deviceSettings";
 import {
   ALERT_SEVERITY,
   DEVICE_EVENT_TYPES,
   OFFLINE_AFTER_MS,
   SWEEP_INTERVAL_MS,
   EVENT_DEDUPE_WINDOW_MS,
+  type AlertSeverity,
   type AlertType,
   type Channel,
   type ChannelPrefs,
   type EventPrefs,
+  type PhoneEntry,
   normalizeAlertState,
   evaluateFillAlerts,
   mergeChannelPrefs,
   mergeEventPrefs,
+  mergePhoneEntries,
   alertMatchesPrefs,
+  passesPersonalThresholds,
+  planPhoneDispatch,
   enabledChannels,
   watchedFillLevels,
   fireActionsForEvent,
@@ -116,21 +122,34 @@ export const providers: Record<Channel, NotificationProvider> = {
 interface Recipient extends NotificationTarget {
   channels: ChannelPrefs;
   events: EventPrefs;
+  phones: PhoneEntry[];
 }
 
 function toRecipient(user: User, prefs: NotificationPrefs | null): Recipient {
+  const channels = mergeChannelPrefs(prefs?.channelsJson);
+  let phones = mergePhoneEntries((prefs as any)?.phonesJson);
+  // Back-compat: a legacy single `phone` (with sms/call channel toggles) acts as
+  // one entry until the user saves the new multi-number prefs.
+  if (phones.length === 0 && prefs?.phone && (channels.sms || channels.call)) {
+    phones = [{ number: prefs.phone, sms: channels.sms, call: channels.call, minSeverity: "WARNING" }];
+  }
   return {
     userId: user.id,
     email: user.email,
     phone: prefs?.phone ?? null,
-    channels: mergeChannelPrefs(prefs?.channelsJson),
+    channels,
     events: mergeEventPrefs(prefs?.eventsJson),
+    phones,
   };
 }
 
 // All STAFF (global-scope prefs) + members of the device's shop (shop-scope
 // prefs). Users with no prefs row get the §5.3 defaults (FULL + FIRE enabled).
-async function gatherRecipients(device: Pick<Device, "shopId">): Promise<Recipient[]> {
+// staffOnly limits to STAFF (used for FIRE_DISABLED oversight alerts).
+async function gatherRecipients(
+  device: Pick<Device, "shopId">,
+  opts?: { staffOnly?: boolean },
+): Promise<Recipient[]> {
   const byUser = new Map<string, Recipient>();
 
   const staffRows = await db
@@ -140,7 +159,7 @@ async function gatherRecipients(device: Pick<Device, "shopId">): Promise<Recipie
     .where(eq(users.role, "STAFF"));
   for (const { user, prefs } of staffRows) byUser.set(user.id, toRecipient(user, prefs));
 
-  if (device.shopId != null) {
+  if (!opts?.staffOnly && device.shopId != null) {
     const memberRows = await db
       .select({ user: users, prefs: notificationPrefs })
       .from(shopMembers)
@@ -180,19 +199,22 @@ interface DeliveryReceipt {
   userId: string;
   email: string;
   channel: Channel;
+  number?: string; // present for sms/call (deduped per-number dispatch)
   ok: boolean;
   stub?: boolean;
   error?: string;
   at: string;
 }
 
-// Notify every recipient whose prefs opt into this alert, on their enabled
-// channels (plus any forced ones — fire actions). Per-recipient results are
+// Notify every recipient whose prefs opt into this alert. Email/push go per
+// recipient; SMS/call go per PHONE NUMBER — numbers are pooled across all
+// matching recipients and deduped (a number shared by two accounts is contacted
+// once with the union of their channels). Per-recipient/-number results are
 // recorded into alerts.notifiedJson (spec §5.5).
 async function dispatchAlert(
   alert: Alert,
   device: Device,
-  opts?: { recipients?: Recipient[]; forceChannels?: Channel[] },
+  opts?: { recipients?: Recipient[] },
 ): Promise<void> {
   const recipients = opts?.recipients ?? (await gatherRecipients(device));
   const payload: AlertPayload = {
@@ -204,13 +226,19 @@ async function dispatchAlert(
     shopId: alert.shopId,
     dataJson: alert.dataJson,
   };
+  const data = alert.dataJson as { level?: number; tempC?: number; vocAnalog?: number } | null;
+
+  const matching = recipients.filter(
+    (r) =>
+      alertMatchesPrefs(payload.type, data, r.events) &&
+      passesPersonalThresholds(payload.type, data, r.events, VOC_ANALOG_MAX),
+  );
 
   const receipts: DeliveryReceipt[] = [];
-  for (const r of recipients) {
-    if (!alertMatchesPrefs(payload.type, alert.dataJson as { level?: number } | null, r.events)) continue;
-    const channels = new Set<Channel>(enabledChannels(r.channels));
-    for (const c of opts?.forceChannels ?? []) channels.add(c);
-    for (const channel of Array.from(channels)) {
+
+  // Email / push: per recipient
+  for (const r of matching) {
+    for (const channel of enabledChannels(r.channels).filter((c) => c === "email" || c === "push")) {
       let result: ProviderResult;
       try {
         result = await providers[channel].send(r, payload);
@@ -218,6 +246,29 @@ async function dispatchAlert(
         result = { ok: false, error: String(e?.message ?? e) };
       }
       receipts.push({ userId: r.userId, email: r.email, channel, ...result, at: new Date().toISOString() });
+    }
+  }
+
+  // SMS / call: per deduped phone number across all matching recipients
+  const phonePlan = planPhoneDispatch(matching, alert.severity as AlertSeverity);
+  for (const entry of phonePlan) {
+    const target: NotificationTarget = { userId: entry.userIds.join(","), email: "", phone: entry.number };
+    for (const channel of ["sms", "call"] as const) {
+      if (!entry[channel]) continue;
+      let result: ProviderResult;
+      try {
+        result = await providers[channel].send(target, payload);
+      } catch (e: any) {
+        result = { ok: false, error: String(e?.message ?? e) };
+      }
+      receipts.push({
+        userId: entry.userIds[0],
+        email: "",
+        channel,
+        number: entry.number,
+        ...result,
+        at: new Date().toISOString(),
+      });
     }
   }
 
@@ -313,29 +364,46 @@ export async function handleDeviceEvent(device: Device, evt: unknown): Promise<n
     const message = event.message ?? alertMessage(event.type, event);
     const alert = await createAlert(device, event.type, message, dataJson);
 
-    // Fire actions from device settings (§7). NOTIFY is the standard §5
-    // dispatch (which every device event gets anyway, per §2.2); SMS/CALL force
-    // those channels on for matching recipients; BIN_ALARM sounds the bin.
-    let forceChannels: Channel[] = [];
+    // Bin-local fire actions from device settings: ALARM → enqueue SOUND_ALARM
+    // as a server-side backup (the bin also alarms locally); DISPLAY is handled
+    // entirely on the bin. Who gets notified is decided purely by each user's
+    // notification prefs in dispatchAlert — actions no longer force channels.
     if (event.type === "FIRE") {
       const stored = await storage.getDeviceSettings(device.id);
       const settings = mergeDeviceSettings(
         DEFAULT_DEVICE_SETTINGS as Record<string, unknown>,
         (stored?.settingsJson as Record<string, unknown>) ?? {},
       ) as typeof DEFAULT_DEVICE_SETTINGS;
-      const actions = fireActionsForEvent(settings.fire, event);
-      if (actions.includes("SMS")) forceChannels.push("sms");
-      if (actions.includes("CALL")) forceChannels.push("call");
-      if (actions.includes("BIN_ALARM")) {
+      const actions = fireActionsForEvent(settings.fire as any, event);
+      if (actions.includes("ALARM")) {
         await storage.enqueueCommand(device.id, "SOUND_ALARM", { seconds: 60 });
       }
     }
 
-    await dispatchAlert(alert, device, { forceChannels });
+    await dispatchAlert(alert, device);
     return alert.id;
   } catch (e) {
     console.error("[notify] handleDeviceEvent failed:", e);
     return null;
+  }
+}
+
+// ==================== Fire-detection oversight ====================
+
+/**
+ * A PARTNER turned fire detection off for a bin. Fire safety is a staff
+ * oversight concern: record a FIRE_DISABLED alert and notify STAFF only
+ * (partners can see the alert row in their shop's alert list, but no partner
+ * notifications go out for it).
+ */
+export async function notifyFireDisabled(device: Device, disabledByEmail: string): Promise<void> {
+  try {
+    const data = { disabledBy: disabledByEmail };
+    const alert = await createAlert(device, "FIRE_DISABLED", alertMessage("FIRE_DISABLED", data), data);
+    const staff = await gatherRecipients(device, { staffOnly: true });
+    await dispatchAlert(alert, device, { recipients: staff });
+  } catch (e) {
+    console.error("[notify] notifyFireDisabled failed:", e);
   }
 }
 

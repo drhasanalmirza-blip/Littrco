@@ -263,12 +263,21 @@ points, `404` reward not found / inactive.
   `notifiedJson` and `dataJson` are stripped (they hold staff/other-member emails);
   the human-readable `message` is kept.
 - Prefs GET returns the **effective** (defaults-merged) prefs even before a row
-  exists: `{ shopId, channelsJson, eventsJson, phone, updatedAt }`.
+  exists: `{ shopId, channelsJson, eventsJson, phone, phonesJson, updatedAt }`.
 - Prefs PUT body (`notificationPrefsPutSchema`, `.strict()`): `{ channelsJson?,
-  eventsJson?, phone? }`. `channelsJson` keys `email|sms|call|push` (booleans);
-  `eventsJson` keys `full, fillLevels (int[1..100], max 10), fire, tempHigh, vocHigh,
-  offline, drops`. Partial patches merge; `fillLevels` replaces wholesale. Errors:
+  eventsJson?, phone?, phonesJson? }`. `channelsJson` keys `email|sms|call|push`
+  (booleans); `eventsJson` keys `full, fillLevels (int[1..100], max 10), fire,
+  tempHigh, vocHigh, offline, drops, tempThresholdC (°C|null), vocThresholdPct
+  (0–100|null)` — the two thresholds are the caller's personal minimum readings
+  for TEMP_HIGH / VOC_HIGH notifications. `phonesJson` (max 5, replaces
+  wholesale): `[{ number, sms, call, minSeverity: INFO|WARNING|CRITICAL }]` —
+  at dispatch, numbers are pooled across all matching recipients and deduped so
+  a number on two accounts is contacted once with the union of channels.
+  Partial patches merge; `fillLevels`/`phonesJson` replace wholesale. Errors:
   `400` with `path: message`, `403`/`404` per shop access.
+- Alert type `FIRE_DISABLED` (WARNING) is created when a **partner** turns a
+  bin's fire detection off (settings PUT with `fire.enabled: false`); it is
+  dispatched to STAFF only.
 
 ### Team management (spec §4.2 — `routes/team.ts`)
 

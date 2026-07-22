@@ -20,6 +20,9 @@ import {
   AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
   AlertDialogCancel, AlertDialogAction,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import { UserPlus, Trash2, Copy, Check } from "lucide-react";
 
 type ShopRole = "OWNER" | "MANAGER" | "VIEWER";
@@ -81,6 +84,7 @@ export default function Team({ shopId, enabled }: { shopId: number; enabled: boo
   const [inviteRole, setInviteRole] = useState<ShopRole>("MANAGER");
   const [lastInvite, setLastInvite] = useState<{ email: string; acceptUrl: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const inviteMut = useMutation({
     mutationFn: (vars: { email: string; role: ShopRole }) =>
@@ -89,6 +93,7 @@ export default function Team({ shopId, enabled }: { shopId: number; enabled: boo
       toast({ title: "Invite created", description: `Sent to ${data.email}.` });
       if (data.acceptUrl) setLastInvite({ email: data.email, acceptUrl: data.acceptUrl });
       setInviteEmail("");
+      setAddOpen(false);
       qc.invalidateQueries({ queryKey: [invitesUrl] });
     },
     onError: (e: any) =>
@@ -140,8 +145,64 @@ export default function Team({ shopId, enabled }: { shopId: number; enabled: boo
     <div className="space-y-4">
       {/* Members */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Team Members</CardTitle>
+          {isOwner && (
+            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="bg-green-500 text-white hover:bg-green-600" data-testid="button-add-member">
+                  <UserPlus className="mr-1.5 h-4 w-4" />
+                  Add member
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add a team member</DialogTitle>
+                  <DialogDescription>
+                    Enter your employee's email and pick their access level. If they already have a
+                    LITTR account, accepting the invite converts it to this role; otherwise they can
+                    create one with the same email first.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <Label htmlFor="invite-email" className="text-sm">Email</Label>
+                    <Input
+                      id="invite-email"
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="teammate@example.com"
+                      data-testid="input-invite-email"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm">Role</Label>
+                    <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as ShopRole)}>
+                      <SelectTrigger className="w-full" data-testid="select-invite-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="OWNER">Owner</SelectItem>
+                        <SelectItem value="MANAGER">Manager</SelectItem>
+                        <SelectItem value="VIEWER">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1.5 text-xs text-muted-foreground">{ROLE_HELP[inviteRole]}</p>
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={() => inviteMut.mutate({ email: inviteEmail.trim(), role: inviteRole })}
+                    disabled={inviteMut.isPending || inviteEmail.trim() === ""}
+                    data-testid="button-send-invite"
+                  >
+                    <UserPlus className="mr-1 h-4 w-4" />
+                    {inviteMut.isPending ? "Sending…" : "Send invite"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
         </CardHeader>
         <CardContent>
           {membersLoading ? (
@@ -211,70 +272,28 @@ export default function Team({ shopId, enabled }: { shopId: number; enabled: boo
         </CardContent>
       </Card>
 
-      {/* Owner-only: invite + pending invites */}
+      {/* Owner-only: last invite link + pending invites */}
       {isOwner && (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Invite a Team Member</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="flex-1 min-w-[220px]">
-                  <Label htmlFor="invite-email" className="text-sm">Email</Label>
-                  <Input
-                    id="invite-email"
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="teammate@example.com"
-                    data-testid="input-invite-email"
-                  />
-                </div>
-                <div>
-                  <Label className="text-sm">Role</Label>
-                  <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as ShopRole)}>
-                    <SelectTrigger className="w-40" data-testid="select-invite-role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="OWNER">Owner</SelectItem>
-                      <SelectItem value="MANAGER">Manager</SelectItem>
-                      <SelectItem value="VIEWER">Viewer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+          {lastInvite && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
+              <div className="text-sm font-medium">Invite link for {lastInvite.email}</div>
+              <div className="mt-2 flex items-center gap-2">
+                <Input readOnly value={lastInvite.acceptUrl} className="font-mono text-xs" data-testid="input-accept-url" />
                 <Button
-                  onClick={() => inviteMut.mutate({ email: inviteEmail.trim(), role: inviteRole })}
-                  disabled={inviteMut.isPending || inviteEmail.trim() === ""}
-                  data-testid="button-send-invite"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyUrl(lastInvite.acceptUrl)}
+                  data-testid="button-copy-accept-url"
                 >
-                  <UserPlus className="mr-1 h-4 w-4" />
-                  {inviteMut.isPending ? "Sending…" : "Send Invite"}
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
-
-              {lastInvite && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
-                  <div className="text-sm font-medium">Invite link for {lastInvite.email}</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Input readOnly value={lastInvite.acceptUrl} className="font-mono text-xs" data-testid="input-accept-url" />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => copyUrl(lastInvite.acceptUrl)}
-                      data-testid="button-copy-accept-url"
-                    >
-                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Share this link with the invitee. They accept it while signed in to their LITTR account.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <p className="mt-1 text-xs text-gray-500">
+                Share this link with the invitee. They accept it while signed in to their LITTR account.
+              </p>
+            </div>
+          )}
 
           <Card>
             <CardHeader>

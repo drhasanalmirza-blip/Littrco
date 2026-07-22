@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, LogOut, RefreshCcw, Battery } from "lucide-react";
+import { Plus, RefreshCcw, Battery } from "lucide-react";
+import DashboardHeader from "@/components/DashboardHeader";
 import BinSettings from "@/pages/partner/panels/BinSettings";
 import Team from "@/pages/partner/panels/Team";
 import Pairing from "@/pages/partner/panels/Pairing";
@@ -121,25 +122,21 @@ export default function PartnerDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 md:p-8">
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Partner Dashboard</h1>
-            <p className="text-sm text-gray-500">{user.email}</p>
+        <DashboardHeader title="Partner Dashboard" subtitle={shop ? shop.name : undefined} />
+        {shops.length > 1 && (
+          <div className="mb-4 flex justify-end">
+            <select
+              className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+              value={shopId ?? ""}
+              onChange={(e) => setSelectedShopId(Number(e.target.value))}
+              data-testid="select-shop"
+            >
+              {shops.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
           </div>
-          <div className="flex gap-2 items-center">
-            {shops.length > 1 && (
-              <select className="border rounded px-2 py-1 text-sm" value={shopId ?? ""}
-                onChange={(e) => setSelectedShopId(Number(e.target.value))} data-testid="select-shop">
-                {shops.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            )}
-            <Button variant="ghost" size="sm" onClick={async () => { await apiRequest("/api/auth/logout", { method: "POST" }); clearAuth(); setLocation("/"); }} data-testid="button-logout">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        )}
 
         {!shop ? (
           <Card><CardContent className="p-8 text-center text-gray-500">No shops assigned to your account yet.</CardContent></Card>

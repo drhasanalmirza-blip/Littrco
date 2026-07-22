@@ -20,6 +20,10 @@ import {
   withinDedupeWindow,
   fireActionsForEvent,
   alertMessage,
+  planPhoneDispatch,
+  passesPersonalThresholds,
+  mergePhoneEntries,
+  normalizePhoneNumber,
   type AlertState,
   type EventPrefs,
 } from "../notifyRules";
@@ -32,6 +36,7 @@ describe("ALERT_SEVERITY (spec §5.2)", () => {
       TEMP_HIGH: "WARNING",
       VOC_HIGH: "WARNING",
       FIRE: "CRITICAL",
+      FIRE_DISABLED: "WARNING",
       OFFLINE: "WARNING",
       SD_ERROR: "INFO",
       CAMERA_ERROR: "INFO",
@@ -154,6 +159,7 @@ describe("prefs defaults & merge (spec §5.3)", () => {
     expect(DEFAULT_CHANNELS).toEqual({ email: true, sms: false, call: false, push: false });
     expect(DEFAULT_EVENTS).toEqual({
       full: true, fillLevels: [], fire: true, tempHigh: true, vocHigh: true, offline: true, drops: false,
+      tempThresholdC: null, vocThresholdPct: null,
     });
   });
 
@@ -284,40 +290,116 @@ describe("withinDedupeWindow (spec §2.2)", () => {
   });
 });
 
-describe("fireActionsForEvent (spec §7)", () => {
+describe("fireActionsForEvent (bin-local DISPLAY/ALARM)", () => {
   const fire = {
     tempC: 40,
     vocAnalog: 3000,
-    onBoth: ["NOTIFY", "BIN_ALARM"] as const,
-    onTempOnly: ["NOTIFY"] as const,
-    onVocOnly: ["NOTIFY", "SMS"] as const,
+    onBoth: ["DISPLAY", "ALARM"] as const,
+    onTempOnly: ["DISPLAY"] as const,
+    onVocOnly: ["ALARM"] as const,
   };
 
   it("both thresholds hit -> onBoth", () => {
-    expect(fireActionsForEvent(fire as any, { tempC: 45, vocAnalog: 3500 })).toEqual(["NOTIFY", "BIN_ALARM"]);
+    expect(fireActionsForEvent(fire as any, { tempC: 45, vocAnalog: 3500 })).toEqual(["DISPLAY", "ALARM"]);
   });
 
   it("temp only -> onTempOnly", () => {
-    expect(fireActionsForEvent(fire as any, { tempC: 45, vocAnalog: 100 })).toEqual(["NOTIFY"]);
-    expect(fireActionsForEvent(fire as any, { tempC: 45 })).toEqual(["NOTIFY"]);
+    expect(fireActionsForEvent(fire as any, { tempC: 45, vocAnalog: 100 })).toEqual(["DISPLAY"]);
+    expect(fireActionsForEvent(fire as any, { tempC: 45 })).toEqual(["DISPLAY"]);
   });
 
   it("voc only -> onVocOnly", () => {
-    expect(fireActionsForEvent(fire as any, { tempC: 20, vocAnalog: 3000 })).toEqual(["NOTIFY", "SMS"]);
+    expect(fireActionsForEvent(fire as any, { tempC: 20, vocAnalog: 3000 })).toEqual(["ALARM"]);
   });
 
   it("unclassifiable (no readings) -> strongest set (onBoth)", () => {
-    expect(fireActionsForEvent(fire as any, {})).toEqual(["NOTIFY", "BIN_ALARM"]);
-    expect(fireActionsForEvent(fire as any, { tempC: 20, vocAnalog: 100 })).toEqual(["NOTIFY", "BIN_ALARM"]);
+    expect(fireActionsForEvent(fire as any, {})).toEqual(["DISPLAY", "ALARM"]);
+    expect(fireActionsForEvent(fire as any, { tempC: 20, vocAnalog: 100 })).toEqual(["DISPLAY", "ALARM"]);
   });
 
-  it("missing settings fall back to §7 defaults", () => {
-    expect(fireActionsForEvent(undefined, { tempC: 45, vocAnalog: 3500 })).toEqual(["NOTIFY", "BIN_ALARM"]);
-    expect(fireActionsForEvent({}, { tempC: 45 })).toEqual(["NOTIFY"]);
+  it("missing settings fall back to defaults", () => {
+    expect(fireActionsForEvent(undefined, { tempC: 45, vocAnalog: 3500 })).toEqual(["DISPLAY", "ALARM"]);
+    expect(fireActionsForEvent({}, { tempC: 45 })).toEqual(["DISPLAY"]);
   });
 
   it("dedupes repeated actions", () => {
-    expect(fireActionsForEvent({ onBoth: ["NOTIFY", "NOTIFY", "BIN_ALARM"] } as any, {})).toEqual(["NOTIFY", "BIN_ALARM"]);
+    expect(fireActionsForEvent({ onBoth: ["DISPLAY", "DISPLAY", "ALARM"] } as any, {})).toEqual(["DISPLAY", "ALARM"]);
+  });
+});
+
+describe("planPhoneDispatch (multi-number dedupe)", () => {
+  const owner = {
+    userId: "owner",
+    phones: [{ number: "+1 (607) 385-0725", sms: true, call: true, minSeverity: "WARNING" as const }],
+  };
+  const manager = {
+    userId: "manager",
+    phones: [{ number: "16073850725", sms: true, call: false, minSeverity: "WARNING" as const }],
+  };
+
+  it("unions channels for the same number across accounts (no duplicate sends)", () => {
+    // +1(607)... and 1607... normalize differently (+1607 vs 1607) — use same form
+    const a = { userId: "a", phones: [{ number: "607-385-0725", sms: true, call: false, minSeverity: "WARNING" as const }] };
+    const b = { userId: "b", phones: [{ number: "(607) 385 0725", sms: true, call: true, minSeverity: "WARNING" as const }] };
+    const plan = planPhoneDispatch([a, b], "WARNING");
+    expect(plan).toHaveLength(1);
+    expect(plan[0].sms).toBe(true);
+    expect(plan[0].call).toBe(true);
+    expect(plan[0].userIds.sort()).toEqual(["a", "b"]);
+  });
+
+  it("keeps distinct numbers separate", () => {
+    const plan = planPhoneDispatch([owner, manager], "CRITICAL");
+    expect(plan).toHaveLength(2);
+  });
+
+  it("respects per-number minimum severity", () => {
+    const critOnly = {
+      userId: "u",
+      phones: [{ number: "5551234567", sms: true, call: false, minSeverity: "CRITICAL" as const }],
+    };
+    expect(planPhoneDispatch([critOnly], "WARNING")).toHaveLength(0);
+    expect(planPhoneDispatch([critOnly], "CRITICAL")).toHaveLength(1);
+  });
+
+  it("skips entries with no channel enabled", () => {
+    const none = {
+      userId: "u",
+      phones: [{ number: "5551234567", sms: false, call: false, minSeverity: "INFO" as const }],
+    };
+    expect(planPhoneDispatch([none], "CRITICAL")).toHaveLength(0);
+  });
+});
+
+describe("passesPersonalThresholds", () => {
+  const base = { ...DEFAULT_EVENTS };
+
+  it("no threshold set -> always delivers", () => {
+    expect(passesPersonalThresholds("TEMP_HIGH", { tempC: 30 }, base, 4095)).toBe(true);
+    expect(passesPersonalThresholds("VOC_HIGH", { vocAnalog: 100 }, base, 4095)).toBe(true);
+  });
+
+  it("temp threshold gates below, passes at/above", () => {
+    const ev = { ...base, tempThresholdC: 50 };
+    expect(passesPersonalThresholds("TEMP_HIGH", { tempC: 45 }, ev, 4095)).toBe(false);
+    expect(passesPersonalThresholds("TEMP_HIGH", { tempC: 50 }, ev, 4095)).toBe(true);
+  });
+
+  it("voc threshold compares as percent of ADC max", () => {
+    const ev = { ...base, vocThresholdPct: 75 };
+    expect(passesPersonalThresholds("VOC_HIGH", { vocAnalog: 2000 }, ev, 4095)).toBe(false); // ~49%
+    expect(passesPersonalThresholds("VOC_HIGH", { vocAnalog: 3100 }, ev, 4095)).toBe(true); // ~76%
+  });
+
+  it("missing reading -> delivers (cannot compare)", () => {
+    const ev = { ...base, tempThresholdC: 50, vocThresholdPct: 75 };
+    expect(passesPersonalThresholds("TEMP_HIGH", {}, ev, 4095)).toBe(true);
+    expect(passesPersonalThresholds("VOC_HIGH", null, ev, 4095)).toBe(true);
+  });
+
+  it("other alert types are unaffected", () => {
+    const ev = { ...base, tempThresholdC: 150, vocThresholdPct: 100 };
+    expect(passesPersonalThresholds("FULL", { tempC: 1 }, ev, 4095)).toBe(true);
   });
 });
 

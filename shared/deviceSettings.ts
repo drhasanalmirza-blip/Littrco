@@ -9,10 +9,39 @@ import { z } from "zod";
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM");
 
-// Server-side actions run on a FIRE event (NOTIFY → §5 dispatch, SMS/CALL →
-// provider stubs, BIN_ALARM → SOUND_ALARM command).
-export const fireActionSchema = z.enum(["NOTIFY", "SMS", "CALL", "BIN_ALARM"]);
+// Bin-local actions on a fire/warning condition. These belong to the BIN
+// (what it does on-site); who gets emailed/texted/called lives in each user's
+// notification preferences, not here. DISPLAY = warning screen on the HMI,
+// ALARM = sound the bin's alarm (server also enqueues SOUND_ALARM as backup).
+// Legacy values from the old schema are normalized: NOTIFY→DISPLAY,
+// BIN_ALARM→ALARM, SMS/CALL→dropped (moved to notification prefs).
+export const fireActionSchema = z.enum(["DISPLAY", "ALARM"]);
 export type FireAction = z.infer<typeof fireActionSchema>;
+
+const LEGACY_FIRE_ACTION_MAP: Record<string, FireAction | null> = {
+  DISPLAY: "DISPLAY",
+  ALARM: "ALARM",
+  NOTIFY: "DISPLAY",
+  BIN_ALARM: "ALARM",
+  SMS: null,
+  CALL: null,
+};
+
+export function normalizeFireActions(raw: unknown): FireAction[] {
+  if (!Array.isArray(raw)) return [];
+  const out = new Set<FireAction>();
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    const mapped = LEGACY_FIRE_ACTION_MAP[v.toUpperCase()];
+    if (mapped) out.add(mapped);
+  }
+  return Array.from(out);
+}
+
+const fireActionsField = z.preprocess(
+  (v) => (Array.isArray(v) ? normalizeFireActions(v) : v),
+  z.array(fireActionSchema).max(2),
+);
 
 export const deviceSettingsSchema = z
   .object({
@@ -36,9 +65,9 @@ export const deviceSettingsSchema = z
         tempC: z.number().min(0).max(150).optional(),
         vocAnalog: z.number().int().min(0).max(65535).optional(),
         vocWarmupSec: z.number().int().min(0).max(3600).optional(),
-        onBoth: z.array(fireActionSchema).max(4).optional(),
-        onTempOnly: z.array(fireActionSchema).max(4).optional(),
-        onVocOnly: z.array(fireActionSchema).max(4).optional(),
+        onBoth: fireActionsField.optional(),
+        onTempOnly: fireActionsField.optional(),
+        onVocOnly: fireActionsField.optional(),
       })
       .passthrough()
       .optional(),
@@ -86,14 +115,14 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
   fill: { emptyDistanceMm: 500, fullOffsetMm: 76 },
   policy: { allowThcVapes: false },
   fire: {
-    enabled: true,
+    enabled: true, // always on unless explicitly disabled (partner disable notifies staff)
     mode: 2,
     tempC: 40,
-    vocAnalog: 3000,
+    vocAnalog: 3072, // ≈75% of the 0–4095 ADC range (recommended to avoid false alarms)
     vocWarmupSec: 300,
-    onBoth: ["NOTIFY", "BIN_ALARM"],
-    onTempOnly: ["NOTIFY"],
-    onVocOnly: ["NOTIFY"],
+    onBoth: ["DISPLAY", "ALARM"],
+    onTempOnly: ["DISPLAY"],
+    onVocOnly: ["DISPLAY"],
   },
   hours: { enabled: false, open: "09:00", close: "21:00", tz: "America/New_York" },
   ui: { theme: "default" },
@@ -117,6 +146,28 @@ export function validateDeviceSettings(json: unknown): DeviceSettingsValidation 
     return { ok: false, error: path ? `${path}: ${issue.message}` : issue.message };
   }
   return { ok: true, value: parsed.data };
+}
+
+// VOC threshold is stored as the sensor's raw ADC value (0–4095) because the
+// firmware compares raw readings; UIs present it as a 0–100% slider.
+// Recommended setting: 75% — high enough to avoid false alarms from vaping/smoke.
+export const VOC_ANALOG_MAX = 4095;
+export const VOC_RECOMMENDED_PCT = 75;
+
+export function vocPctFromAnalog(analog: number): number {
+  return Math.round(Math.min(Math.max(analog / VOC_ANALOG_MAX, 0), 1) * 100);
+}
+
+export function vocAnalogFromPct(pct: number): number {
+  return Math.round(Math.min(Math.max(pct, 0), 100) / 100 * VOC_ANALOG_MAX);
+}
+
+export function celsiusToFahrenheit(c: number): number {
+  return c * 9 / 5 + 32;
+}
+
+export function fahrenheitToCelsius(f: number): number {
+  return (f - 32) * 5 / 9;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {

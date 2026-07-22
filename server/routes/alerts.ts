@@ -12,6 +12,7 @@ import {
   notificationPrefsPutSchema,
   mergeChannelPrefs,
   mergeEventPrefs,
+  mergePhoneEntries,
   applyChannelPrefsPatch,
   applyEventPrefsPatch,
   type NotificationPrefsPut,
@@ -64,6 +65,7 @@ function effectivePrefs(shopId: number | null, row: NotificationPrefs | undefine
     channelsJson: mergeChannelPrefs(row?.channelsJson),
     eventsJson: mergeEventPrefs(row?.eventsJson),
     phone: row?.phone ?? null,
+    phonesJson: mergePhoneEntries(row?.phonesJson),
     updatedAt: row?.updatedAt ?? null,
   };
 }
@@ -73,17 +75,19 @@ async function upsertPrefs(userId: string, shopId: number | null, patch: Notific
   const channelsJson = applyChannelPrefsPatch(mergeChannelPrefs(existing?.channelsJson), patch.channelsJson);
   const eventsJson = applyEventPrefsPatch(mergeEventPrefs(existing?.eventsJson), patch.eventsJson);
   const phone = patch.phone !== undefined ? patch.phone : existing?.phone ?? null;
+  // phonesJson replaces wholesale when provided (like fillLevels)
+  const phonesJson = patch.phonesJson !== undefined ? patch.phonesJson : mergePhoneEntries(existing?.phonesJson);
   if (existing) {
     const [row] = await db
       .update(notificationPrefs)
-      .set({ channelsJson, eventsJson, phone, updatedAt: new Date() })
+      .set({ channelsJson, eventsJson, phone, phonesJson, updatedAt: new Date() })
       .where(eq(notificationPrefs.id, existing.id))
       .returning();
     return row;
   }
   const [row] = await db
     .insert(notificationPrefs)
-    .values({ userId, shopId, channelsJson, eventsJson, phone })
+    .values({ userId, shopId, channelsJson, eventsJson, phone, phonesJson })
     .returning();
   return row;
 }
