@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, RefreshCcw, Battery } from "lucide-react";
+import { Plus, RefreshCcw, Battery, Sparkles } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
 import BinSettings from "@/pages/partner/panels/BinSettings";
 import Team from "@/pages/partner/panels/Team";
@@ -212,30 +212,30 @@ export default function PartnerDashboard() {
                   <div>
                     <div className="text-sm text-gray-500">Shop Points Balance</div>
                     <div className="text-4xl font-bold" data-testid="text-points-balance">{pointsBalance?.balance ?? 0}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Earned automatically from every drop at your bins.</div>
                   </div>
                   <Battery className="h-12 w-12 text-green-500" />
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Rewards Catalog</CardTitle>
-                  <AddRewardButton onAdd={(d) => createReward.mutateAsync(d)} />
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {rewards.length === 0 ? <p className="text-sm text-gray-500">No rewards yet.</p> : rewards.map(r => (
-                    <div key={r.id} className="flex items-center justify-between border rounded p-3" data-testid={`row-reward-${r.id}`}>
-                      <div>
-                        <div className="font-semibold">{r.name}</div>
-                        {r.description && <div className="text-sm text-gray-500">{r.description}</div>}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Badge>{r.cost} pts</Badge>
-                        <Button size="sm" disabled={(pointsBalance?.balance ?? 0) < r.cost} onClick={() => redeemReward.mutate(r.id)} data-testid={`button-redeem-${r.id}`}>Redeem</Button>
-                      </div>
+              {/* Rewards are provided by LITTR and purchased with points — not shop-created. */}
+              <Card className="overflow-hidden border-green-500/30">
+                <div className="relative flex flex-col items-center gap-4 bg-gradient-to-br from-green-500/10 via-transparent to-green-500/5 px-6 py-14 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-green-500/15 text-green-600 dark:text-green-500">
+                    <Sparkles className="h-8 w-8" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-green-500/40 bg-green-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-green-600 dark:text-green-500">
+                      <Sparkles className="h-3 w-3" /> Coming soon
                     </div>
-                  ))}
-                </CardContent>
+                    <h3 className="text-2xl font-bold">Rewards Shop</h3>
+                    <p className="mx-auto max-w-md text-sm text-muted-foreground">
+                      Soon you'll spend your shop points on rewards from LITTR — marketing kits,
+                      swag, bill credits, and more. Keep collecting drops; your balance is already
+                      growing.
+                    </p>
+                  </div>
+                </div>
               </Card>
             </TabsContent>
 

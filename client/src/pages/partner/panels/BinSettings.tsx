@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiJson, apiSend } from "@/lib/apiJson";
+import { useStore } from "@/lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Save, Play, Loader2, AlertTriangle } from "lucide-react";
+import { Save, Play, Loader2, AlertTriangle, RefreshCcw } from "lucide-react";
 import {
   DEFAULT_DEVICE_SETTINGS,
   mergeDeviceSettings,
@@ -57,6 +58,21 @@ const ACTION_LABELS: Record<FireAction, string> = {
   DISPLAY: "Show warning on screen",
   ALARM: "Sound the bin alarm",
 };
+
+// Common IANA timezones (US-focused since LITTR operates in upstate NY, plus a
+// few majors) — a dropdown instead of a free-text field.
+const TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "America/Toronto",
+  "America/Halifax",
+  "UTC",
+];
 
 const FIRE_MODES = [
   { value: "0", label: "Temperature only" },
@@ -107,6 +123,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
   const id: number | undefined = device?.id;
   const { toast } = useToast();
   const qc = useQueryClient();
+  const isStaff = useStore((s) => s.role) === "staff";
 
   const settingsUrl = `/api/partner/devices/${id}/settings`;
 
@@ -562,13 +579,15 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                     </span>
                     <button
                       type="button"
-                      className="text-xs text-green-600 underline dark:text-green-500"
+                      title={`Reset to recommended (${VOC_RECOMMENDED_PCT}%)`}
+                      aria-label={`Reset VOC threshold to recommended ${VOC_RECOMMENDED_PCT}%`}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-green-600 dark:hover:text-green-500"
                       onClick={() =>
                         setSection("fire", { vocAnalog: vocAnalogFromPct(VOC_RECOMMENDED_PCT) })
                       }
                       data-testid="button-fire-voc-recommended"
                     >
-                      Use recommended ({VOC_RECOMMENDED_PCT}%)
+                      <RefreshCcw className="h-4 w-4" />
                     </button>
                   </div>
                   <Slider
@@ -650,13 +669,22 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                   data-testid="input-hours-close"
                 />
               </Row>
-              <Row label="Timezone" hint="IANA zone, e.g. America/New_York.">
-                <Input
-                  className="w-full"
-                  value={hours.tz ?? ""}
-                  onChange={(e) => setSection("hours", { tz: e.target.value })}
-                  data-testid="input-hours-tz"
-                />
+              <Row label="Timezone" hint="Used to enforce operating hours.">
+                <Select
+                  value={hours.tz ?? "America/New_York"}
+                  onValueChange={(v) => setSection("hours", { tz: v })}
+                >
+                  <SelectTrigger className="w-full" data-testid="select-hours-tz">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIMEZONES.map((tz) => (
+                      <SelectItem key={tz} value={tz}>
+                        {tz.replace(/_/g, " ")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Row>
             </CardContent>
           </Card>
@@ -707,32 +735,12 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
             </CardContent>
           </Card>
 
-          {/* ---- Telemetry & camera ------------------------------------------ */}
+          {/* ---- Camera ------------------------------------------------------ */}
           <Card>
             <CardHeader>
-              <CardTitle>Telemetry &amp; camera</CardTitle>
+              <CardTitle>Camera</CardTitle>
             </CardHeader>
             <CardContent className="divide-y divide-gray-100 dark:divide-gray-800">
-              <Row label="Idle heartbeat" hint="Seconds between heartbeats when idle.">
-                <NumInput
-                  value={telemetry.idleSec}
-                  min={5}
-                  max={3600}
-                  step={1}
-                  onChange={(n) => setSection("telemetry", { idleSec: n })}
-                  testid="input-telemetry-idle"
-                />
-              </Row>
-              <Row label="Active heartbeat" hint="Seconds between heartbeats during a session.">
-                <NumInput
-                  value={telemetry.activeSec}
-                  min={1}
-                  max={600}
-                  step={1}
-                  onChange={(n) => setSection("telemetry", { activeSec: n })}
-                  testid="input-telemetry-active"
-                />
-              </Row>
               <Row label="Idle snapshot" hint="Seconds between background reference photos.">
                 <NumInput
                   value={camera.idleSnapshotSec}
@@ -745,6 +753,41 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               </Row>
             </CardContent>
           </Card>
+
+          {/* ---- Telemetry cadence (STAFF only) ------------------------------ */}
+          {isStaff && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Telemetry cadence</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Staff-only. How often the bin reports in — leave at defaults unless tuning fleet
+                  bandwidth.
+                </p>
+              </CardHeader>
+              <CardContent className="divide-y divide-gray-100 dark:divide-gray-800">
+                <Row label="Idle heartbeat" hint="Seconds between heartbeats when idle.">
+                  <NumInput
+                    value={telemetry.idleSec}
+                    min={5}
+                    max={3600}
+                    step={1}
+                    onChange={(n) => setSection("telemetry", { idleSec: n })}
+                    testid="input-telemetry-idle"
+                  />
+                </Row>
+                <Row label="Active heartbeat" hint="Seconds between heartbeats during a session.">
+                  <NumInput
+                    value={telemetry.activeSec}
+                    min={1}
+                    max={600}
+                    step={1}
+                    onChange={(n) => setSection("telemetry", { activeSec: n })}
+                    testid="input-telemetry-active"
+                  />
+                </Row>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>

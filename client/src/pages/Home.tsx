@@ -10,7 +10,6 @@ import {
 import { Link } from "wouter";
 
 import vapesImage from "@assets/generated_images/pixel_art_vapes_collection.png";
-import binImage from "@assets/generated_images/pixel_art_littr_bin_interior.png";
 import batteriesImage from "@assets/generated_images/pixel_art_batteries_pattern.png";
 import rochesterImage from "@assets/generated_images/pixel_art_rochester_cityscape.png";
 import heroActionImage from "@assets/generated_images/pixel_art_vape_drop_action.png";
@@ -127,20 +126,17 @@ export default function Home() {
               </p>
             </div>
           </div>
-          <div className="relative h-[50vh] md:h-[70vh]">
+          <div className="relative h-[50vh] md:h-[70vh] bg-gradient-to-b from-gray-100 to-white dark:from-gray-900 dark:to-gray-950">
             <img
-              src={binImage}
-              alt="LITTR recycling bin"
-              className="w-full h-full object-cover"
+              src={littrOneImage}
+              alt="The LITTR One smart recycling bin"
+              className="w-full h-full object-contain p-6"
               loading="lazy"
-              style={{ imageRendering: "pixelated" }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            <div className="absolute bottom-8 left-8 right-8 text-white">
-              <h3 className="text-2xl font-bold mb-2">Bins Near You</h3>
-              <p className="text-gray-300">
-                Find our fire-safe bins at partner smoke shops across Upstate
-                NY.
+            <div className="absolute bottom-8 left-8 right-8">
+              <h3 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Meet the LITTR One</h3>
+              <p className="text-gray-600 dark:text-gray-300">
+                Find our fire-safe smart bins at partner smoke shops across Upstate NY.
               </p>
             </div>
           </div>

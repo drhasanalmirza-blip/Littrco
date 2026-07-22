@@ -113,7 +113,7 @@ export type DeviceSettingsJson = z.infer<typeof deviceSettingsSchema>;
 
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
   fill: { emptyDistanceMm: 500, fullOffsetMm: 76 },
-  policy: { allowThcVapes: false },
+  policy: { allowThcVapes: true }, // THC vapes accepted by default; partners can opt out
   fire: {
     enabled: true, // always on unless explicitly disabled (partner disable notifies staff)
     mode: 2,
