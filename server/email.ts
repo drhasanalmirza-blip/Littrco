@@ -1,6 +1,25 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Resend's constructor throws when the key is missing, which would crash the whole
+// server at import time in local dev. Only build a real client when a key is present;
+// otherwise use a shim that skips sending (all senders are best-effort and wrapped in
+// try/catch). On Replit the key comes from Secrets and the real client is used.
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const realResend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+if (!realResend) {
+  console.warn('[email] RESEND_API_KEY not set — outbound emails will be skipped.');
+}
+const resend = {
+  emails: {
+    send: async (payload: any) => {
+      if (!realResend) {
+        console.warn(`[email] skipped (no RESEND_API_KEY): "${payload?.subject ?? ''}"`);
+        return { skipped: true } as any;
+      }
+      return realResend.emails.send(payload);
+    },
+  },
+};
 
 const FROM_EMAIL = 'LITTR.co <notifications@littr.co>';
 const ADMIN_EMAIL = 'hello@littr.co';

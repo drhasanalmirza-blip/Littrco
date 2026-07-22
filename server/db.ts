@@ -1,3 +1,4 @@
+import "dotenv/config"; // load .env for local dev (no-op when vars already set, e.g. Replit)
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "@shared/schema";

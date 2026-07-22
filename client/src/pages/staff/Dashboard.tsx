@@ -10,6 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { LogOut, Plus } from "lucide-react";
+import ReviewQueue from "@/pages/staff/panels/ReviewQueue";
+import Sessions from "@/pages/staff/panels/Sessions";
+import Alerts from "@/pages/staff/panels/Alerts";
+import LiveCamera from "@/pages/staff/panels/LiveCamera";
+import Firmware from "@/pages/staff/panels/Firmware";
+import DeviceOps from "@/pages/staff/panels/DeviceOps";
+import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
 export default function StaffDashboard() {
   const { user, role, clearAuth } = useStore();
@@ -49,37 +56,41 @@ export default function StaffDashboard() {
   const enqueue = useMutation({
     mutationFn: async ({ deviceId, type }: { deviceId: number; type: string }) => {
       const r = await apiRequest(`/api/staff/devices/${deviceId}/commands`, { method: "POST", body: JSON.stringify({ type }) });
-      if (!r.ok) throw new Error("Failed");
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
     onSuccess: () => { toast({ title: "Command queued" }); refetchCmds(); },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const createShop = useMutation({
     mutationFn: async (d: any) => {
       const r = await apiRequest("/api/staff/shops", { method: "POST", body: JSON.stringify(d) });
-      if (!r.ok) throw new Error("Failed");
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
     onSuccess: () => { toast({ title: "Shop created" }); qc.invalidateQueries({ queryKey: ["/api/staff/shops"] }); },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const updateRole = useMutation({
     mutationFn: async ({ id, role }: { id: string; role: string }) => {
       const r = await apiRequest(`/api/staff/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) });
-      if (!r.ok) throw new Error("Failed");
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/staff/users"] }),
+    onSuccess: () => { toast({ title: "Role updated" }); qc.invalidateQueries({ queryKey: ["/api/staff/users"] }); },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const addMember = useMutation({
     mutationFn: async ({ shopId, userId }: { shopId: number; userId: string }) => {
       const r = await apiRequest(`/api/staff/shops/${shopId}/members`, { method: "POST", body: JSON.stringify({ userId, role: "OWNER" }) });
-      if (!r.ok) throw new Error("Failed");
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
     onSuccess: () => toast({ title: "Member added" }),
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   if (!user || role !== "staff") {
@@ -104,12 +115,19 @@ export default function StaffDashboard() {
         </div>
 
         <Tabs defaultValue="devices">
-          <TabsList className="mb-4">
+          <TabsList className="mb-4 flex flex-wrap h-auto justify-start">
             <TabsTrigger value="devices" data-testid="tab-devices">Devices</TabsTrigger>
             <TabsTrigger value="commands" data-testid="tab-commands">Command Queue</TabsTrigger>
+            <TabsTrigger value="review" data-testid="tab-review">Review</TabsTrigger>
+            <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="alerts" data-testid="tab-alerts">Alerts</TabsTrigger>
+            <TabsTrigger value="camera" data-testid="tab-camera">Live Camera</TabsTrigger>
+            <TabsTrigger value="firmware" data-testid="tab-firmware">Firmware</TabsTrigger>
+            <TabsTrigger value="deviceops" data-testid="tab-deviceops">Device Ops</TabsTrigger>
             <TabsTrigger value="shops" data-testid="tab-shops">Shops</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
             <TabsTrigger value="leads" data-testid="tab-leads">Leads</TabsTrigger>
+            <TabsTrigger value="notifications" data-testid="tab-notifications">Notifications</TabsTrigger>
           </TabsList>
 
           <TabsContent value="devices" className="space-y-3">
@@ -177,6 +195,30 @@ export default function StaffDashboard() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="review">
+            <ReviewQueue enabled={!!user && role === "staff"} />
+          </TabsContent>
+
+          <TabsContent value="sessions">
+            <Sessions enabled={!!user && role === "staff"} />
+          </TabsContent>
+
+          <TabsContent value="alerts">
+            <Alerts enabled={!!user && role === "staff"} />
+          </TabsContent>
+
+          <TabsContent value="camera">
+            <LiveCamera enabled={!!user && role === "staff"} />
+          </TabsContent>
+
+          <TabsContent value="firmware">
+            <Firmware enabled={!!user && role === "staff"} />
+          </TabsContent>
+
+          <TabsContent value="deviceops">
+            <DeviceOps enabled={!!user && role === "staff"} />
+          </TabsContent>
+
           <TabsContent value="shops" className="space-y-3">
             <CreateShopForm onCreate={(d) => createShop.mutate(d)} />
             {shops.map(s => (
@@ -230,6 +272,10 @@ export default function StaffDashboard() {
                 ))}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <StaffNotifications enabled={!!user && role === "staff"} />
           </TabsContent>
         </Tabs>
       </div>

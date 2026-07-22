@@ -176,18 +176,22 @@ export const storage = {
     const [w] = await db.select().from(wallets).where(eq(wallets.customerId, customerId));
     return w;
   },
-  // Battery balance = SUM EARNED - SUM REDEEMED (ledger-based)
+  // Battery balance = SUM EARNED - SUM REDEEMED + SUM ADJUST (ledger-based).
+  // ADJUST amounts are signed (negative on staff reject, positive on restore —
+  // spec §6); balance may go negative by design.
   async getBatteryBalance(customerId: number): Promise<{ balance: number; lifetimeEarned: number }> {
     const [row] = await db
       .select({
         earned: sql<number>`COALESCE(SUM(CASE WHEN ${batteryTransactions.type} = 'EARNED' THEN ${batteryTransactions.amount} ELSE 0 END), 0)`,
         redeemed: sql<number>`COALESCE(SUM(CASE WHEN ${batteryTransactions.type} = 'REDEEMED' THEN ${batteryTransactions.amount} ELSE 0 END), 0)`,
+        adjusted: sql<number>`COALESCE(SUM(CASE WHEN ${batteryTransactions.type} = 'ADJUST' THEN ${batteryTransactions.amount} ELSE 0 END), 0)`,
       })
       .from(batteryTransactions)
       .where(and(eq(batteryTransactions.customerId, customerId), eq(batteryTransactions.status, "POSTED")));
     const earned = Number(row?.earned ?? 0);
     const redeemed = Number(row?.redeemed ?? 0);
-    return { balance: earned - redeemed, lifetimeEarned: earned };
+    const adjusted = Number(row?.adjusted ?? 0);
+    return { balance: earned - redeemed + adjusted, lifetimeEarned: earned };
   },
   async getBatteryTransactions(customerId: number, limit = 50) {
     return db.select().from(batteryTransactions)
@@ -357,6 +361,10 @@ export const storage = {
     const [d] = await db.insert(drops).values(data).returning();
     return d;
   },
+  async updateDrop(id: number, patch: Partial<typeof drops.$inferInsert>): Promise<Drop | undefined> {
+    const [d] = await db.update(drops).set(patch).where(eq(drops.id, id)).returning();
+    return d;
+  },
   async getDropsBySession(sessionId: number): Promise<Drop[]> {
     return db.select().from(drops).where(eq(drops.sessionId, sessionId)).orderBy(drops.sequence);
   },
@@ -380,15 +388,17 @@ export const storage = {
     const [t] = await db.insert(shopPointTransactions).values(data).returning();
     return t;
   },
+  // Signed ADJUST rows (staff reject/restore, spec §6) count toward the balance
   async getShopPointBalance(shopId: number): Promise<number> {
     const [row] = await db
       .select({
         earned: sql<number>`COALESCE(SUM(CASE WHEN ${shopPointTransactions.type} = 'EARNED' THEN ${shopPointTransactions.amount} ELSE 0 END), 0)`,
         redeemed: sql<number>`COALESCE(SUM(CASE WHEN ${shopPointTransactions.type} = 'REDEEMED' THEN ${shopPointTransactions.amount} ELSE 0 END), 0)`,
+        adjusted: sql<number>`COALESCE(SUM(CASE WHEN ${shopPointTransactions.type} = 'ADJUST' THEN ${shopPointTransactions.amount} ELSE 0 END), 0)`,
       })
       .from(shopPointTransactions)
       .where(and(eq(shopPointTransactions.shopId, shopId), eq(shopPointTransactions.status, "POSTED")));
-    return Number(row?.earned ?? 0) - Number(row?.redeemed ?? 0);
+    return Number(row?.earned ?? 0) - Number(row?.redeemed ?? 0) + Number(row?.adjusted ?? 0);
   },
   async getShopPointTransactions(shopId: number, limit = 100) {
     return db.select().from(shopPointTransactions)

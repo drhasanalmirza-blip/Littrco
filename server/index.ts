@@ -1,10 +1,17 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { startOfflineSweep } from "./notify";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import path from "path";
 
 const app = express();
+// Behind the platform reverse proxy (Replit), the socket peer is the proxy, so
+// req.ip must derive from X-Forwarded-For for the IP-keyed rate limiters
+// (auth/claim/claim-by-code, spec §2.7) to key on the real client instead of
+// collapsing to one global bucket. Pin the hop count to the number of trusted
+// proxies (1) — not `true` — so clients cannot spoof X-Forwarded-For to evade them.
+app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -64,6 +71,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+  startOfflineSweep();
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -80,7 +88,14 @@ app.use((req, res, next) => {
   }
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  // reusePort is unsupported on Windows (listen throws ENOTSUP); it's only needed on
+  // the Linux hosting platform, so enable it everywhere except win32.
+  const listenOpts: { port: number; host: string; reusePort?: boolean } = {
+    port,
+    host: "0.0.0.0",
+    ...(process.platform === "win32" ? {} : { reusePort: true }),
+  };
+  httpServer.listen(listenOpts, () => {
     log(`serving on port ${port}`);
   });
 })();

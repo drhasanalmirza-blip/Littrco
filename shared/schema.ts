@@ -13,6 +13,7 @@ import {
   doublePrecision,
   real,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -20,7 +21,7 @@ import { z } from "zod";
 // ==================== Enums ====================
 export const userRoleEnum = pgEnum("user_role", ["STAFF", "PARTNER", "CUSTOMER"]);
 export const shopStatusEnum = pgEnum("shop_status", ["PENDING", "VERIFIED", "SUSPENDED"]);
-export const shopMemberRoleEnum = pgEnum("shop_member_role", ["OWNER", "MANAGER"]);
+export const shopMemberRoleEnum = pgEnum("shop_member_role", ["OWNER", "MANAGER", "VIEWER"]);
 export const leadStatusEnum = pgEnum("lead_status", ["NEW", "CONTACTED", "CONVERTED", "REJECTED"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["EARN", "REDEEM", "ADJUST"]);
 export const redemptionStatusEnum = pgEnum("redemption_status", ["PENDING", "APPROVED", "FULFILLED", "REJECTED"]);
@@ -31,7 +32,9 @@ export const dropSessionStatusEnum = pgEnum("drop_session_status", ["OPEN", "FIN
 export const deviceCommandStatusEnum = pgEnum("device_command_status", ["PENDING", "SENT", "ACKED", "FAILED"]);
 export const ledgerStatusEnum = pgEnum("ledger_status", ["PENDING", "POSTED", "VOID"]);
 export const ledgerTypeEnum = pgEnum("ledger_type", ["EARNED", "REDEEMED", "ADJUST"]);
-export const photoReasonEnum = pgEnum("photo_reason", ["idle", "drop_before", "drop_after", "maintenance", "calibration"]);
+export const photoReasonEnum = pgEnum("photo_reason", ["idle", "drop_before", "drop_after", "maintenance", "calibration", "live"]);
+export const dropReviewStatusEnum = pgEnum("drop_review_status", ["UNREVIEWED", "APPROVED", "REJECTED"]);
+export const alertSeverityEnum = pgEnum("alert_severity", ["INFO", "WARNING", "CRITICAL"]);
 
 // ==================== Users / Sessions ====================
 export const users = pgTable("users", {
@@ -242,6 +245,13 @@ export const devices = pgTable("devices", {
   errorLog: text("error_log"),
   latestPhotoUrl: text("latest_photo_url"),
   latestPhotoTakenAt: timestamp("latest_photo_taken_at"),
+  // Per-bin shop-points modifier; finalize uses it instead of reward_configs.shopPointsPerVape when set
+  pointsPerVapeOverride: integer("points_per_vape_override"),
+  lastDistanceMm: integer("last_distance_mm"),
+  targetFirmwareVersion: text("target_firmware_version"),
+  offlineNotifiedAt: timestamp("offline_notified_at"),
+  // Threshold hysteresis state: { notifiedFillLevels: number[], fullNotified: boolean }
+  alertStateJson: jsonb("alert_state_json"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const insertDeviceSchema = createInsertSchema(devices).omit({
@@ -318,6 +328,12 @@ export const drops = pgTable("drops", {
   vocRaw: integer("voc_raw"),
   fillPercent: integer("fill_percent"),
   accepted: boolean("accepted").notNull().default(true),
+  reviewStatus: dropReviewStatusEnum("review_status").notNull().default("UNREVIEWED"),
+  reviewedByUserId: varchar("reviewed_by_user_id").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNote: text("review_note"),
+  // Set once compensation ledger rows are written on reject (idempotency latch)
+  pointsRevoked: boolean("points_revoked").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type Drop = typeof drops.$inferSelect;
@@ -389,3 +405,116 @@ export const shopRewardRedemptions = pgTable("shop_reward_redemptions", {
   redeemedAt: timestamp("redeemed_at").defaultNow().notNull(),
 });
 export type ShopRewardRedemption = typeof shopRewardRedemptions.$inferSelect;
+
+// ==================== ALERTS & NOTIFICATIONS ====================
+
+// Alerts — threshold/event alerts per device. `type` is the closed set:
+// FILL_THRESHOLD | FULL | TEMP_HIGH | VOC_HIGH | FIRE | OFFLINE | SD_ERROR | CAMERA_ERROR
+export const alerts = pgTable("alerts", {
+  id: serial("id").primaryKey(),
+  deviceId: integer("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+  shopId: integer("shop_id").references(() => shops.id, { onDelete: "set null" }),
+  type: text("type").notNull(),
+  severity: alertSeverityEnum("severity").notNull(),
+  message: text("message").notNull(),
+  dataJson: jsonb("data_json"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  notifiedJson: jsonb("notified_json"),
+}, (t) => ({
+  deviceCreatedIdx: index("alerts_device_created_idx").on(t.deviceId, t.createdAt),
+}));
+export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
+export type InsertAlert = z.infer<typeof insertAlertSchema>;
+export type Alert = typeof alerts.$inferSelect;
+
+// Notification prefs — one row per user per scope. shopId null = global scope (STAFF).
+// Postgres treats NULLs as distinct in unique constraints, so the (userId, shopId)
+// unique alone would allow duplicate global rows; the partial unique index on userId
+// where shopId is null enforces at most one global-scope row per user.
+export const notificationPrefs = pgTable("notification_prefs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  shopId: integer("shop_id").references(() => shops.id, { onDelete: "cascade" }),
+  channelsJson: jsonb("channels_json").notNull()
+    .default(sql`'{"email":true,"sms":false,"call":false,"push":false}'::jsonb`),
+  eventsJson: jsonb("events_json").notNull()
+    .default(sql`'{"full":true,"fillLevels":[],"fire":true,"tempHigh":true,"vocHigh":true,"offline":true,"drops":false}'::jsonb`),
+  phone: text("phone"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  userShopUniq: unique("notification_prefs_user_shop_uniq").on(t.userId, t.shopId),
+  userGlobalUniq: uniqueIndex("notification_prefs_user_global_uniq")
+    .on(t.userId)
+    .where(sql`${t.shopId} is null`),
+}));
+export const insertNotificationPrefsSchema = createInsertSchema(notificationPrefs).omit({ id: true, updatedAt: true });
+export type InsertNotificationPrefs = z.infer<typeof insertNotificationPrefsSchema>;
+export type NotificationPrefs = typeof notificationPrefs.$inferSelect;
+
+// ==================== PARTNER TEAM INVITES ====================
+export const partnerInvites = pgTable("partner_invites", {
+  id: serial("id").primaryKey(),
+  shopId: integer("shop_id").notNull().references(() => shops.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: shopMemberRoleEnum("role").notNull(),
+  token: text("token").notNull().unique(),
+  invitedByUserId: varchar("invited_by_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  acceptedByUserId: varchar("accepted_by_user_id").references(() => users.id),
+});
+export const insertPartnerInviteSchema = createInsertSchema(partnerInvites).omit({ id: true, createdAt: true });
+export type InsertPartnerInvite = z.infer<typeof insertPartnerInviteSchema>;
+export type PartnerInvite = typeof partnerInvites.$inferSelect;
+
+// ==================== CUSTOMER SELF-REPORTS ====================
+export const selfReports = pgTable("self_reports", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => dropSessions.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  brand: text("brand"),
+  model: text("model"),
+  puffCount: integer("puff_count"),
+  isThc: boolean("is_thc"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  sessionUniq: unique("self_reports_session_uniq").on(t.sessionId),
+}));
+export const insertSelfReportSchema = createInsertSchema(selfReports).omit({ id: true, createdAt: true });
+export type InsertSelfReport = z.infer<typeof insertSelfReportSchema>;
+export type SelfReport = typeof selfReports.$inferSelect;
+
+// ==================== FIRMWARE RELEASES (OTA) ====================
+export const firmwareReleases = pgTable("firmware_releases", {
+  id: serial("id").primaryKey(),
+  board: text("board").notNull(), // "sensor" | "hmi"
+  version: text("version").notNull(),
+  channel: text("channel").notNull().default("stable"), // "stable" | "beta"
+  url: text("url").notNull(),
+  sha256: text("sha256").notNull(),
+  sizeBytes: integer("size_bytes"),
+  notes: text("notes"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  boardVersionChannelUniq: unique("firmware_board_version_channel_uniq").on(t.board, t.version, t.channel),
+}));
+export const insertFirmwareReleaseSchema = createInsertSchema(firmwareReleases).omit({ id: true, createdAt: true });
+export type InsertFirmwareRelease = z.infer<typeof insertFirmwareReleaseSchema>;
+export type FirmwareRelease = typeof firmwareReleases.$inferSelect;
+
+// ==================== PAIRING CODES (QR/SoftAP flow) ====================
+// Replaces nothing; BLE pairing_nonces stays for back-compat.
+export const pairingCodes = pgTable("pairing_codes", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(), // 6 chars, uppercase alphanumeric, alphabet excludes 0/O/1/I
+  deviceId: integer("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+  createdByUserId: varchar("created_by_user_id").notNull().references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(), // 10-minute TTL
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type PairingCode = typeof pairingCodes.$inferSelect;

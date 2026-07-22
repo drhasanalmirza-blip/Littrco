@@ -5,6 +5,7 @@ import { apiRequest, useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Battery, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import SelfReportDialog from "@/components/SelfReportDialog";
 
 export default function ClaimPage() {
   const [, params] = useRoute("/claim/:token");
@@ -99,6 +100,19 @@ export default function ClaimPage() {
               <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto" />
               <p>+{claimResult.batteries} Batteries added.</p>
               <p className="text-sm text-gray-500">New balance: {claimResult.balance}</p>
+              {data.sessionId != null && (
+                <div className="pt-2">
+                  <SelfReportDialog
+                    sessionId={data.sessionId}
+                    trigger={
+                      <Button variant="outline" className="w-full" data-testid="button-add-details">
+                        Add details about your vape
+                      </Button>
+                    }
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Optional — helps us recycle better.</p>
+                </div>
+              )}
               <Button className="w-full mt-2" onClick={() => setLocation("/app")} data-testid="button-wallet">Go to Wallet</Button>
             </div>
           ) : (

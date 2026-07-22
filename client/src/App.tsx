@@ -24,6 +24,7 @@ import ClaimPage from "@/pages/customer/Claim";
 import RegisterPage from "@/pages/customer/Register";
 import ChangePasswordPage from "@/pages/customer/ChangePassword";
 import StorePage from "@/pages/customer/Store";
+import InviteAccept from "@/pages/InviteAccept";
 
 function guard<P extends object>(C: React.ComponentType<P>) {
   const G = (p: P) => <ErrorBoundary><C {...p} /></ErrorBoundary>;
@@ -37,6 +38,7 @@ const GCustomer = guard(CustomerDashboard);
 const GClaim = guard(ClaimPage);
 const GStore = guard(StorePage);
 const GPwd = guard(ChangePasswordPage);
+const GInvite = guard(InviteAccept);
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -70,6 +72,7 @@ function Router() {
 
         <Route path="/partner/login" component={() => <Login type="partner" />} />
         <Route path="/partner/dashboard" component={GPartner} />
+        <Route path="/partner/invite/:token" component={GInvite} />
 
         <Route path="/app" component={GCustomer} />
         <Route path="/app/dashboard" component={GCustomer} />

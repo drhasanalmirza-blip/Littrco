@@ -10,8 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Bluetooth, Trash2, Plus, LogOut, RefreshCcw, Battery } from "lucide-react";
-import { pairBinOverBLE, isWebBluetoothAvailable } from "@/lib/ble";
+import { Plus, LogOut, RefreshCcw, Battery } from "lucide-react";
+import BinSettings from "@/pages/partner/panels/BinSettings";
+import Team from "@/pages/partner/panels/Team";
+import Pairing from "@/pages/partner/panels/Pairing";
+import PartnerAlerts from "@/pages/partner/panels/PartnerAlerts";
+import PartnerNotifications from "@/pages/partner/panels/PartnerNotifications";
 
 interface Shop { id: number; name: string; city: string; status: string; }
 interface Device {
@@ -30,7 +34,7 @@ export default function PartnerDashboard() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
-  const [addBinOpen, setAddBinOpen] = useState(false);
+  const [settingsDeviceId, setSettingsDeviceId] = useState<number | null>(null);
 
   const { data: shops = [] } = useQuery<Shop[]>({
     queryKey: ["/api/partner/shops"],
@@ -40,6 +44,7 @@ export default function PartnerDashboard() {
 
   const shopId = selectedShopId ?? shops[0]?.id ?? null;
   const shop = shops.find(s => s.id === shopId);
+  const partnerEnabled = !!user && (role === "partner" || role === "staff");
 
   const { data: devices = [], refetch: refetchDevices } = useQuery<Device[]>({
     queryKey: [`/api/partner/shops/${shopId}/devices`],
@@ -47,6 +52,8 @@ export default function PartnerDashboard() {
     enabled: !!shopId,
     refetchInterval: 10000,
   });
+
+  const selectedDevice = devices.find(d => d.id === settingsDeviceId) ?? devices[0] ?? null;
 
   const { data: sessions = [] } = useQuery<DropSession[]>({
     queryKey: [`/api/partner/shops/${shopId}/sessions`],
@@ -69,22 +76,27 @@ export default function PartnerDashboard() {
   const markEmpty = useMutation({
     mutationFn: async (deviceId: number) => {
       const r = await apiRequest(`/api/partner/devices/${deviceId}/mark-empty`, { method: "POST" });
-      if (!r.ok) throw new Error("Failed");
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
     onSuccess: () => {
       toast({ title: "Mark Empty queued", description: "Bin will reset on next poll." });
       refetchDevices();
     },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const createReward = useMutation({
     mutationFn: async (data: { name: string; cost: number; description?: string }) => {
       const r = await apiRequest(`/api/partner/shops/${shopId}/rewards`, { method: "POST", body: JSON.stringify(data) });
-      if (!r.ok) throw new Error("Failed");
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: [`/api/partner/shops/${shopId}/rewards`] }),
+    onSuccess: () => {
+      toast({ title: "Reward created" });
+      qc.invalidateQueries({ queryKey: [`/api/partner/shops/${shopId}/rewards`] });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const redeemReward = useMutation({
@@ -133,21 +145,20 @@ export default function PartnerDashboard() {
           <Card><CardContent className="p-8 text-center text-gray-500">No shops assigned to your account yet.</CardContent></Card>
         ) : (
           <Tabs defaultValue="bins">
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 flex flex-wrap h-auto justify-start">
               <TabsTrigger value="bins" data-testid="tab-bins">Bins</TabsTrigger>
               <TabsTrigger value="activity" data-testid="tab-activity">Activity</TabsTrigger>
               <TabsTrigger value="points" data-testid="tab-points">Point Shop</TabsTrigger>
+              <TabsTrigger value="pairing" data-testid="tab-pairing">Pairing</TabsTrigger>
+              <TabsTrigger value="team" data-testid="tab-team">Team</TabsTrigger>
+              <TabsTrigger value="alerts" data-testid="tab-alerts">Alerts</TabsTrigger>
               <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
+              <TabsTrigger value="notifications" data-testid="tab-notifications">Notifications</TabsTrigger>
             </TabsList>
 
             <TabsContent value="bins" className="space-y-4">
-              <div className="flex justify-end">
-                <Button onClick={() => setAddBinOpen(true)} data-testid="button-add-bin">
-                  <Plus className="h-4 w-4 mr-1" /> Add Bin
-                </Button>
-              </div>
               {devices.length === 0 ? (
-                <Card><CardContent className="p-8 text-center text-gray-500">No bins paired yet. Click "Add Bin" to pair one over Bluetooth.</CardContent></Card>
+                <Card><CardContent className="p-8 text-center text-gray-500">No bins paired yet. Open the "Pairing" tab to connect one with a pair code.</CardContent></Card>
               ) : devices.map(d => (
                 <Card key={d.id} data-testid={`card-device-${d.id}`}>
                   <CardContent className="p-4 flex items-center gap-4">
@@ -212,7 +223,7 @@ export default function PartnerDashboard() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Rewards Catalog</CardTitle>
-                  <AddRewardButton onAdd={(d) => createReward.mutate(d)} />
+                  <AddRewardButton onAdd={(d) => createReward.mutateAsync(d)} />
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {rewards.length === 0 ? <p className="text-sm text-gray-500">No rewards yet.</p> : rewards.map(r => (
@@ -231,29 +242,80 @@ export default function PartnerDashboard() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="settings">
-              <DeviceSettingsPanel devices={devices} />
+            <TabsContent value="pairing">
+              <Pairing shopId={shopId ?? 0} enabled={partnerEnabled} />
+            </TabsContent>
+
+            <TabsContent value="team">
+              <Team shopId={shopId ?? 0} enabled={partnerEnabled} />
+            </TabsContent>
+
+            <TabsContent value="alerts">
+              <PartnerAlerts shopId={shopId ?? 0} enabled={partnerEnabled} />
+            </TabsContent>
+
+            <TabsContent value="settings" className="space-y-4">
+              {devices.length === 0 ? (
+                <Card><CardContent className="p-8 text-center text-gray-500">No bins yet. Pair a bin first to edit its settings.</CardContent></Card>
+              ) : (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Bin settings</CardTitle>
+                      <select
+                        className="border rounded px-2 py-1 text-sm mt-2 w-fit bg-transparent"
+                        value={selectedDevice?.id ?? ""}
+                        onChange={(e) => setSettingsDeviceId(Number(e.target.value))}
+                        data-testid="select-settings-device"
+                      >
+                        {devices.map(d => <option key={d.id} value={d.id}>{d.serial}</option>)}
+                      </select>
+                    </CardHeader>
+                  </Card>
+                  <BinSettings device={selectedDevice} enabled={partnerEnabled} />
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="notifications">
+              <PartnerNotifications shopId={shopId ?? 0} enabled={partnerEnabled} />
             </TabsContent>
           </Tabs>
-        )}
-
-        {addBinOpen && shop && (
-          <AddBinDialog shop={shop} onClose={() => setAddBinOpen(false)} onPaired={refetchDevices} />
         )}
       </div>
     </div>
   );
 }
 
-function AddRewardButton({ onAdd }: { onAdd: (d: { name: string; cost: number; description?: string }) => void }) {
+function AddRewardButton({ onAdd }: { onAdd: (d: { name: string; cost: number; description?: string }) => Promise<unknown> }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [cost, setCost] = useState(10);
   const [desc, setDesc] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Only close/reset the dialog once the create actually succeeds. On failure
+  // (e.g. a VIEWER member's 403) the mutation's onError surfaces a toast and the
+  // dialog stays open with the entered values so the user can see it failed and retry.
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await onAdd({ name, cost, description: desc || undefined });
+      setOpen(false);
+      setName("");
+      setCost(10);
+      setDesc("");
+    } catch {
+      // Error is reported by the mutation's onError toast; keep the dialog open.
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <Button size="sm" onClick={() => setOpen(true)} data-testid="button-add-reward"><Plus className="h-4 w-4 mr-1" />New Reward</Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => { if (!saving) setOpen(o); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>New Reward</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -262,125 +324,10 @@ function AddRewardButton({ onAdd }: { onAdd: (d: { name: string; cost: number; d
             <div><Label>Description (optional)</Label><Input value={desc} onChange={e => setDesc(e.target.value)} data-testid="input-reward-desc" /></div>
           </div>
           <DialogFooter>
-            <Button onClick={() => { onAdd({ name, cost, description: desc || undefined }); setOpen(false); setName(""); setCost(10); setDesc(""); }} data-testid="button-save-reward">Create</Button>
+            <Button onClick={submit} disabled={saving} data-testid="button-save-reward">{saving ? "Creating…" : "Create"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-function DeviceSettingsPanel({ devices }: { devices: Device[] }) {
-  const [selected, setSelected] = useState<number | null>(devices[0]?.id ?? null);
-  const id = selected ?? devices[0]?.id;
-  const { data, refetch } = useQuery<{ settingsJson: any; version: number }>({
-    queryKey: [`/api/partner/devices/${id}/settings`],
-    queryFn: async () => (await apiRequest(`/api/partner/devices/${id}/settings`)).json(),
-    enabled: !!id,
-  });
-  const [text, setText] = useState("");
-  const { toast } = useToast();
-
-  if (devices.length === 0) return <p className="text-sm text-gray-500">No devices yet.</p>;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Device Settings</CardTitle>
-        <select className="border rounded px-2 py-1 text-sm mt-2 w-fit" value={id ?? ""} onChange={(e) => setSelected(Number(e.target.value))} data-testid="select-settings-device">
-          {devices.map(d => <option key={d.id} value={d.id}>{d.serial}</option>)}
-        </select>
-      </CardHeader>
-      <CardContent>
-        <div className="text-xs text-gray-500 mb-2">Version: {data?.version ?? 0}</div>
-        <textarea
-          className="w-full h-64 font-mono text-xs border rounded p-2 bg-gray-50 dark:bg-gray-900"
-          defaultValue={JSON.stringify(data?.settingsJson || {}, null, 2)}
-          onChange={(e) => setText(e.target.value)}
-          data-testid="textarea-settings"
-        />
-        <Button className="mt-3" onClick={async () => {
-          try {
-            const parsed = JSON.parse(text || JSON.stringify(data?.settingsJson || {}));
-            const r = await apiRequest(`/api/partner/devices/${id}/settings`, { method: "PUT", body: JSON.stringify(parsed) });
-            if (!r.ok) throw new Error("Save failed");
-            toast({ title: "Settings saved", description: "Bin will pull on next poll." });
-            refetch();
-          } catch (e: any) {
-            toast({ title: "Invalid JSON", description: e.message, variant: "destructive" });
-          }
-        }} data-testid="button-save-settings">Save</Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AddBinDialog({ shop, onClose, onPaired }: { shop: Shop; onClose: () => void; onPaired: () => void }) {
-  const [state, setState] = useState<"idle" | "init" | "bt" | "waiting" | "done" | "error">("idle");
-  const [msg, setMsg] = useState("");
-  const supported = isWebBluetoothAvailable();
-
-  async function start() {
-    setState("init");
-    setMsg("Reserving slot…");
-    try {
-      const r = await apiRequest("/api/partner/bins/pair-init", { method: "POST", body: JSON.stringify({ shopId: shop.id }) });
-      if (!r.ok) throw new Error("pair-init failed");
-      const { deviceId, deviceKey, nonce, serial } = await r.json();
-      setMsg("Pick your bin in the Bluetooth picker…");
-      setState("bt");
-      await pairBinOverBLE({ deviceKey, nonce, serial });
-      setMsg(`Waiting for bin ${serial} to come online…`);
-      setState("waiting");
-      // Poll devices list for this serial reaching LIVE. Up to 60s.
-      let live = false;
-      for (let i = 0; i < 60; i++) {
-        await new Promise((r) => setTimeout(r, 1000));
-        onPaired();
-        try {
-          const dr = await apiRequest(`/api/partner/shops/${shop.id}/devices`);
-          if (dr.ok) {
-            const devs: any[] = await dr.json();
-            const me = devs.find((d) => d.id === deviceId || d.serial === serial);
-            if (me && me.status === "LIVE") { live = true; break; }
-          }
-        } catch { /* keep polling */ }
-      }
-      if (!live) {
-        setMsg("Bin didn't come online. Check WiFi and try again.");
-        setState("error");
-        return;
-      }
-      setMsg(`${serial} is Live ✓`);
-      setState("done");
-    } catch (e: any) {
-      setMsg(e.message || "Pairing failed");
-      setState("error");
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Add Bin to {shop.name}</DialogTitle></DialogHeader>
-        {!supported ? (
-          <div className="space-y-3">
-            <p className="text-sm">Web Bluetooth is not available in this browser. Use Chrome or Edge on desktop or Android to pair a bin.</p>
-            <Button onClick={onClose}>Close</Button>
-          </div>
-        ) : state === "idle" ? (
-          <div className="space-y-3">
-            <p className="text-sm">Power on the bin so it advertises over Bluetooth, then click below.</p>
-            <Button onClick={start} data-testid="button-start-pair"><Bluetooth className="h-4 w-4 mr-1" /> Find Bin</Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm">{msg}</p>
-            {state === "done" && <Button onClick={onClose}>Done</Button>}
-            {state === "error" && <Button onClick={onClose} variant="outline">Close</Button>}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }

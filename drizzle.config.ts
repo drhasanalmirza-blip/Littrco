@@ -1,3 +1,4 @@
+import "dotenv/config"; // load .env so `npm run db:push` finds DATABASE_URL in local dev
 import { defineConfig } from "drizzle-kit";
 
 if (!process.env.DATABASE_URL) {

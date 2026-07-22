@@ -48,6 +48,49 @@ PostgreSQL via `DATABASE_URL`. Photos saved to local disk under `uploads/photos/
 ## Key tables
 `users`, `sessions`, `shops`, `shop_members`, `leads`, `contacts`, `volunteers`, `pickup_requests`, `customers`, `wallets`, `transactions`, `store_items`, `redemptions`, `reward_configs`, `devices`, `pairing_nonces`, `device_settings`, `device_commands`, `drop_sessions`, `drops`, `photos`, `battery_transactions`, `shop_point_transactions`, `shop_rewards`, `shop_reward_redemptions`.
 
+## Phase 1 additions
+
+Server-side Phase 1 work (design spec: `docs/API_DESIGN.md`; full endpoint reference:
+`docs/CLOUD_API.md`). Everything below is additive — existing behavior is unchanged.
+
+### New tables
+`alerts`, `notification_prefs`, `partner_invites`, `self_reports`, `firmware_releases`,
+`pairing_codes`. Plus new enums `drop_review_status`, `alert_severity`, a `VIEWER`
+`shop_member_role`, and a `live` `photo_reason`. New `devices` columns:
+`pointsPerVapeOverride`, `lastDistanceMm`, `targetFirmwareVersion`, `offlineNotifiedAt`,
+`alertStateJson`. New `drops` columns: `reviewStatus`, `reviewedByUserId`, `reviewedAt`,
+`reviewNote`, `pointsRevoked`.
+
+### New route modules (mounted from `server/routes.ts`)
+- `server/routes/review.ts` — staff drop review queue, approve/reject (revocation), staff
+  sessions listing, JSONL training export.
+- `server/routes/alerts.ts` — staff + partner alert history + per-scope notification prefs.
+- `server/routes/team.ts` — partner team invites/members (OWNER-gated) + `POST
+  /api/invites/accept`; exports `partnerRoleForShop` for VIEWER enforcement.
+- `server/routes/selfreport.ts` — `POST /api/customer/self-report`.
+- `server/routes/devops.ts` — live camera (snapshot/photos), firmware releases + OTA
+  (`GET /api/device/firmware`), points-modifier, fill calibration, and the QR/SoftAP
+  pairing exchange (`POST /api/device/claim-by-code`).
+
+### Notify engine & pure helpers
+- `server/notify.ts` — the alert & notification engine (I/O side): creates `alerts` rows,
+  gathers recipients (all STAFF global-scope prefs + shop members' shop-scope prefs),
+  dispatches via a provider interface (email wired to Resend; sms/call/push are logged
+  stubs), and runs `startOfflineSweep()` (5-min interval, kicked off from
+  `server/index.ts`). Three triggers: telemetry ingest, device events, offline sweep.
+- `server/notifyRules.ts` — **pure** decision logic (fill hysteresis, prefs merge,
+  recipient filtering, fire-action classification, default messages). No db import.
+- `server/reviewRules.ts` — **pure** revocation math (`planReject`/`planApprove`).
+- `server/claims.ts` — shared claim helper (`claimSessionForCustomer`) used by both the
+  claim route and claim-on-register.
+- `server/ratelimit.ts` — in-memory sliding-window limiters (per-device + per-IP).
+- `server/paircode.ts` — pair-code generator (32-char alphabet, no look-alikes).
+- `shared/deviceSettings.ts` — structured device-settings zod schema + defaults + merge.
+
+The three pure `*Rules`/`paircode`/`deviceSettings` modules avoid importing `server/db.ts`
+(which throws without `DATABASE_URL`), so the vitest suite in `server/__tests__/` covers
+them without a database.
+
 ## External Dependencies
 - **Database**: PostgreSQL (`DATABASE_URL`)
 - **ORM**: Drizzle ORM, drizzle-kit

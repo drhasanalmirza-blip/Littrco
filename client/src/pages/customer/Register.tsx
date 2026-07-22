@@ -17,7 +17,15 @@ export default function RegisterPage() {
   const { setAuth } = useStore();
   const [, setLocation] = useLocation();
   const search = useSearch();
-  const nextParam = new URLSearchParams(search).get('next');
+  const searchParams = new URLSearchParams(search);
+  const nextParam = searchParams.get('next');
+  // Preserve a claim token through signup so points are credited immediately.
+  // Accept either an explicit ?claim=<token> or a ?next=/claim/:token deep link.
+  const claimToken =
+    searchParams.get('claim') ||
+    (nextParam && nextParam.startsWith('/claim/')
+      ? decodeURIComponent(nextParam.slice('/claim/'.length).split(/[/?#]/)[0])
+      : null);
   const { executeRecaptcha } = useRecaptcha();
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -53,7 +61,7 @@ export default function RegisterPage() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, recaptchaToken }),
+        body: JSON.stringify({ email, password, recaptchaToken, ...(claimToken ? { claimToken } : {}) }),
       });
 
       const data = await res.json();
