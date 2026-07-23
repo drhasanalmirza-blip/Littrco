@@ -371,10 +371,6 @@ export const storage = {
     const [s] = await db.update(dropSessions).set(patch).where(eq(dropSessions.id, id)).returning();
     return s;
   },
-  async createDrop(data: typeof drops.$inferInsert): Promise<Drop> {
-    const [d] = await db.insert(drops).values(data).returning();
-    return d;
-  },
   async updateDrop(id: number, patch: Partial<typeof drops.$inferInsert>): Promise<Drop | undefined> {
     const [d] = await db.update(drops).set(patch).where(eq(drops.id, id)).returning();
     return d;

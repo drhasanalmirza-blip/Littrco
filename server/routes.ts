@@ -2,11 +2,11 @@ import type { Express, Request, Response } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   insertContactSchema, insertLeadSchema, insertVolunteerSchema,
   insertShopSchema, insertShopRewardSchema,
-  dropSessions, rewardConfigs, shopPointTransactions,
+  dropSessions, drops, rewardConfigs, shopPointTransactions,
 } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import {
@@ -24,7 +24,7 @@ import { rateLimit, rateLimitByIp, deviceLimiter } from "./ratelimit";
 import { claimSessionForCustomer } from "./claims";
 import { evaluateTelemetry, handleDeviceEvent, notifyFireDisabled } from "./notify";
 import { validateDeviceSettings, mergeDeviceSettings } from "@shared/deviceSettings";
-import { finalizeDecision } from "./offlineFinalize";
+import { finalizeDecision, finalizeReplayKind } from "./offlineFinalize";
 import reviewRouter from "./routes/review";
 import { partnerRoleForShop } from "./routes/team";
 import alertsRouter from "./routes/alerts";
@@ -588,19 +588,54 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       occurredAt: z.string().datetime({ offset: true }).optional(), // true drop time for offline drops (spec §3.4)
     }).safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: "bad drop" });
-    const session = await storage.getDropSession(body.data.sessionId);
-    if (!session || session.deviceId !== req.device!.id) return res.status(404).json({ error: "Session not found" });
-    if (session.status !== "OPEN") return res.status(400).json({ error: "Session not open" });
-    const { occurredAt, ...dropData } = body.data;
-    const drop = await storage.createDrop({
-      ...dropData,
-      occurredAt: occurredAt ? new Date(occurredAt) : undefined,
-    } as any);
-    await storage.updateDropSession(session.id, {
-      detectedDropCount: session.detectedDropCount + 1,
-      acceptedDropCount: session.acceptedDropCount + (body.data.accepted === false ? 0 : 1),
+    const { occurredAt, sessionId, sequence, ...dropData } = body.data;
+
+    // Idempotent-by-(sessionId, sequence) (audit B3): the sensor retries the
+    // identical drop up to 3× on any non-2xx. A lost 200 must NOT double-insert
+    // or double-increment acceptedDropCount (→ double batteries + shop points at
+    // finalize). We lock the session FOR UPDATE, then either return the existing
+    // drop unchanged (replay) or insert-and-increment exactly once. The
+    // ON CONFLICT DO NOTHING + re-select is belt-and-suspenders against a
+    // concurrent identical retry racing inside the same lock window.
+    const result = await db.transaction(async (tx) => {
+      const [session] = await tx.select().from(dropSessions)
+        .where(eq(dropSessions.id, sessionId)).for("update");
+      if (!session || session.deviceId !== req.device!.id) return { kind: "notfound" as const };
+
+      const [existing] = await tx.select({ id: drops.id }).from(drops)
+        .where(and(eq(drops.sessionId, sessionId), eq(drops.sequence, sequence)));
+      if (existing) return { kind: "duplicate" as const, dropId: existing.id };
+
+      if (session.status !== "OPEN") return { kind: "closed" as const };
+
+      const [inserted] = await tx.insert(drops).values({
+        sessionId,
+        sequence,
+        ...dropData,
+        occurredAt: occurredAt ? new Date(occurredAt) : undefined,
+      } as any).onConflictDoNothing({ target: [drops.sessionId, drops.sequence] }).returning({ id: drops.id });
+
+      if (!inserted) {
+        // Lost the insert race to a concurrent identical retry — re-select it and
+        // do NOT increment (the winning insert already did).
+        const [row] = await tx.select({ id: drops.id }).from(drops)
+          .where(and(eq(drops.sessionId, sessionId), eq(drops.sequence, sequence)));
+        return { kind: "duplicate" as const, dropId: row.id };
+      }
+
+      // Accepted-count increment is tied to a genuine new insert only.
+      await tx.update(dropSessions).set({
+        detectedDropCount: session.detectedDropCount + 1,
+        acceptedDropCount: session.acceptedDropCount + (body.data.accepted === false ? 0 : 1),
+      }).where(eq(dropSessions.id, sessionId));
+
+      return { kind: "created" as const, dropId: inserted.id };
     });
-    res.json({ dropId: drop.id });
+
+    if (result.kind === "notfound") return res.status(404).json({ error: "Session not found" });
+    if (result.kind === "closed") return res.status(400).json({ error: "Session not open" });
+    // Both a fresh insert and a replayed duplicate return { dropId } (200).
+    res.json({ dropId: result.dropId });
   });
 
   // Photo upload — multipart not required; accepts base64 in JSON body
@@ -670,7 +705,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const [session] = await tx.select().from(dropSessions)
         .where(eq(dropSessions.id, sessionId)).for("update");
       if (!session || session.deviceId !== device.id) return { kind: "notfound" as const };
-      if (session.status !== "OPEN") return { kind: "already" as const };
+
+      // Idempotent-by-replay (audit M-8): a repeat finalize on an already-non-OPEN
+      // session owned by this device must return the EXISTING outcome — never award
+      // again. A lost 200 otherwise orphans the claim (shop keeps points, customer
+      // can never scan). Only genuinely-OPEN sessions run the awarding path below.
+      if (session.status !== "OPEN") {
+        const replay = finalizeReplayKind(session.status, session.offline);
+        if (replay === "expired") return { kind: "expired" as const };
+        if (replay === "offline") return { kind: "offline" as const, shopPoints: session.shopPointsAwarded };
+        return {
+          kind: "finalized" as const,
+          batteries: session.batteriesEstimated,
+          shopPoints: session.shopPointsAwarded,
+          claimToken: session.claimToken!,
+          expiresAt: session.expiresAt!,
+        };
+      }
 
       if (session.acceptedDropCount === 0) {
         await tx.update(dropSessions)
@@ -730,7 +781,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
 
     if (outcome.kind === "notfound") return res.status(404).json({ error: "Session not found" });
-    if (outcome.kind === "already") return res.status(400).json({ error: "Already finalized" });
     if (outcome.kind === "expired") {
       return res.json({ ok: true, batteries: 0, claimToken: null, claimUrl: null, expired: true });
     }

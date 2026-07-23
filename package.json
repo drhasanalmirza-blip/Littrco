@@ -10,6 +10,7 @@
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
+    "db:dedup-drops": "tsx scripts/dedup-drops.ts",
     "test:classifier": "tsx scripts/test-classifier.ts",
     "test": "vitest run server/__tests__/"
   },

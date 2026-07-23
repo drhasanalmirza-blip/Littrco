@@ -341,7 +341,13 @@ export const drops = pgTable("drops", {
   // True drop time; offline drops carry the real time, live drops leave null → createdAt is authoritative
   occurredAt: timestamp("occurred_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Idempotency guard (audit B3): the sensor retries the identical drop (stable
+  // `sequence` per session) up to 3× on any non-2xx. Without this, a lost 200
+  // double-inserts and double-increments acceptedDropCount → double batteries +
+  // shop points at finalize. POST /api/device/drops upserts/no-ops on conflict.
+  sessionSequenceUniq: unique("drops_session_sequence_uniq").on(t.sessionId, t.sequence),
+}));
 export type Drop = typeof drops.$inferSelect;
 
 // Photos — uploaded by device, attached to device/session/drop

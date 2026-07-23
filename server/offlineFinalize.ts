@@ -59,3 +59,42 @@ export function finalizeDecision(input: FinalizeInput): FinalizeDecision {
     status: "FINALIZED",
   };
 }
+
+// ==================== Finalize replay (audit M-8) ====================
+//
+// A lost finalize 200 orphans the claim: the shop keeps its points and a live
+// claim token was minted, but the bin never saw it, so the customer can never
+// scan. The sensor's `finalizeIfDue` runs once and clears the session, so the
+// only recovery is a device retry — which must return the EXISTING outcome
+// instead of 400 "Already finalized". Only genuinely-OPEN sessions run the
+// awarding path; a non-OPEN session owned by the same device echoes back what
+// was already committed WITHOUT awarding again.
+
+export type SessionStatus = "OPEN" | "FINALIZED" | "CLAIMED" | "EXPIRED";
+
+/** How a repeat finalize on a non-OPEN session should be answered. */
+export type FinalizeReplayKind =
+  | "award"    // still OPEN — caller must run the real awarding path
+  | "expired"  // EXPIRED — echo the no-award expired response
+  | "offline"  // offline session already FINALIZED/CLAIMED — echo shop-points-only
+  | "live";    // live session already FINALIZED/CLAIMED — echo the existing claim token
+
+/**
+ * Decide how to answer a finalize call given the session's current committed
+ * state. Pure/deterministic so it unit-tests without a DB:
+ *  - OPEN            → "award" (run the awarding transaction)
+ *  - EXPIRED         → "expired" (no drops were ever accepted; nothing to replay)
+ *  - FINALIZED/CLAIMED, offline → "offline" (shop points only, no token)
+ *  - FINALIZED/CLAIMED, live    → "live" (return the already-minted claim token)
+ *
+ * Note EXPIRED is deliberately NOT treated as a live replay: an expired session
+ * has no accepted drops, no token, and no awards to echo.
+ */
+export function finalizeReplayKind(
+  status: SessionStatus,
+  offline: boolean,
+): FinalizeReplayKind {
+  if (status === "OPEN") return "award";
+  if (status === "EXPIRED") return "expired";
+  return offline ? "offline" : "live";
+}

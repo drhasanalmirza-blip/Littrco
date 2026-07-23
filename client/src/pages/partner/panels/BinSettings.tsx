@@ -481,7 +481,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               <CardTitle>Detection &amp; policy</CardTitle>
             </CardHeader>
             <CardContent className="divide-y divide-gray-100 dark:divide-gray-800">
-              <Row label="Allow THC vapes" hint="Accept THC devices as valid drops.">
+              <Row label="Allow THC vapes" hint="Accept THC devices as valid drops. Applies after a firmware update.">
                 <Switch
                   checked={!!policy.allowThcVapes}
                   onCheckedChange={(v) => setSection("policy", { allowThcVapes: v })}
@@ -491,7 +491,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
 
               <Row
                 label="Allow other electronics"
-                hint="Accept non-vape electronics (e.g. batteries, small devices) as valid drops."
+                hint="Accept non-vape electronics (e.g. batteries, small devices) as valid drops. Applies after a firmware update."
               >
                 <Switch
                   checked={!!policy.allowOtherElectronics}
@@ -658,7 +658,10 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               <CardTitle>Operating hours</CardTitle>
             </CardHeader>
             <CardContent className="divide-y divide-gray-100 dark:divide-gray-800">
-              <Row label="Enforce hours" hint="Bin only accepts drops between open and close.">
+              <Row
+                label="Enforce hours"
+                hint="Intended to accept drops only between open and close. The bin does not enforce hours yet — enforcement is coming in a firmware update."
+              >
                 <Switch
                   checked={!!hours.enabled}
                   onCheckedChange={(v) => setSection("hours", { enabled: v })}
@@ -707,7 +710,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               <CardTitle>Display &amp; sessions</CardTitle>
             </CardHeader>
             <CardContent className="divide-y divide-gray-100 dark:divide-gray-800">
-              <Row label="Wallpaper theme" hint="HMI wallpaper set shown on the bin.">
+              <Row label="Wallpaper theme" hint="HMI wallpaper set shown on the bin. Applies after a firmware update.">
                 <Select
                   value={ui.theme ?? "default"}
                   onValueChange={(v) => setSection("ui", { theme: v })}
@@ -726,7 +729,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               </Row>
               <Row
                 label="Carousel seconds per page"
-                hint="How long each idle carousel page is shown on the bin (5–120s)."
+                hint="How long each idle carousel page is shown on the bin (5–120s). Applies after a firmware update."
               >
                 <NumInput
                   value={carousel.secPerPage}
@@ -741,7 +744,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               </Row>
               <Row
                 label="Post-session counter"
-                hint="Seconds the drop counter stays up after a session ends (0–600s)."
+                hint="Seconds the drop counter stays up after a session ends (0–600s). Applies after a firmware update."
               >
                 <NumInput
                   value={carousel.postSessionCounterSec}

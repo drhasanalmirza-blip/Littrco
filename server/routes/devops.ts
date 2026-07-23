@@ -287,7 +287,11 @@ router.get("/api/device/firmware", deviceAuthMiddleware, deviceLimiter, async (r
   const q = firmwareCheckQuery.safeParse(req.query);
   if (!q.success) return res.status(400).json({ error: "board (sensor|hmi) required" });
   const { board, channel, version } = q.data;
-  const target = req.device!.targetFirmwareVersion;
+  // Audit M-2: devices.targetFirmwareVersion is only pinned for the sensor board
+  // (POST /ota writes it only when board==='sensor'). Applying it to board=hmi
+  // queries silently blocks HMI OTA (204) or, on a coincidental version match,
+  // serves the wrong image. Ignore the sensor pin for hmi → serve newest active.
+  const target = board === "sensor" ? req.device!.targetFirmwareVersion : null;
 
   let release: FirmwareRelease | undefined;
   if (target) {
