@@ -230,6 +230,7 @@ export type RewardConfig = typeof rewardConfigs.$inferSelect;
 export const devices = pgTable("devices", {
   id: serial("id").primaryKey(),
   serial: text("serial").notNull().unique(),
+  label: text("label"), // partner/staff-set display name for their own preview (nullable)
   deviceKeyHash: text("device_key_hash").notNull().unique(),
   shopId: integer("shop_id").references(() => shops.id, { onDelete: "set null" }),
   partnerId: varchar("partner_id").references(() => users.id, { onDelete: "set null" }),

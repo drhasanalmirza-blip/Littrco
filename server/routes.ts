@@ -276,10 +276,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ==================== PARTNER ====================
   app.get("/api/partner/shops", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
-    const shops = req.user!.role === "STAFF"
-      ? await storage.getAllShops()
-      : await storage.getShopsByMemberId(req.user!.id);
-    res.json(shops);
+    if (req.user!.role === "STAFF") {
+      // Staff act as OWNER of every shop (full access).
+      const shops = await storage.getAllShops();
+      return res.json(shops.map((s) => ({ ...s, myRole: "STAFF" as const })));
+    }
+    // Attach the caller's membership role so the client can gate mutation UI
+    // (server still enforces on every mutating route via mutableShopError).
+    const shops = await storage.getShopsByMemberId(req.user!.id);
+    const withRole = await Promise.all(
+      shops.map(async (s) => ({ ...s, myRole: await partnerRoleForShop(req.user!.id, s.id) })),
+    );
+    res.json(withRole);
   });
 
   app.get("/api/partner/shops/:id/devices", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
@@ -381,6 +389,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (req.user!.role !== "STAFF" && !(await isPartnerOfShop(req.user!.id, shopId)))
       return res.status(403).json({ error: "Not your shop" });
     res.json(await storage.getShopRewardRedemptions(shopId));
+  });
+
+  // Rename a bin (display label for the shop's own preview). VIEWER is read-only.
+  app.patch("/api/partner/devices/:id", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF" && device.shopId) {
+      const err = await mutableShopError(req.user!.id, device.shopId);
+      if (err) return res.status(403).json({ error: err });
+    }
+    const parsed = z.object({ label: z.string().trim().max(60).nullable() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid label" });
+    const label = parsed.data.label && parsed.data.label.length > 0 ? parsed.data.label : null;
+    const updated = await storage.updateDevice(device.id, { label });
+    res.json(updated);
   });
 
   // Per-device settings editor

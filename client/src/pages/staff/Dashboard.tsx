@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
+import BinWidget from "@/components/BinWidget";
 import ReviewQueue from "@/pages/staff/panels/ReviewQueue";
 import Sessions from "@/pages/staff/panels/Sessions";
 import Alerts from "@/pages/staff/panels/Alerts";
@@ -20,12 +21,12 @@ import DeviceOps from "@/pages/staff/panels/DeviceOps";
 import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
 export default function StaffDashboard() {
-  const { user, role, clearAuth } = useStore();
+  const { user, role, clearAuth, tempUnit } = useStore();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: devices = [] } = useQuery<any[]>({
+  const { data: devices = [], refetch: refetchDevices } = useQuery<any[]>({
     queryKey: ["/api/staff/devices"],
     queryFn: async () => (await apiRequest("/api/staff/devices")).json(),
     enabled: !!user && role === "staff",
@@ -127,31 +128,22 @@ export default function StaffDashboard() {
             {devices.length === 0 ? (
               <Card><CardContent className="p-8 text-center text-gray-500">No devices yet.</CardContent></Card>
             ) : devices.map(d => (
-              <Card key={d.id} data-testid={`card-device-${d.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-semibold">{d.serial}</span>
-                        <Badge variant={d.status === "LIVE" ? "default" : "secondary"}>{d.status}</Badge>
-                        {d.firmwareVersion && <Badge variant="outline">fw {d.firmwareVersion}</Badge>}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">Shop: {shops.find(s => s.id === d.shopId)?.name || d.shopId || "—"}</div>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => setSelectedDeviceId(d.id)} data-testid={`button-view-cmds-${d.id}`}>View Commands</Button>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
-                    <Stat label="Fill" value={`${d.fillPercent}%`} />
-                    <Stat label="Vapes" value={d.vapesSinceEmpty} />
-                    <Stat label="Temp" value={d.tempC != null ? `${d.tempC}°C` : "—"} />
-                    <Stat label="VOC" value={d.vocRaw ?? "—"} />
-                    <Stat label="RSSI" value={d.wifiRssi ?? "—"} />
-                    <Stat label="SD free" value={d.sdFreeMb != null ? `${d.sdFreeMb} MB` : "—"} />
-                    <Stat label="Last seen" value={d.lastHeartbeatAt ? new Date(d.lastHeartbeatAt).toLocaleString() : "never"} />
-                    <Stat label="Errors" value={d.errorLog ? d.errorLog.slice(0, 40) : "—"} />
-                  </div>
-                </CardContent>
-              </Card>
+              <BinWidget
+                key={d.id}
+                device={d}
+                tempUnit={tempUnit}
+                canManage
+                shopName={shops.find(s => s.id === d.shopId)?.name || (d.shopId ? `Shop #${d.shopId}` : "Unassigned")}
+                onChanged={() => refetchDevices()}
+                extraStats={[
+                  { label: "RSSI", value: d.wifiRssi ?? "—" },
+                  { label: "SD free", value: d.sdFreeMb != null ? `${d.sdFreeMb} MB` : "—" },
+                  { label: "Errors", value: d.errorLog ? d.errorLog.slice(0, 40) : "—" },
+                ]}
+                actions={
+                  <Button size="sm" variant="outline" onClick={() => setSelectedDeviceId(d.id)} data-testid={`button-view-cmds-${d.id}`}>View Commands</Button>
+                }
+              />
             ))}
           </TabsContent>
 

@@ -198,12 +198,12 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
                     <span className="font-mono font-semibold">{r.device?.serial ?? "—"}</span>
                     <ReviewStatusBadge status={r.reviewStatus} />
                     <Badge variant={r.accepted ? "default" : "outline"}>
-                      {r.accepted ? "accepted" : "rejected by device"}
+                      {r.accepted ? "Accepted" : "Rejected by device"}
                     </Badge>
                     {r.session?.claimed ? (
-                      <Badge variant="secondary">claimed</Badge>
+                      <Badge variant="secondary">Claimed</Badge>
                     ) : (
-                      <Badge variant="outline">unclaimed</Badge>
+                      <Badge variant="outline">Unclaimed</Badge>
                     )}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
@@ -291,18 +291,18 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
                 <Stat label="Device" value={detail.device?.serial ?? "—"} />
                 <Stat label="Shop" value={detail.shop ? `${detail.shop.name} (${detail.shop.city ?? "—"})` : "—"} />
                 <Stat label="Sequence" value={detail.drop?.sequence ?? "—"} />
-                <Stat label="Accepted" value={detail.drop?.accepted ? "yes" : "no"} />
+                <Stat label="Accepted" value={detail.drop?.accepted ? "Yes" : "No"} />
                 <Stat label="Fill" value={detail.drop?.fillPercent != null ? `${detail.drop.fillPercent}%` : "—"} />
                 <Stat label="Temp" value={detail.drop?.tempC != null ? `${detail.drop.tempC}°C` : "—"} />
                 <Stat label="VOC" value={detail.drop?.vocRaw ?? "—"} />
-                <Stat label="Points revoked" value={detail.drop?.pointsRevoked ? "yes" : "no"} />
+                <Stat label="Points revoked" value={detail.drop?.pointsRevoked ? "Yes" : "No"} />
                 <Stat label="Taken" value={detail.drop?.createdAt ? new Date(detail.drop.createdAt).toLocaleString() : "—"} />
               </div>
 
               <div className="rounded border p-3 text-xs space-y-1">
                 <div className="font-semibold text-sm mb-1">Session #{detail.session?.id}</div>
                 <div>Status: <span className="font-medium">{detail.session?.status}</span></div>
-                <div>Claim: {detail.session?.claimed ? `claimed by ${detail.session.claimedByCustomerId}` : "unclaimed"}</div>
+                <div>Claim: {detail.session?.claimed ? `Claimed by ${detail.session.claimedByCustomerId}` : "Unclaimed"}</div>
                 <div>Detected / Accepted: {detail.session?.detectedDropCount} / {detail.session?.acceptedDropCount}</div>
                 <div>Batteries est/conf: {detail.session?.batteriesEstimated ?? "—"} / {detail.session?.batteriesConfirmed ?? "—"}</div>
                 <div>Finalized: {detail.session?.finalizedAt ? new Date(detail.session.finalizedAt).toLocaleString() : "—"}</div>

@@ -12,17 +12,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { Plus, RefreshCcw, Battery, Sparkles } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
+import BinWidget from "@/components/BinWidget";
 import BinSettings from "@/pages/partner/panels/BinSettings";
 import Team from "@/pages/partner/panels/Team";
 import Pairing from "@/pages/partner/panels/Pairing";
 import PartnerAlerts from "@/pages/partner/panels/PartnerAlerts";
 import PartnerNotifications from "@/pages/partner/panels/PartnerNotifications";
 
-interface Shop { id: number; name: string; city: string; status: string; }
+type ShopRole = "OWNER" | "MANAGER" | "VIEWER" | "STAFF";
+interface Shop { id: number; name: string; city: string; status: string; myRole?: ShopRole; }
 interface Device {
-  id: number; serial: string; status: string; firmwareVersion: string | null;
+  id: number; serial: string; label: string | null; status: string; firmwareVersion: string | null;
   vapesSinceEmpty: number; fillPercent: number; lastHeartbeatAt: string | null;
-  tempC: number | null; latestPhotoUrl: string | null;
+  tempC: number | null; vocRaw: number | null; latestPhotoUrl: string | null;
 }
 interface DropSession {
   id: number; status: string; acceptedDropCount: number; batteriesEstimated: number;
@@ -30,7 +32,7 @@ interface DropSession {
 }
 
 export default function PartnerDashboard() {
-  const { user, role, clearAuth } = useStore();
+  const { user, role, clearAuth, tempUnit } = useStore();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -46,6 +48,10 @@ export default function PartnerDashboard() {
   const shopId = selectedShopId ?? shops[0]?.id ?? null;
   const shop = shops.find(s => s.id === shopId);
   const partnerEnabled = !!user && (role === "partner" || role === "staff");
+  // The caller's membership role for the selected shop (STAFF acts as full-access).
+  const myRole: ShopRole | undefined = role === "staff" ? "STAFF" : shop?.myRole;
+  const canManage = myRole != null && myRole !== "VIEWER"; // OWNER/MANAGER/STAFF may mutate
+  const isOwner = myRole === "OWNER" || myRole === "STAFF";
 
   const { data: devices = [], refetch: refetchDevices } = useQuery<Device[]>({
     queryKey: [`/api/partner/shops/${shopId}/devices`],
@@ -157,26 +163,18 @@ export default function PartnerDashboard() {
               {devices.length === 0 ? (
                 <Card><CardContent className="p-8 text-center text-gray-500">No bins paired yet. Open the "Pairing" tab to connect one with a pair code.</CardContent></Card>
               ) : devices.map(d => (
-                <Card key={d.id} data-testid={`card-device-${d.id}`}>
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-semibold">{d.serial}</span>
-                        <Badge variant={d.status === "LIVE" ? "default" : "secondary"}>{d.status}</Badge>
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        Fill: {d.fillPercent}% · {d.vapesSinceEmpty} vapes since empty
-                        {d.firmwareVersion && ` · fw ${d.firmwareVersion}`}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        Last seen: {d.lastHeartbeatAt ? new Date(d.lastHeartbeatAt).toLocaleString() : "never"}
-                      </div>
-                    </div>
+                <BinWidget
+                  key={d.id}
+                  device={d}
+                  tempUnit={tempUnit}
+                  canManage={canManage}
+                  onChanged={() => refetchDevices()}
+                  actions={canManage ? (
                     <Button size="sm" variant="outline" onClick={() => markEmpty.mutate(d.id)} data-testid={`button-mark-empty-${d.id}`}>
                       <RefreshCcw className="h-4 w-4 mr-1" /> Mark Empty
                     </Button>
-                  </CardContent>
-                </Card>
+                  ) : undefined}
+                />
               ))}
             </TabsContent>
 
@@ -240,7 +238,11 @@ export default function PartnerDashboard() {
             </TabsContent>
 
             <TabsContent value="pairing">
-              <Pairing shopId={shopId ?? 0} enabled={partnerEnabled} />
+              {isOwner || myRole === "MANAGER" ? (
+                <Pairing shopId={shopId ?? 0} enabled={partnerEnabled} />
+              ) : (
+                <Card><CardContent className="p-8 text-center text-gray-500">Only owners and managers can pair new bins.</CardContent></Card>
+              )}
             </TabsContent>
 
             <TabsContent value="team">
@@ -252,7 +254,9 @@ export default function PartnerDashboard() {
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-4">
-              {devices.length === 0 ? (
+              {!canManage ? (
+                <Card><CardContent className="p-8 text-center text-gray-500">You have view-only access. Ask an owner or manager to change bin settings.</CardContent></Card>
+              ) : devices.length === 0 ? (
                 <Card><CardContent className="p-8 text-center text-gray-500">No bins yet. Pair a bin first to edit its settings.</CardContent></Card>
               ) : (
                 <>
@@ -265,7 +269,7 @@ export default function PartnerDashboard() {
                         onChange={(e) => setSettingsDeviceId(Number(e.target.value))}
                         data-testid="select-settings-device"
                       >
-                        {devices.map(d => <option key={d.id} value={d.id}>{d.serial}</option>)}
+                        {devices.map(d => <option key={d.id} value={d.id}>{d.label ? `${d.label} (${d.serial})` : d.serial}</option>)}
                       </select>
                     </CardHeader>
                   </Card>

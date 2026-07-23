@@ -63,7 +63,7 @@ export default function DeviceOps({ enabled }: { enabled: boolean }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Device</TableHead>
-                  <TableHead>Firmware</TableHead>
+                  <TableHead>FW version</TableHead>
                   <TableHead>Points / vape override</TableHead>
                   <TableHead>OTA target</TableHead>
                 </TableRow>
@@ -157,9 +157,9 @@ function DeviceOpsRow({
 
       {/* Firmware current vs target */}
       <TableCell className="whitespace-nowrap text-sm">
-        <div>current: {device.firmwareVersion || "—"}</div>
+        <div>Current FW: {device.firmwareVersion || "—"}</div>
         <div className={targetMismatch ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500"}>
-          target: {device.targetFirmwareVersion || "—"}
+          Target FW: {device.targetFirmwareVersion || "—"}
         </div>
       </TableCell>
 
