@@ -22,6 +22,8 @@ interface Device {
   status: string;
   firmwareVersion: string | null;
   targetFirmwareVersion: string | null;
+  hmiVersion: string | null;
+  assetsVersion: string | null;
   pointsPerVapeOverride: number | null;
 }
 
@@ -94,6 +96,7 @@ function DeviceOpsRow({
   const [override, setOverride] = useState<string>(
     device.pointsPerVapeOverride != null ? String(device.pointsPerVapeOverride) : "",
   );
+  const [otaBoard, setOtaBoard] = useState<"sensor" | "hmi">("sensor");
   const [otaVersion, setOtaVersion] = useState<string>(device.targetFirmwareVersion ?? "");
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/staff/devices"] });
@@ -112,8 +115,8 @@ function DeviceOpsRow({
   });
 
   const setOta = useMutation({
-    mutationFn: (version: string | null) =>
-      apiSend(`/api/staff/devices/${device.id}/ota`, "POST", { version }),
+    mutationFn: ({ version, board }: { version: string | null; board: "sensor" | "hmi" }) =>
+      apiSend(`/api/staff/devices/${device.id}/ota`, "POST", { version, board }),
     onSuccess: () => {
       toast({ title: "OTA target updated" });
       invalidate();
@@ -121,6 +124,20 @@ function DeviceOpsRow({
     onError: (e: any) =>
       toast({ title: "Failed", description: e?.message, variant: "destructive" }),
   });
+
+  const updateAssets = useMutation({
+    mutationFn: () =>
+      apiSend(`/api/staff/devices/${device.id}/update-assets`, "POST", {}),
+    onSuccess: () => {
+      toast({ title: "Assets update queued" });
+      invalidate();
+    },
+    onError: (e: any) =>
+      toast({ title: "Failed", description: e?.message, variant: "destructive" }),
+  });
+
+  // Only offer firmware versions matching the selected OTA board.
+  const boardFirmwares = firmwares.filter((f) => f.board === otaBoard);
 
   const onSavePoints = () => {
     const trimmed = override.trim();
@@ -155,11 +172,17 @@ function DeviceOpsRow({
         </div>
       </TableCell>
 
-      {/* Firmware current vs target */}
+      {/* Firmware current vs target, plus HMI / assets versions */}
       <TableCell className="whitespace-nowrap text-sm">
         <div>Current FW: {device.firmwareVersion || "—"}</div>
         <div className={targetMismatch ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500"}>
           Target FW: {device.targetFirmwareVersion || "—"}
+        </div>
+        <div className="text-gray-500" data-testid={`text-hmi-version-${device.id}`}>
+          HMI: {device.hmiVersion || "—"}
+        </div>
+        <div className="text-gray-500" data-testid={`text-assets-version-${device.id}`}>
+          Assets: {device.assetsVersion || "—"}
         </div>
       </TableCell>
 
@@ -194,14 +217,26 @@ function DeviceOpsRow({
         <div className="flex items-center gap-2">
           <select
             className="border rounded px-2 py-1 text-sm bg-transparent"
+            value={otaBoard}
+            onChange={(e) => {
+              setOtaBoard(e.target.value as "sensor" | "hmi");
+              setOtaVersion("");
+            }}
+            data-testid={`select-ota-board-${device.id}`}
+          >
+            <option value="sensor">sensor</option>
+            <option value="hmi">hmi</option>
+          </select>
+          <select
+            className="border rounded px-2 py-1 text-sm bg-transparent"
             value={otaVersion}
             onChange={(e) => setOtaVersion(e.target.value)}
             data-testid={`select-ota-${device.id}`}
           >
             <option value="">None (clear pin)</option>
-            {firmwares.map((f) => (
+            {boardFirmwares.map((f) => (
               <option key={f.id} value={f.version}>
-                {f.board} · {f.version} · {f.channel}
+                {f.version} · {f.channel}
                 {f.active ? "" : " (inactive)"}
               </option>
             ))}
@@ -209,12 +244,24 @@ function DeviceOpsRow({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setOta.mutate(otaVersion === "" ? null : otaVersion)}
+            onClick={() => setOta.mutate({ version: otaVersion === "" ? null : otaVersion, board: otaBoard })}
             disabled={setOta.isPending}
             data-testid={`button-set-ota-${device.id}`}
           >
             <UploadCloud className="h-4 w-4 mr-1" />
             Set
+          </Button>
+        </div>
+        <div className="mt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => updateAssets.mutate()}
+            disabled={updateAssets.isPending}
+            data-testid={`button-update-assets-${device.id}`}
+          >
+            <UploadCloud className="h-4 w-4 mr-1" />
+            Update assets
           </Button>
         </div>
       </TableCell>

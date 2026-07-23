@@ -91,6 +91,53 @@ The three pure `*Rules`/`paircode`/`deviceSettings` modules avoid importing `ser
 (which throws without `DATABASE_URL`), so the vitest suite in `server/__tests__/` covers
 them without a database.
 
+## Phase 3 server additions
+
+Server work backing the HMI/sensor firmware milestones (spec: `docs/PHASE3_SERVER.md`).
+Additive — existing behavior unchanged. Full endpoint reference in `docs/CLOUD_API.md`;
+firmware-facing walkthrough in `docs/DEVICE_API.md`.
+
+### New table & columns
+- **`content_files`** — per-board (`hmi`|`sensor`), per-theme content packs: `path`,
+  `version`, `url`, `sha256`, `sizeBytes`, `active`, `notes`. A pack's version is the max
+  `version` across its **active** rows; indexed on `(board, theme)`.
+- `devices`: `hmiVersion`, `assetsVersion` (reported in telemetry; shown in Device Ops).
+- `drop_sessions`: `offline` (bool, default false) — session captured while WiFi was down.
+- `drops`: `occurredAt` (nullable) — true drop time for backfilled offline drops.
+
+### Content packs
+- Device manifest `GET /api/device/content?board=&theme=&version=` — `204` (none) /
+  `304` (current) / `200 { version, files[] }` for SHA-based delta sync.
+- Staff CRUD `GET|POST /api/staff/content`, `PATCH /api/staff/content/:id` (every write
+  strictly bumps the pack version so devices always re-sync), and
+  `POST /api/staff/devices/:id/update-assets` → enqueues `UPDATE_ASSETS {theme?, version?}`.
+
+### Offline drops
+`drop-sessions/start {offline}`, `drops {occurredAt}`, and finalize: an offline session
+awards shop points as normal but **0 batteries** and mints **no claim token** (status
+`FINALIZED`). Pure decision in `server/offlineFinalize.ts`. The `offline` flag flows to
+the staff review queue / sessions / training export so the UI can badge and the corpus
+can label offline drops.
+
+### QR fallback
+`GET /api/device/qr?token=` renders a session's claim QR server-side and returns
+`{ url, size, modules }` (base64 row-major 1-bpp matrix) for HMIs without an on-device QR
+lib. Pure matrix builder in `server/qr.ts` (uses the new **`qrcode`** dep). Foreign/unknown
+tokens both `404`.
+
+### Board targeting, settings & alerts
+- `POST /api/staff/devices/:id/ota` gains `board?` (`sensor`|`hmi`, default `sensor`) →
+  `UPDATE_FIRMWARE {version, board}`; only `board=sensor` pins `targetFirmwareVersion`.
+  `REBOOT` also accepts an optional `board` (via the generic commands route).
+- Device settings gain `policy.allowOtherElectronics` (default false) and `ui.carousel`
+  (`secPerPage` 20, `postSessionCounterSec` 60).
+- New device event / alert `UPDATE_FAILED` (severity `WARNING`) for failed OTA/asset
+  updates.
+
+New route module `server/routes/content.ts` (staff content CRUD + device content manifest
++ QR). New pure modules `server/offlineFinalize.ts` and `server/qr.ts` are covered by
+`server/__tests__/` without a database.
+
 ## External Dependencies
 - **Database**: PostgreSQL (`DATABASE_URL`)
 - **ORM**: Drizzle ORM, drizzle-kit

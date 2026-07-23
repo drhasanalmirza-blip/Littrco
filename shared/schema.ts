@@ -250,6 +250,8 @@ export const devices = pgTable("devices", {
   pointsPerVapeOverride: integer("points_per_vape_override"),
   lastDistanceMm: integer("last_distance_mm"),
   targetFirmwareVersion: text("target_firmware_version"),
+  hmiVersion: text("hmi_version"), // HMI firmware version (reported in telemetry)
+  assetsVersion: text("assets_version"), // HMI content-pack version the bin currently has
   offlineNotifiedAt: timestamp("offline_notified_at"),
   // Threshold hysteresis state: { notifiedFillLevels: number[], fullNotified: boolean }
   alertStateJson: jsonb("alert_state_json"),
@@ -303,6 +305,7 @@ export const dropSessions = pgTable("drop_sessions", {
   deviceId: integer("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
   shopId: integer("shop_id").references(() => shops.id, { onDelete: "set null" }),
   status: dropSessionStatusEnum("status").notNull().default("OPEN"),
+  offline: boolean("offline").notNull().default(false), // session captured while WiFi was down
   detectedDropCount: integer("detected_drop_count").notNull().default(0),
   acceptedDropCount: integer("accepted_drop_count").notNull().default(0),
   batteriesEstimated: integer("batteries_estimated").notNull().default(0),
@@ -335,6 +338,8 @@ export const drops = pgTable("drops", {
   reviewNote: text("review_note"),
   // Set once compensation ledger rows are written on reject (idempotency latch)
   pointsRevoked: boolean("points_revoked").notNull().default(false),
+  // True drop time; offline drops carry the real time, live drops leave null → createdAt is authoritative
+  occurredAt: timestamp("occurred_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type Drop = typeof drops.$inferSelect;
@@ -509,6 +514,30 @@ export const firmwareReleases = pgTable("firmware_releases", {
 export const insertFirmwareReleaseSchema = createInsertSchema(firmwareReleases).omit({ id: true, createdAt: true });
 export type InsertFirmwareRelease = z.infer<typeof insertFirmwareReleaseSchema>;
 export type FirmwareRelease = typeof firmwareReleases.$inferSelect;
+
+// ==================== CONTENT FILES (HMI/sensor content packs) ====================
+// Per-(board, theme) content-pack files pushed to the device SD. The "content
+// version" for a (board, theme) is the MAX `version` across its active rows.
+// Re-uploading the same path bumps its version (a new row; older rows for that
+// path go active=false).
+export const contentFiles = pgTable("content_files", {
+  id: serial("id").primaryKey(),
+  board: text("board").notNull(), // "hmi" | "sensor"
+  theme: text("theme").notNull().default("default"),
+  path: text("path").notNull(), // destination on the device SD, e.g. /ui/rules_warning.raw
+  version: integer("version").notNull().default(1),
+  url: text("url").notNull(),
+  sha256: text("sha256").notNull(), // 64 hex
+  sizeBytes: integer("size_bytes"),
+  active: boolean("active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  boardThemeIdx: index("content_files_board_theme_idx").on(t.board, t.theme),
+}));
+export const insertContentFileSchema = createInsertSchema(contentFiles).omit({ id: true, createdAt: true });
+export type InsertContentFile = z.infer<typeof insertContentFileSchema>;
+export type ContentFile = typeof contentFiles.$inferSelect;
 
 // ==================== PAIRING CODES (QR/SoftAP flow) ====================
 // Replaces nothing; BLE pairing_nonces stays for back-compat.

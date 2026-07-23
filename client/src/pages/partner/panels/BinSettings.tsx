@@ -257,6 +257,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
   const fire: any = form?.fire ?? {};
   const hours: any = form?.hours ?? {};
   const ui: any = form?.ui ?? {};
+  const carousel: any = ui.carousel ?? {};
   const session: any = form?.session ?? {};
   const telemetry: any = form?.telemetry ?? {};
   const camera: any = form?.camera ?? {};
@@ -489,6 +490,17 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               </Row>
 
               <Row
+                label="Allow other electronics"
+                hint="Accept non-vape electronics (e.g. batteries, small devices) as valid drops."
+              >
+                <Switch
+                  checked={!!policy.allowOtherElectronics}
+                  onCheckedChange={(v) => setSection("policy", { allowOtherElectronics: v })}
+                  data-testid="switch-allow-other-electronics"
+                />
+              </Row>
+
+              <Row
                 label="Fire detection"
                 hint="On by default and should stay on. Turning it off sends an immediate notification to LITTR staff."
               >
@@ -711,6 +723,36 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                     ))}
                   </SelectContent>
                 </Select>
+              </Row>
+              <Row
+                label="Carousel seconds per page"
+                hint="How long each idle carousel page is shown on the bin (5–120s)."
+              >
+                <NumInput
+                  value={carousel.secPerPage}
+                  min={5}
+                  max={120}
+                  step={1}
+                  onChange={(n) =>
+                    setSection("ui", { carousel: { ...carousel, secPerPage: n } })
+                  }
+                  testid="input-carousel-sec-per-page"
+                />
+              </Row>
+              <Row
+                label="Post-session counter"
+                hint="Seconds the drop counter stays up after a session ends (0–600s)."
+              >
+                <NumInput
+                  value={carousel.postSessionCounterSec}
+                  min={0}
+                  max={600}
+                  step={1}
+                  onChange={(n) =>
+                    setSection("ui", { carousel: { ...carousel, postSessionCounterSec: n } })
+                  }
+                  testid="input-carousel-post-session"
+                />
               </Row>
               <Row label="Stack window" hint="Seconds to group rapid drops into one session.">
                 <NumInput

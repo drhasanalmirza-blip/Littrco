@@ -20,6 +20,14 @@ export interface ReviewSessionState {
   acceptedDropCount: number;
   batteriesEstimated: number;
   claimedByCustomerId: number | null;
+  /**
+   * Session was captured while WiFi was down (spec §3.4). Offline finalize awards
+   * shop points but 0 batteries and mints no claim, so it holds the invariant
+   * batteriesEstimated=0 while acceptedDropCount>0. Reject/approve must NOT
+   * touch batteriesEstimated for offline sessions or they'd materialize phantom
+   * estimated batteries the session never had.
+   */
+  offline: boolean;
 }
 
 export interface ReviewRates {
@@ -120,9 +128,11 @@ export function planReject(
       status: "POSTED",
       description: `Drop #${drop.id} rejected (session #${session.id}): ${reason}`,
     };
-  } else {
+  } else if (!session.offline) {
     // FINALIZED-but-unclaimed (or EXPIRED): fix the estimate so a later claim
-    // pays the corrected amount. Floor 0.
+    // pays the corrected amount. Floor 0. Offline sessions are excluded: they
+    // finalized with batteriesEstimated=0 (no batteries, no claim) and must stay
+    // there — the shop-point ADJUST above is their only correction (spec §3.4).
     plan.sessionUpdate.batteriesEstimated =
       Math.max(0, session.batteriesEstimated - rates.batteriesPerVape);
   }
@@ -189,10 +199,14 @@ export function planApprove(
       status: "POSTED",
       description: `Drop #${drop.id} re-approved after rejection (session #${session.id})`,
     };
-  } else {
+  } else if (!session.offline) {
     // Symmetric add-back. If the reject clipped at the 0 floor this can
     // over-credit relative to the pre-reject estimate — accepted trade-off of
-    // not storing per-drop rates (see planReject caveat).
+    // not storing per-drop rates (see planReject caveat). Offline sessions are
+    // excluded: they finalized with batteriesEstimated=0 (no batteries, no
+    // claim), so adding batteriesPerVape here would materialize phantom estimated
+    // batteries the session never had. Leave it undefined so it stays 0; the
+    // shop-point ADJUST above is the only reversal offline sessions get (§3.4).
     plan.sessionUpdate.batteriesEstimated =
       session.batteriesEstimated + rates.batteriesPerVape;
   }

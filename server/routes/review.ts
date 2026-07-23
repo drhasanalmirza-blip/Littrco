@@ -55,6 +55,7 @@ function sessionRow(s: DropSession) {
     deviceId: s.deviceId,
     shopId: s.shopId,
     status: s.status,
+    offline: s.offline, // §6: captured while WiFi was down — UI badges these
     detectedDropCount: s.detectedDropCount,
     acceptedDropCount: s.acceptedDropCount,
     batteriesEstimated: s.batteriesEstimated,
@@ -360,6 +361,7 @@ router.get("/api/staff/export/training", authMiddleware, requireRole("STAFF"), a
         deviceId: r.session.deviceId,
         shopId: r.session.shopId,
         sessionId: r.drop.sessionId,
+        offline: r.session.offline, // §6: label/exclude offline drops in the corpus
         beforeUrl: r.beforeUrl,
         afterUrl: r.afterUrl,
         reviewStatus: r.drop.reviewStatus,

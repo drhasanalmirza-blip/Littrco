@@ -169,18 +169,33 @@ router.patch("/api/staff/firmware/:id", authMiddleware, requireRole("STAFF"), as
 });
 
 router.post("/api/staff/devices/:id/ota", authMiddleware, requireRole("STAFF"), async (req, res) => {
-  const body = z.object({ version: z.string().min(1).max(32).nullable() }).safeParse(req.body);
+  const body = z.object({
+    version: z.string().min(1).max(32).nullable(),
+    board: z.enum(["sensor", "hmi"]).default("sensor"),
+  }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: "version (string | null) required" });
   const device = await storage.getDevice(Number(req.params.id));
   if (!device) return res.status(404).json({ error: "Device not found" });
-  await storage.updateDevice(device.id, { targetFirmwareVersion: body.data.version });
+  const { version, board } = body.data;
+  // §4.2: only the sensor board pins devices.targetFirmwareVersion. The HMI
+  // target version is tracked implicitly via content/telemetry, so board=hmi
+  // must NOT overwrite the sensor's targetFirmwareVersion.
+  if (board === "sensor") {
+    await storage.updateDevice(device.id, { targetFirmwareVersion: version });
+  }
   let commandId: number | undefined;
-  if (body.data.version !== null) {
-    const cmd = await storage.enqueueCommand(device.id, "UPDATE_FIRMWARE", { version: body.data.version });
+  if (version !== null) {
+    const cmd = await storage.enqueueCommand(device.id, "UPDATE_FIRMWARE", { version, board });
     commandId = cmd.id;
   }
-  res.json({ ok: true, targetFirmwareVersion: body.data.version, ...(commandId !== undefined ? { commandId } : {}) });
+  const targetFirmwareVersion = board === "sensor" ? version : device.targetFirmwareVersion;
+  res.json({ ok: true, board, targetFirmwareVersion, ...(commandId !== undefined ? { commandId } : {}) });
 });
+
+// §4.1: `POST /api/staff/devices/:id/update-assets` lives in routes/content.ts
+// (alongside the rest of content management). It was previously duplicated here,
+// but this router mounts BEFORE contentRouter so this copy shadowed the intended
+// one — removed to keep a single source of truth.
 
 router.post("/api/staff/shops/:id/pair-code", authMiddleware, requireRole("STAFF"), async (req, res) => {
   const shop = await storage.getShop(Number(req.params.id));

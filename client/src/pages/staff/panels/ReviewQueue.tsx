@@ -205,6 +205,14 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
                     ) : (
                       <Badge variant="outline">Unclaimed</Badge>
                     )}
+                    {r.session?.offline && (
+                      <Badge
+                        className="bg-amber-500 hover:bg-amber-500 text-white"
+                        data-testid={`badge-offline-${r.id}`}
+                      >
+                        Offline
+                      </Badge>
+                    )}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
                     {r.shop ? `${r.shop.name} · ${r.shop.city ?? "—"}` : "no shop"}
@@ -300,7 +308,17 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
               </div>
 
               <div className="rounded border p-3 text-xs space-y-1">
-                <div className="font-semibold text-sm mb-1">Session #{detail.session?.id}</div>
+                <div className="font-semibold text-sm mb-1 flex items-center gap-2">
+                  Session #{detail.session?.id}
+                  {detail.session?.offline && (
+                    <Badge
+                      className="bg-amber-500 hover:bg-amber-500 text-white"
+                      data-testid="badge-detail-offline"
+                    >
+                      Offline
+                    </Badge>
+                  )}
+                </div>
                 <div>Status: <span className="font-medium">{detail.session?.status}</span></div>
                 <div>Claim: {detail.session?.claimed ? `Claimed by ${detail.session.claimedByCustomerId}` : "Unclaimed"}</div>
                 <div>Detected / Accepted: {detail.session?.detectedDropCount} / {detail.session?.acceptedDropCount}</div>

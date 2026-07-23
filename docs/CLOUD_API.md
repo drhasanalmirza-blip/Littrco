@@ -363,6 +363,7 @@ Creates a `PROVISIONING` device + `pairing_nonces` row; returns
   `shopId`, `deviceId`, `limit` (1–200, default 50), `offset` (default 0). Empty-string
   params are treated as unset. Each row = drop fields + `beforeUrl`, `afterUrl`,
   `session`, `device` (`{id,serial,status}`), `shop` (`{id,name,city}`), newest first.
+  The `session` object carries `offline` (spec §6) so the UI can badge offline drops.
 - **detail** response: `{ drop, beforeUrl, afterUrl, photos[], session, device, shop,
   selfReport | null }`. Errors: `400` invalid id, `404` drop/session not found.
 - **approve** → `{ ok: true, drop }`. Idempotent (second approve is a no-op). If the
@@ -372,11 +373,13 @@ Creates a `PROVISIONING` device + `pairing_nonces` row; returns
   (spec §6). Idempotent (second reject is a no-op `200`). → `{ ok: true, drop }`.
 - **sessions** query: `status` (`OPEN|FINALIZED|CLAIMED|EXPIRED|all`), `claimed`
   (`"true"|"false"`), `shopId`, `from`, `to` (dates), `limit` (1–200, default 50),
-  `offset`. Each row = session fields + `device` (`{id,serial}`) + `shop`.
+  `offset`. Each row = session fields (including `offline`) + `device` (`{id,serial}`) +
+  `shop`.
 - **export/training** query: `from`, `to`, `status`. Streams
   `Content-Type: application/x-ndjson` (`littr-training.jsonl`), one JSON line per drop:
-  `{ dropId, deviceId, shopId, sessionId, beforeUrl, afterUrl, reviewStatus,
-  reviewNote, accepted, beamPatternJson, takenAt, selfReport? }`. Batched (500/page).
+  `{ dropId, deviceId, shopId, sessionId, offline, beforeUrl, afterUrl, reviewStatus,
+  reviewNote, accepted, beamPatternJson, takenAt, selfReport? }`. The `offline` flag lets
+  the corpus label/exclude offline drops. Batched (500/page).
 
 ### Live camera (spec §3.2 — `routes/devops.ts`)
 
@@ -412,7 +415,7 @@ Creates a `PROVISIONING` device + `pairing_nonces` row; returns
 | GET | `/api/staff/firmware` | all firmware releases, newest first |
 | POST | `/api/staff/firmware` | create a release |
 | PATCH | `/api/staff/firmware/:id` | body `{ active?, notes? }` |
-| POST | `/api/staff/devices/:id/ota` | body `{ version: string \| null }` |
+| POST | `/api/staff/devices/:id/ota` | body `{ version: string \| null, board?: "sensor"\|"hmi" }` |
 | POST | `/api/staff/shops/:id/pair-code` | staff variant of pair-code |
 
 - **points-modifier** → `{ ok: true, pointsPerVapeOverride }`. Sets the per-bin
@@ -422,10 +425,39 @@ Creates a `PROVISIONING` device + `pairing_nonces` row; returns
   active? }`. Returns the created row. `409` on duplicate `(board, version, channel)`.
 - **PATCH firmware** requires at least one of `active`/`notes` (`400` otherwise);
   `404` if release not found.
-- **ota** sets `devices.targetFirmwareVersion`; when non-null also enqueues
-  `UPDATE_FIRMWARE {version}`. → `{ ok: true, targetFirmwareVersion, commandId? }`.
+- **ota** body: `{ version: string | null, board?: "sensor"|"hmi" }` (`board` default
+  `sensor`). Enqueues `UPDATE_FIRMWARE {version, board}` when `version` is non-null. Only
+  `board=sensor` pins `devices.targetFirmwareVersion` (the HMI target is tracked
+  implicitly via content/telemetry, so `board=hmi` never overwrites the sensor's pin).
+  → `{ ok: true, board, targetFirmwareVersion, commandId? }` (`targetFirmwareVersion` is
+  the new pin for `sensor`, or the unchanged existing pin for `hmi`).
 - **pair-code** → `{ deviceId, serial, code, expiresAt }` (creates a PROVISIONING device
   for the shop). `404` if shop not found.
+
+### Content packs (spec §4.1 — `routes/content.ts`)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/staff/content?board=&theme=` | `content_files` rows, newest first; both filters optional |
+| POST | `/api/staff/content` | create/replace a content file (bumps the pack version) |
+| PATCH | `/api/staff/content/:id` | body `{ active?, notes? }` |
+| POST | `/api/staff/devices/:id/update-assets` | body `{ theme?, version? }` → enqueues `UPDATE_ASSETS` |
+
+- **content_files** model a per-board, per-theme content pack. The pack's **version** is
+  the max `version` across its **active** rows (`GET /api/device/content` returns that).
+- **POST content** body: `{ board: "hmi"|"sensor", theme? (default "default"), path,
+  url, sha256 (64 hex), sizeBytes?, notes? }`. Transactionally computes the next version
+  as the group's all-rows high-water mark **+ 1** (so every upload strictly increases the
+  pack version — devices always detect the change), deactivates the prior active row(s)
+  for that `(board, theme, path)`, and inserts the new active row. → the created row.
+- **PATCH content** requires at least one of `active`/`notes` (`400` otherwise). When it
+  **deactivates** a currently-active file, it re-bumps every surviving active row in the
+  group past the high-water mark so the pack version stays monotonic (a device that
+  synced past the old max still re-syncs; if no active rows remain the manifest 204s and
+  the device clears the pack). `404` if the file id is unknown.
+- **update-assets** body: `{ theme?, version? }` (both optional; empty body = "pull the
+  newest active pack"). Enqueues an `UPDATE_ASSETS` command with only the supplied keys.
+  → `{ ok: true, commandId }`. `404` if the device is unknown.
 
 ---
 
@@ -445,6 +477,8 @@ the firmware-oriented walkthrough; the table here is the API-surface summary.
 | GET | `/api/device/commands` | device-key | deviceLimiter |
 | POST | `/api/device/commands/ack` | device-key | deviceLimiter |
 | GET | `/api/device/firmware` | device-key | deviceLimiter |
+| GET | `/api/device/content` | device-key | deviceLimiter |
+| GET | `/api/device/qr` | device-key | deviceLimiter |
 | POST | `/api/device/drop-sessions/start` | device-key | deviceLimiter |
 | POST | `/api/device/drops` | device-key | deviceLimiter |
 | POST | `/api/device/drops/:dropId/photos` | device-key | photoLimiter (30/min) |
@@ -464,16 +498,21 @@ exactly once. Errors: `400` bad body / invalid or expired code, `404` device not
 
 ### POST `/api/device/telemetry`
 Body (all optional): `{ vapesSinceEmpty, fillPercent, tempC, vocRaw, wifiRssi,
-sdFreeMb, rawDistanceMm, firmwareVersion, state, errorLog }`. Persists onto `devices`
-(`rawDistanceMm → lastDistanceMm`; `state` is accepted but not persisted), stamps
-`lastHeartbeatAt`, then runs the alert engine (fill thresholds / FULL / offline-clear).
-Response `200`: `{ ok: true }`. Errors: `400` bad telemetry.
+sdFreeMb, rawDistanceMm, firmwareVersion, hmiVersion, assetsVersion, state, errorLog }`.
+Persists onto `devices` (`rawDistanceMm → lastDistanceMm`; `state` is accepted but not
+persisted), stamps `lastHeartbeatAt`, then runs the alert engine (fill thresholds / FULL
+/ offline-clear). Response `200`: `{ ok: true }`. Errors: `400` bad telemetry.
+- `hmiVersion` / `assetsVersion` (strings, ≤ 32 chars) — the HMI board's firmware
+  version and the content-pack version the bin currently has; persisted onto the
+  `devices` row and surfaced in the staff Device Ops panel.
 
 ### POST `/api/device/events`
 Device-initiated alert. Body: `{ type: "FIRE"|"TEMP_HIGH"|"VOC_HIGH"|"SD_ERROR"|
-"CAMERA_ERROR", tempC?, vocAnalog?, fillPercent?, message? }`. Creates an `alerts` row
-and dispatches notifications; an unresolved same-type alert within 10 min is refreshed,
-not duplicated. Response `202`: `{ alertId: number | null }`. Errors: `400` bad event.
+"CAMERA_ERROR"|"UPDATE_FAILED", tempC?, vocAnalog?, fillPercent?, message? }`. Creates an
+`alerts` row and dispatches notifications; an unresolved same-type alert within 10 min is
+refreshed, not duplicated. Response `202`: `{ alertId: number | null }`. Errors: `400`
+bad event. `UPDATE_FAILED` (severity `WARNING`) is posted when a firmware/asset OTA fails
+on the device.
 
 ### GET `/api/device/settings?version=<n>`
 `200 { version, settings }` when the stored version is newer; `304` when not.
@@ -490,14 +529,39 @@ Query: `board` (`sensor|hmi`, required), `channel` (`stable|beta`, default stabl
 newest `active` release for `(board, channel)`. `204` when already on the target/newest
 or nothing applies; else `200 { version, url, sha256, sizeBytes }`. Errors: `400` bad query.
 
+### GET `/api/device/content?board=&theme=&version=`  (content manifest)
+Query: `board` (`hmi|sensor`, required), `theme` (default `"default"`), `version?` (the
+bin's current content-pack version). The server version = **max `version` across the
+active `content_files` rows** for `(board, theme)`.
+- `204` — no active files for `(board, theme)` (device clears any retired pack).
+- `304` — `version` param is present and `>=` the server version.
+- `200 { version, files: [{ path, url, sha256, sizeBytes }] }` — the full active file
+  list, so the device delta-syncs by comparing each file's `sha256`. `version` is the
+  server version to store after a successful sync.
+
+Errors: `400` bad query.
+
+### GET `/api/device/qr?token=`  (QR fallback)
+Query: `token` (a session `claimToken`). The token's session must belong to the calling
+device. Renders the QR for `{baseUrl}/claim/{token}` (using the `qrcode` lib) and returns
+the module matrix so the HMI can blit it without a QR library on-device.
+Response `200`: `{ url, size, modules }` — `url` is the claim URL, `size` is the module
+count per side, `modules` is base64 of the row-major 1-bpp matrix (each row byte-aligned,
+MSB-first, bit `col` of a row = module `(row, col)`). Errors: `400` missing token, `404`
+unknown **or** foreign token (a token on another device 404s — never leaked).
+
 ### POST `/api/device/drop-sessions/start`
-Response `200`: `{ sessionId }`.
+Body (optional): `{ offline?: boolean }` — `true` marks the session as captured while
+WiFi was down (stored on `drop_sessions.offline`), which changes finalize behavior (no
+batteries, no claim token — see below). Response `200`: `{ sessionId }`.
 
 ### POST `/api/device/drops`
 Body: `{ sessionId, sequence, beamPatternJson?, tempC?, vocRaw?, fillPercent?,
-accepted? }`. Session must exist, belong to the device, and be `OPEN`. Increments
-detected/accepted counts. Response `200`: `{ dropId }`. Errors: `400` bad body / session
-not open, `404` session not found.
+accepted?, occurredAt? }`. Session must exist, belong to the device, and be `OPEN`.
+Increments detected/accepted counts. `occurredAt` (ISO 8601 with offset) is the true
+drop time an offline bin backfills; live drops omit it and `createdAt` is authoritative.
+Response `200`: `{ dropId }`. Errors: `400` bad body / session not open, `404` session
+not found.
 
 ### POST `/api/device/drops/:dropId/photos`
 Body: `{ imageRole: "before"|"after", imageBase64 }`. Ownership checked (drop → session
@@ -516,13 +580,30 @@ Transactional (`SELECT … FOR UPDATE` on the session). Computes
 `batteriesEstimated = acceptedDropCount × batteriesPerVape`, awards shop points
 immediately (`acceptedDropCount × (device.pointsPerVapeOverride ?? shopPointsPerVape)`),
 issues a `claimToken`/`claimUrl`. `acceptedDropCount == 0` → session `EXPIRED`, no token.
-Response `200`: `{ ok: true, batteries, shopPoints, claimToken, claimUrl, expiresAt }`
-(or `{ ok: true, batteries: 0, claimToken: null, claimUrl: null, expired: true }`).
+Pure decision logic lives in `server/offlineFinalize.ts` (`finalizeDecision`). Three
+response shapes:
+- **Live, with accepted drops** → `200 { ok: true, batteries, shopPoints, claimToken,
+  claimUrl, expiresAt }`.
+- **No accepted drops** → session `EXPIRED`, `200 { ok: true, batteries: 0,
+  claimToken: null, claimUrl: null, expired: true }`.
+- **Offline session** (`drop_sessions.offline = true`, with accepted drops) → shop
+  points are awarded exactly as normal, but `batteriesEstimated = 0`, **no claim token
+  is minted**, and the status is `FINALIZED` (not `EXPIRED` — it has real drops):
+  `200 { ok: true, offline: true, shopPoints, batteries: 0, claimToken: null,
+  claimUrl: null }`.
+
 Errors: `400` already finalized, `404` session not found.
 
 ### Device command types
 
 Enqueued by the server, polled via `GET /api/device/commands`:
-`RESET_FILL_AND_COUNT`, `REBOOT`, `PING`, `TAKE_PHOTO {ir}`, `CALIBRATE_FILL {seconds}`,
-`SOUND_ALARM {seconds}`, `UPDATE_FIRMWARE {version}`. (Firmware executes them; the server
-only enqueues.)
+`RESET_FILL_AND_COUNT`, `REBOOT {board?}`, `PING`, `TAKE_PHOTO {ir}`,
+`CALIBRATE_FILL {seconds}`, `SOUND_ALARM {seconds}`, `UPDATE_FIRMWARE {version, board}`,
+`UPDATE_ASSETS {theme?, version?}`. (Firmware executes them; the server only enqueues.)
+- `UPDATE_FIRMWARE` carries `board` (`sensor|hmi`) so the bin knows which board to flash
+  (enqueued by `POST /api/staff/devices/:id/ota`).
+- `REBOOT` accepts an optional `board` to target one board; enqueue it via the generic
+  `POST /api/staff/devices/:id/commands`.
+- `UPDATE_ASSETS` tells the HMI to pull a content pack (enqueued by
+  `POST /api/staff/devices/:id/update-assets`); omitted `theme`/`version` mean "pull the
+  newest active pack".

@@ -18,6 +18,7 @@ import Alerts from "@/pages/staff/panels/Alerts";
 import LiveCamera from "@/pages/staff/panels/LiveCamera";
 import Firmware from "@/pages/staff/panels/Firmware";
 import DeviceOps from "@/pages/staff/panels/DeviceOps";
+import ContentPacks from "@/pages/staff/panels/ContentPacks";
 import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
 export default function StaffDashboard() {
@@ -118,6 +119,7 @@ export default function StaffDashboard() {
             <TabsTrigger value="camera" data-testid="tab-camera">Live Camera</TabsTrigger>
             <TabsTrigger value="firmware" data-testid="tab-firmware">Firmware</TabsTrigger>
             <TabsTrigger value="deviceops" data-testid="tab-deviceops">Device Ops</TabsTrigger>
+            <TabsTrigger value="content" data-testid="tab-content">Content</TabsTrigger>
             <TabsTrigger value="shops" data-testid="tab-shops">Shops</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
             <TabsTrigger value="leads" data-testid="tab-leads">Leads</TabsTrigger>
@@ -202,6 +204,10 @@ export default function StaffDashboard() {
 
           <TabsContent value="deviceops">
             <DeviceOps enabled={!!user && role === "staff"} />
+          </TabsContent>
+
+          <TabsContent value="content">
+            <ContentPacks enabled={!!user && role === "staff"} />
           </TabsContent>
 
           <TabsContent value="shops" className="space-y-3">

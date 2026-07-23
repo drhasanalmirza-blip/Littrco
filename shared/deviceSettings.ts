@@ -55,6 +55,7 @@ export const deviceSettingsSchema = z
     policy: z
       .object({
         allowThcVapes: z.boolean().optional(),
+        allowOtherElectronics: z.boolean().optional(),
       })
       .passthrough()
       .optional(),
@@ -83,6 +84,13 @@ export const deviceSettingsSchema = z
     ui: z
       .object({
         theme: z.string().min(1).max(40).optional(), // HMI wallpaper set
+        carousel: z
+          .object({
+            secPerPage: z.number().int().min(5).max(120).optional(), // seconds per carousel page
+            postSessionCounterSec: z.number().int().min(0).max(600).optional(), // post-session counter hold
+          })
+          .passthrough()
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -113,7 +121,8 @@ export type DeviceSettingsJson = z.infer<typeof deviceSettingsSchema>;
 
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
   fill: { emptyDistanceMm: 500, fullOffsetMm: 76 },
-  policy: { allowThcVapes: true }, // THC vapes accepted by default; partners can opt out
+  // THC vapes accepted by default; other electronics rejected by default; partners can opt out/in
+  policy: { allowThcVapes: true, allowOtherElectronics: false },
   fire: {
     enabled: true, // always on unless explicitly disabled (partner disable notifies staff)
     mode: 2,
@@ -125,7 +134,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
     onVocOnly: ["DISPLAY"],
   },
   hours: { enabled: false, open: "09:00", close: "21:00", tz: "America/New_York" },
-  ui: { theme: "default" },
+  ui: { theme: "default", carousel: { secPerPage: 20, postSessionCounterSec: 60 } },
   session: { stackWindowSec: 6, qrTtlSec: 30 },
   telemetry: { idleSec: 30, activeSec: 5 },
   camera: { idleSnapshotSec: 8 },

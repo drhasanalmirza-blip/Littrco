@@ -20,6 +20,7 @@ const session = (over: Partial<ReviewSessionState> = {}): ReviewSessionState => 
   acceptedDropCount: 4,
   batteriesEstimated: 20,
   claimedByCustomerId: 99,
+  offline: false,
   ...over,
 });
 
@@ -139,6 +140,58 @@ describe("planReject — floors and idempotency", () => {
     expect(plan.sessionUpdate).toEqual({});
     expect(plan.shopPointEntry).toBeNull();
     expect(plan.batteryEntry).toBeNull();
+  });
+});
+
+describe("offline finalized session — batteriesEstimated=0 invariant (spec §3.4)", () => {
+  // Offline finalize awards shop points but 0 batteries and mints no claim, so
+  // the row holds batteriesEstimated=0 while acceptedDropCount>0. Reject/approve
+  // must revoke/restore shop points symmetrically but never touch batteries.
+  const offlineSession = (over: Partial<ReviewSessionState> = {}) =>
+    session({
+      status: "FINALIZED",
+      offline: true,
+      claimedByCustomerId: null,
+      batteriesEstimated: 0,
+      acceptedDropCount: 4,
+      ...over,
+    });
+
+  it("reject revokes shop points but leaves batteriesEstimated untouched (stays 0)", () => {
+    const plan = planReject(drop(), offlineSession(), rates(), "not a vape")!;
+    expect(plan.sessionUpdate.batteriesEstimated).toBeUndefined();
+    expect(plan.batteryEntry).toBeNull();
+    expect(plan.shopPointEntry!.amount).toBe(-2);
+    expect(plan.sessionUpdate.acceptedDropCount).toBe(3);
+  });
+
+  it("re-approve after reject restores shop points WITHOUT materializing phantom batteries", () => {
+    const rejected = drop({ reviewStatus: "REJECTED", accepted: false, pointsRevoked: true });
+    const plan = planApprove(rejected, offlineSession({ acceptedDropCount: 3 }), rates())!;
+    // The bug: this used to set batteriesEstimated = 0 + batteriesPerVape = 5.
+    expect(plan.sessionUpdate.batteriesEstimated).toBeUndefined();
+    expect(plan.batteryEntry).toBeNull();
+    expect(plan.shopPointEntry!.amount).toBe(2);
+    expect(plan.sessionUpdate.acceptedDropCount).toBe(4);
+  });
+
+  it("reject -> approve round trip nets shop points to zero and never touches batteries", () => {
+    const r = rates();
+    const s0 = offlineSession({ acceptedDropCount: 4, batteriesEstimated: 0 });
+
+    const reject = planReject(drop(), s0, r, "oops")!;
+    const s1 = offlineSession({
+      acceptedDropCount: reject.sessionUpdate.acceptedDropCount!,
+      batteriesEstimated: 0, // invariant holds — reject never bumps it
+    });
+    const d1 = drop({ reviewStatus: "REJECTED", ...reject.dropUpdate });
+
+    const approve = planApprove(d1, s1, r)!;
+    expect(reject.shopPointEntry!.amount + approve.shopPointEntry!.amount).toBe(0);
+    expect(reject.batteryEntry).toBeNull();
+    expect(approve.batteryEntry).toBeNull();
+    expect(approve.sessionUpdate.batteriesEstimated).toBeUndefined();
+    expect(approve.sessionUpdate.acceptedDropCount).toBe(s0.acceptedDropCount);
   });
 });
 

@@ -192,7 +192,19 @@ export default function Sessions({ enabled }: { enabled: boolean }) {
                     <TableCell className="font-mono">{s.id}</TableCell>
                     <TableCell className="font-mono">{s.device?.serial ?? "—"}</TableCell>
                     <TableCell>{s.shop ? `${s.shop.name}${s.shop.city ? ` · ${s.shop.city}` : ""}` : "—"}</TableCell>
-                    <TableCell><StatusBadge status={s.status} /></TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <StatusBadge status={s.status} />
+                        {s.offline && (
+                          <Badge
+                            className="bg-amber-500 hover:bg-amber-500 text-white"
+                            data-testid={`badge-session-offline-${s.id}`}
+                          >
+                            Offline
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>{s.detectedDropCount ?? 0} / {s.acceptedDropCount ?? 0}</TableCell>
                     <TableCell>
                       {s.batteriesConfirmed ?? s.batteriesEstimated ?? 0}

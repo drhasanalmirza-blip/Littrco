@@ -14,7 +14,7 @@ describe("deviceSettingsSchema (spec §7)", () => {
   it("accepts the documented full shape", () => {
     const result = validateDeviceSettings({
       fill: { emptyDistanceMm: 500, fullOffsetMm: 76 },
-      policy: { allowThcVapes: false },
+      policy: { allowThcVapes: false, allowOtherElectronics: true },
       fire: {
         enabled: true, mode: 2,
         tempC: 40, vocAnalog: 3000, vocWarmupSec: 300,
@@ -23,7 +23,7 @@ describe("deviceSettingsSchema (spec §7)", () => {
         onVocOnly: ["DISPLAY"],
       },
       hours: { enabled: false, open: "09:00", close: "21:00", tz: "America/New_York" },
-      ui: { theme: "default" },
+      ui: { theme: "default", carousel: { secPerPage: 20, postSessionCounterSec: 60 } },
       session: { stackWindowSec: 6, qrTtlSec: 30 },
       telemetry: { idleSec: 30, activeSec: 5 },
       camera: { idleSnapshotSec: 8 },
@@ -106,6 +106,23 @@ describe("DEFAULT_DEVICE_SETTINGS", () => {
     expect(DEFAULT_DEVICE_SETTINGS.fire?.onBoth).toEqual(["DISPLAY", "ALARM"]);
     expect(DEFAULT_DEVICE_SETTINGS.session).toEqual({ stackWindowSec: 6, qrTtlSec: 30 });
     expect(DEFAULT_DEVICE_SETTINGS.camera).toEqual({ idleSnapshotSec: 8 });
+    // THC vapes accepted, other electronics rejected by default (owner-confirmed)
+    expect(DEFAULT_DEVICE_SETTINGS.policy).toEqual({ allowThcVapes: true, allowOtherElectronics: false });
+    // Carousel pacing defaults
+    expect((DEFAULT_DEVICE_SETTINGS.ui as any)?.carousel).toEqual({ secPerPage: 20, postSessionCounterSec: 60 });
+  });
+
+  it("accepts and bounds the new ui.carousel knobs", () => {
+    expect(validateDeviceSettings({ ui: { carousel: { secPerPage: 5, postSessionCounterSec: 0 } } }).ok).toBe(true);
+    expect(validateDeviceSettings({ ui: { carousel: { secPerPage: 120, postSessionCounterSec: 600 } } }).ok).toBe(true);
+    expect(validateDeviceSettings({ ui: { carousel: { secPerPage: 4 } } }).ok).toBe(false);
+    expect(validateDeviceSettings({ ui: { carousel: { secPerPage: 121 } } }).ok).toBe(false);
+    expect(validateDeviceSettings({ ui: { carousel: { postSessionCounterSec: 601 } } }).ok).toBe(false);
+  });
+
+  it("accepts policy.allowOtherElectronics as a boolean", () => {
+    expect(validateDeviceSettings({ policy: { allowOtherElectronics: true } }).ok).toBe(true);
+    expect(validateDeviceSettings({ policy: { allowOtherElectronics: "no" } }).ok).toBe(false);
   });
 });
 

@@ -17,7 +17,8 @@ export type AlertType =
   | "FIRE_DISABLED"
   | "OFFLINE"
   | "SD_ERROR"
-  | "CAMERA_ERROR";
+  | "CAMERA_ERROR"
+  | "UPDATE_FAILED";
 
 export type AlertSeverity = "INFO" | "WARNING" | "CRITICAL";
 
@@ -34,6 +35,8 @@ export const ALERT_SEVERITY: Record<AlertType, AlertSeverity> = {
   OFFLINE: "WARNING",
   SD_ERROR: "INFO",
   CAMERA_ERROR: "INFO",
+  // Firmware/asset OTA update failed on-device (spec §5) — reported via events.
+  UPDATE_FAILED: "WARNING",
 };
 
 const SEVERITY_RANK: Record<AlertSeverity, number> = { INFO: 0, WARNING: 1, CRITICAL: 2 };
@@ -42,7 +45,7 @@ export function severityAtLeast(sev: AlertSeverity, min: AlertSeverity): boolean
   return SEVERITY_RANK[sev] >= SEVERITY_RANK[min];
 }
 
-export const DEVICE_EVENT_TYPES = ["FIRE", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR"] as const;
+export const DEVICE_EVENT_TYPES = ["FIRE", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR", "UPDATE_FAILED"] as const;
 export type DeviceEventType = (typeof DEVICE_EVENT_TYPES)[number];
 
 // ==================== Timing constants ====================
@@ -382,6 +385,8 @@ export function alertMatchesPrefs(
       return true;
     case "SD_ERROR":
     case "CAMERA_ERROR":
+    case "UPDATE_FAILED":
+      // Device-health alerts have no per-user pref toggle — always delivered.
       return true;
   }
 }
@@ -488,6 +493,8 @@ export function alertMessage(
       return "SD card error reported by device";
     case "CAMERA_ERROR":
       return "Camera error reported by device";
+    case "UPDATE_FAILED":
+      return "Firmware/asset update failed on device";
   }
 }
 

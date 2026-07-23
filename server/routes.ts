@@ -24,12 +24,14 @@ import { rateLimit, rateLimitByIp, deviceLimiter } from "./ratelimit";
 import { claimSessionForCustomer } from "./claims";
 import { evaluateTelemetry, handleDeviceEvent, notifyFireDisabled } from "./notify";
 import { validateDeviceSettings, mergeDeviceSettings } from "@shared/deviceSettings";
+import { finalizeDecision } from "./offlineFinalize";
 import reviewRouter from "./routes/review";
 import { partnerRoleForShop } from "./routes/team";
 import alertsRouter from "./routes/alerts";
 import teamRouter from "./routes/team";
 import selfReportRouter from "./routes/selfreport";
 import devopsRouter from "./routes/devops";
+import contentRouter from "./routes/content";
 
 const NONCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_CLAIM_TTL_SEC = 7 * 24 * 3600;
@@ -71,6 +73,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(teamRouter);
   app.use(selfReportRouter);
   app.use(devopsRouter);
+  app.use(contentRouter);
 
   // ==================== AUTH ====================
   app.post("/api/auth/login", authLimiter, async (req, res) => {
@@ -507,7 +510,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       wifiRssi: z.number().optional(),
       sdFreeMb: z.number().optional(),
       rawDistanceMm: z.number().optional(),
-      firmwareVersion: z.string().optional(),
+      // Bounded like the OTA version fields (firmwareCheckQuery / claim-by-code
+      // use .max(32)) so a device can't push multi-MB strings into the persisted
+      // devices columns on every heartbeat.
+      firmwareVersion: z.string().max(32).optional(),
+      hmiVersion: z.string().max(32).optional(),      // HMI firmware version (spec §3.1)
+      assetsVersion: z.string().max(32).optional(),   // HMI content-pack version (spec §3.1)
       state: z.string().optional(),
       errorLog: z.string().optional(),
     }).safeParse(req.body);
@@ -525,7 +533,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Device-initiated alerts — fire and warnings are detected on-device (spec §2.2)
   app.post("/api/device/events", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
     const body = z.object({
-      type: z.enum(["FIRE", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR"]),
+      type: z.enum(["FIRE", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR", "UPDATE_FAILED"]),
       tempC: z.number().optional(),
       vocAnalog: z.number().optional(),
       fillPercent: z.number().optional(),
@@ -559,7 +567,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/device/drop-sessions/start", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
+    // Offline sessions (captured while WiFi was down) award shop points but no
+    // batteries/claim at finalize (spec §3.4).
+    const body = z.object({ offline: z.boolean().optional() }).safeParse(req.body ?? {});
+    if (!body.success) return res.status(400).json({ error: "bad body" });
     const s = await storage.createDropSession(req.device!.id, req.device!.shopId || null);
+    if (body.data.offline) await storage.updateDropSession(s.id, { offline: true });
     res.json({ sessionId: s.id });
   });
 
@@ -572,12 +585,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       vocRaw: z.number().optional(),
       fillPercent: z.number().optional(),
       accepted: z.boolean().optional(),
+      occurredAt: z.string().datetime({ offset: true }).optional(), // true drop time for offline drops (spec §3.4)
     }).safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: "bad drop" });
     const session = await storage.getDropSession(body.data.sessionId);
     if (!session || session.deviceId !== req.device!.id) return res.status(404).json({ error: "Session not found" });
     if (session.status !== "OPEN") return res.status(400).json({ error: "Session not open" });
-    const drop = await storage.createDrop(body.data as any);
+    const { occurredAt, ...dropData } = body.data;
+    const drop = await storage.createDrop({
+      ...dropData,
+      occurredAt: occurredAt ? new Date(occurredAt) : undefined,
+    } as any);
     await storage.updateDropSession(session.id, {
       detectedDropCount: session.detectedDropCount + 1,
       acceptedDropCount: session.acceptedDropCount + (body.data.accepted === false ? 0 : 1),
@@ -670,36 +688,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const ptsPer = device.pointsPerVapeOverride ?? cfg?.shopPointsPerVape ?? DEFAULT_SHOP_POINTS_PER_VAPE;
       const ttlSec = cfg?.claimExpirySec ?? DEFAULT_CLAIM_TTL_SEC;
 
-      const batteries = session.acceptedDropCount * battsPer;
-      const shopPoints = session.acceptedDropCount * ptsPer;
-      const claimToken = generateClaimToken();
-      const expiresAt = new Date(Date.now() + ttlSec * 1000);
+      // Offline sessions award shop points normally but no batteries and mint no
+      // claim token (spec §3.4). Pure decision lives in ./offlineFinalize.
+      const decision = finalizeDecision({
+        offline: session.offline,
+        acceptedDropCount: session.acceptedDropCount,
+        perVape: ptsPer,
+        batteriesPerVape: battsPer,
+      });
+      const claimToken = decision.mintClaim ? generateClaimToken() : null;
+      const expiresAt = decision.mintClaim ? new Date(Date.now() + ttlSec * 1000) : null;
 
       await tx.update(dropSessions).set({
-        status: "FINALIZED",
-        batteriesEstimated: batteries,
-        shopPointsAwarded: shopPoints,
+        status: decision.status,
+        batteriesEstimated: decision.batteries,
+        shopPointsAwarded: decision.shopPoints,
         claimToken,
         expiresAt,
         finalizedAt: new Date(),
       }).where(eq(dropSessions.id, sessionId));
 
-      // Award shop points immediately (no QR scan needed)
-      if (session.shopId && shopPoints > 0) {
+      // Award shop points immediately (no QR scan needed) — live and offline alike
+      if (session.shopId && decision.shopPoints > 0) {
         await tx.insert(shopPointTransactions).values({
           shopId: session.shopId, deviceId: device.id, sessionId,
-          amount: shopPoints, type: "EARNED", status: "POSTED",
+          amount: decision.shopPoints, type: "EARNED", status: "POSTED",
           description: `${session.acceptedDropCount} vape drop(s)`,
         });
       }
 
-      return { kind: "finalized" as const, batteries, shopPoints, claimToken, expiresAt };
+      if (session.offline) {
+        return { kind: "offline" as const, shopPoints: decision.shopPoints };
+      }
+      return {
+        kind: "finalized" as const,
+        batteries: decision.batteries,
+        shopPoints: decision.shopPoints,
+        claimToken: claimToken!,
+        expiresAt: expiresAt!,
+      };
     });
 
     if (outcome.kind === "notfound") return res.status(404).json({ error: "Session not found" });
     if (outcome.kind === "already") return res.status(400).json({ error: "Already finalized" });
     if (outcome.kind === "expired") {
       return res.json({ ok: true, batteries: 0, claimToken: null, claimUrl: null, expired: true });
+    }
+    if (outcome.kind === "offline") {
+      // No batteries, no claim token/URL — shop points only (spec §3.4).
+      return res.json({ ok: true, offline: true, shopPoints: outcome.shopPoints, batteries: 0, claimToken: null, claimUrl: null });
     }
 
     const baseUrl = (req.headers["x-forwarded-proto"] ? `${req.headers["x-forwarded-proto"]}://` : "https://") +

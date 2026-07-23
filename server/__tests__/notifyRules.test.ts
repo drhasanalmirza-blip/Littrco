@@ -40,6 +40,7 @@ describe("ALERT_SEVERITY (spec §5.2)", () => {
       OFFLINE: "WARNING",
       SD_ERROR: "INFO",
       CAMERA_ERROR: "INFO",
+      UPDATE_FAILED: "WARNING",
     });
   });
 });
