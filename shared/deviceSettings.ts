@@ -120,7 +120,7 @@ export const deviceSettingsSchema = z
 export type DeviceSettingsJson = z.infer<typeof deviceSettingsSchema>;
 
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
-  fill: { emptyDistanceMm: 500, fullOffsetMm: 76 },
+  fill: { emptyDistanceMm: 500, fullOffsetMm: 200 },
   // THC vapes accepted by default; other electronics rejected by default; partners can opt out/in
   policy: { allowThcVapes: true, allowOtherElectronics: false },
   fire: {
@@ -128,7 +128,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
     mode: 2,
     tempC: 40,
     vocAnalog: 3072, // ≈75% of the 0–4095 ADC range (recommended to avoid false alarms)
-    vocWarmupSec: 300,
+    vocWarmupSec: 30,
     onBoth: ["DISPLAY", "ALARM"],
     onTempOnly: ["DISPLAY"],
     onVocOnly: ["DISPLAY"],

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, X } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
-import BinWidget from "@/components/BinWidget";
+import BinWidget, { RemoveBinDialog } from "@/components/BinWidget";
 import ReviewQueue from "@/pages/staff/panels/ReviewQueue";
 import Sessions from "@/pages/staff/panels/Sessions";
 import Alerts from "@/pages/staff/panels/Alerts";
@@ -79,6 +79,16 @@ export default function StaffDashboard() {
     },
     onSuccess: () => { toast({ title: "Command queued" }); refetchCmds(); },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const removeDevice = useMutation({
+    mutationFn: async (deviceId: number) => {
+      const r = await apiRequest(`/api/staff/devices/${deviceId}`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
+      return r.json();
+    },
+    onSuccess: () => { toast({ title: "Bin removed" }); qc.invalidateQueries({ queryKey: ["/api/staff/devices"] }); },
+    onError: (e: any) => toast({ title: "Failed to remove", description: e.message, variant: "destructive" }),
   });
 
   const createShop = useMutation({
@@ -158,7 +168,15 @@ export default function StaffDashboard() {
                   { label: "Errors", value: d.errorLog ? d.errorLog.slice(0, 40) : "—" },
                 ]}
                 actions={
-                  <Button size="sm" variant="outline" onClick={() => viewCommands(d.id)} data-testid={`button-view-cmds-${d.id}`}>View Commands</Button>
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => viewCommands(d.id)} data-testid={`button-view-cmds-${d.id}`}>View Commands</Button>
+                    <RemoveBinDialog
+                      deviceId={d.id}
+                      deviceName={d.label && String(d.label).trim() !== "" ? d.label : d.serial}
+                      onConfirm={() => removeDevice.mutate(d.id)}
+                      pending={removeDevice.isPending}
+                    />
+                  </>
                 }
               />
             ))}

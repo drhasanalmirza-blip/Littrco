@@ -5,7 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Pencil, Check, X } from "lucide-react";
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogCancel, AlertDialogAction,
+} from "@/components/ui/alert-dialog";
+import { Pencil, Check, X, Trash2 } from "lucide-react";
 import { vocPctFromAnalog, celsiusToFahrenheit } from "@shared/deviceSettings";
 import littrOneImage from "@/assets/images/littr-one-official.png";
 
@@ -165,5 +170,57 @@ export default function BinWidget({
         {actions && <div className="flex flex-none flex-wrap items-center gap-2 sm:flex-col sm:items-end">{actions}</div>}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Confirm-guarded "Remove bin" action, rendered as a BinWidget action button.
+ * The caller supplies the endpoint semantics via `onConfirm` (partner vs staff
+ * delete differ) and toggles `pending` while the mutation runs.
+ */
+export function RemoveBinDialog({
+  deviceId,
+  deviceName,
+  onConfirm,
+  pending,
+}: {
+  deviceId: number;
+  deviceName: string;
+  onConfirm: () => void;
+  pending?: boolean;
+}) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-red-600 hover:text-red-700"
+          disabled={pending}
+          data-testid={`button-remove-bin-${deviceId}`}
+        >
+          <Trash2 className="mr-1 h-4 w-4" /> Remove bin
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove {deviceName}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently removes the bin and its history from your dashboard.
+            This can't be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid={`button-cancel-remove-bin-${deviceId}`}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-red-600 text-white hover:bg-red-700"
+            data-testid={`button-confirm-remove-bin-${deviceId}`}
+          >
+            Remove
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

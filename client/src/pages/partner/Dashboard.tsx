@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { Plus, RefreshCcw, Battery, Sparkles } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
-import BinWidget from "@/components/BinWidget";
+import BinWidget, { RemoveBinDialog } from "@/components/BinWidget";
 import BinSettings from "@/pages/partner/panels/BinSettings";
 import Team from "@/pages/partner/panels/Team";
 import Pairing from "@/pages/partner/panels/Pairing";
@@ -98,6 +98,19 @@ export default function PartnerDashboard() {
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
+  const removeDevice = useMutation({
+    mutationFn: async (deviceId: number) => {
+      const r = await apiRequest(`/api/partner/devices/${deviceId}`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Bin removed" });
+      qc.invalidateQueries({ queryKey: [`/api/partner/shops/${shopId}/devices`] });
+    },
+    onError: (e: any) => toast({ title: "Failed to remove", description: e.message, variant: "destructive" }),
+  });
+
   const createReward = useMutation({
     mutationFn: async (data: { name: string; cost: number; description?: string }) => {
       const r = await apiRequest(`/api/partner/shops/${shopId}/rewards`, { method: "POST", body: JSON.stringify(data) });
@@ -175,9 +188,17 @@ export default function PartnerDashboard() {
                   canManage={canManage}
                   onChanged={() => refetchDevices()}
                   actions={canManage ? (
-                    <Button size="sm" variant="outline" onClick={() => markEmpty.mutate(d.id)} data-testid={`button-mark-empty-${d.id}`}>
-                      <RefreshCcw className="h-4 w-4 mr-1" /> Mark Empty
-                    </Button>
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => markEmpty.mutate(d.id)} data-testid={`button-mark-empty-${d.id}`}>
+                        <RefreshCcw className="h-4 w-4 mr-1" /> Mark Empty
+                      </Button>
+                      <RemoveBinDialog
+                        deviceId={d.id}
+                        deviceName={d.label && d.label.trim() !== "" ? d.label : d.serial}
+                        onConfirm={() => removeDevice.mutate(d.id)}
+                        pending={removeDevice.isPending}
+                      />
+                    </>
                   ) : undefined}
                 />
               ))}

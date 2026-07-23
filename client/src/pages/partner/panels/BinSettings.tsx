@@ -84,6 +84,14 @@ const FIRE_MODES = [
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 
+// Fill calibration is stored in millimetres (firmware contract) but presented to
+// partners in centimetres, bounded 20–100 cm (= 200–1000 mm). Convert at the UI
+// edge only so the stored `fill.*Mm` values stay in mm.
+const FILL_CM_MIN = 20;
+const FILL_CM_MAX = 100;
+const mmToCm = (mm: number) => mm / 10;
+const cmToMm = (cm: number) => Math.round(cm * 10);
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -342,6 +350,10 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
           <Card>
             <CardHeader>
               <CardTitle>Fill calibration</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Ultrasonic FILL sensor — how far it reads to the trash. Distances
+                are in centimetres (20–100 cm).
+              </p>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Empty distance slider */}
@@ -351,22 +363,22 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                   <div className="flex items-center gap-2">
                     <NumInput
                       className="w-24 h-8"
-                      value={fill.emptyDistanceMm}
-                      min={50}
-                      max={5000}
+                      value={fill.emptyDistanceMm == null ? undefined : mmToCm(fill.emptyDistanceMm)}
+                      min={FILL_CM_MIN}
+                      max={FILL_CM_MAX}
                       step={1}
-                      onChange={(n) => setSection("fill", { emptyDistanceMm: n })}
+                      onChange={(n) => setSection("fill", { emptyDistanceMm: cmToMm(n) })}
                       testid="input-empty-distance"
                     />
-                    <span className="text-sm text-gray-500">mm</span>
+                    <span className="text-sm text-gray-500">cm</span>
                   </div>
                 </div>
                 <Slider
-                  value={[clamp(emptyMm, 50, 5000)]}
-                  min={50}
-                  max={5000}
+                  value={[clamp(mmToCm(emptyMm), FILL_CM_MIN, FILL_CM_MAX)]}
+                  min={FILL_CM_MIN}
+                  max={FILL_CM_MAX}
                   step={1}
-                  onValueChange={([v]) => setSection("fill", { emptyDistanceMm: v })}
+                  onValueChange={([v]) => setSection("fill", { emptyDistanceMm: cmToMm(v) })}
                   data-testid="slider-empty-distance"
                 />
                 <p className="text-xs text-gray-500 mt-1">
@@ -381,22 +393,22 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                   <div className="flex items-center gap-2">
                     <NumInput
                       className="w-24 h-8"
-                      value={fill.fullOffsetMm}
-                      min={0}
-                      max={2000}
+                      value={fill.fullOffsetMm == null ? undefined : mmToCm(fill.fullOffsetMm)}
+                      min={FILL_CM_MIN}
+                      max={FILL_CM_MAX}
                       step={1}
-                      onChange={(n) => setSection("fill", { fullOffsetMm: n })}
+                      onChange={(n) => setSection("fill", { fullOffsetMm: cmToMm(n) })}
                       testid="input-full-offset"
                     />
-                    <span className="text-sm text-gray-500">mm</span>
+                    <span className="text-sm text-gray-500">cm</span>
                   </div>
                 </div>
                 <Slider
-                  value={[clamp(fullMm, 0, 2000)]}
-                  min={0}
-                  max={2000}
+                  value={[clamp(mmToCm(fullMm), FILL_CM_MIN, FILL_CM_MAX)]}
+                  min={FILL_CM_MIN}
+                  max={FILL_CM_MAX}
                   step={1}
-                  onValueChange={([v]) => setSection("fill", { fullOffsetMm: v })}
+                  onValueChange={([v]) => setSection("fill", { fullOffsetMm: cmToMm(v) })}
                   data-testid="slider-full-offset"
                 />
                 <p className="text-xs text-gray-500 mt-1">
@@ -424,8 +436,8 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                     className="text-4xl font-bold tabular-nums mt-1"
                     data-testid="text-live-raw"
                   >
-                    {rawMm == null ? "—" : rawMm}
-                    <span className="text-lg font-medium text-gray-500"> mm</span>
+                    {rawMm == null ? "—" : mmToCm(rawMm).toFixed(1)}
+                    <span className="text-lg font-medium text-gray-500"> cm</span>
                   </div>
                 </div>
                 <div className="rounded-lg border p-4 text-center">
@@ -938,6 +950,20 @@ function NumInput({
         setStr(e.target.value);
         const n = Number(e.target.value);
         if (e.target.value !== "" && Number.isFinite(n)) onChange(n);
+      }}
+      onBlur={(e) => {
+        // Enforce the min/max bound on commit (HTML min/max are only hints and
+        // do not correct a typed out-of-range value). Clamp on blur so a
+        // mid-typing keystroke isn't snapped, then re-sync the visible draft.
+        const n = Number(e.target.value);
+        if (e.target.value === "" || !Number.isFinite(n)) return;
+        const lo = min ?? -Infinity;
+        const hi = max ?? Infinity;
+        const c = clamp(n, lo, hi);
+        if (c !== n) {
+          setStr(String(c));
+          onChange(c);
+        }
       }}
     />
   );

@@ -398,7 +398,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/partner/devices/:id", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
     const device = await storage.getDevice(Number(req.params.id));
     if (!device) return res.status(404).json({ error: "Device not found" });
-    if (req.user!.role !== "STAFF" && device.shopId) {
+    if (req.user!.role !== "STAFF") {
+      // An unassigned device (shopId null — e.g. its shop was deleted) has no
+      // shop membership to check, so a non-STAFF caller can never mutate it.
+      if (!device.shopId) return res.status(403).json({ error: "Not your device" });
       const err = await mutableShopError(req.user!.id, device.shopId);
       if (err) return res.status(403).json({ error: err });
     }
@@ -407,6 +410,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const label = parsed.data.label && parsed.data.label.length > 0 ? parsed.data.label : null;
     const updated = await storage.updateDevice(device.id, { label });
     res.json(updated);
+  });
+
+  // Remove a bin from the shop. OWNER/MANAGER only (VIEWER is read-only via
+  // mutableShopError); deleting cascades to sessions/settings/etc. per schema FKs.
+  app.delete("/api/partner/devices/:id", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF") {
+      // An unassigned device (shopId null — e.g. its shop was deleted) has no
+      // shop membership to check, so a non-STAFF caller can never mutate it.
+      if (!device.shopId) return res.status(403).json({ error: "Not your device" });
+      const err = await mutableShopError(req.user!.id, device.shopId);
+      if (err) return res.status(403).json({ error: err });
+    }
+    await storage.deleteDevice(device.id);
+    res.json({ ok: true });
   });
 
   // Per-device settings editor
@@ -422,7 +441,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.put("/api/partner/devices/:id/settings", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
     const device = await storage.getDevice(Number(req.params.id));
     if (!device) return res.status(404).json({ error: "Device not found" });
-    if (req.user!.role !== "STAFF" && device.shopId) {
+    if (req.user!.role !== "STAFF") {
+      // An unassigned device (shopId null — e.g. its shop was deleted) has no
+      // shop membership to check, so a non-STAFF caller can never mutate it.
+      if (!device.shopId) return res.status(403).json({ error: "Not your device" });
       const err = await mutableShopError(req.user!.id, device.shopId);
       if (err) return res.status(403).json({ error: err });
     }
@@ -449,7 +471,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/partner/devices/:id/mark-empty", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
     const device = await storage.getDevice(Number(req.params.id));
     if (!device) return res.status(404).json({ error: "Device not found" });
-    if (req.user!.role !== "STAFF" && device.shopId) {
+    if (req.user!.role !== "STAFF") {
+      // An unassigned device (shopId null — e.g. its shop was deleted) has no
+      // shop membership to check, so a non-STAFF caller can never mutate it.
+      if (!device.shopId) return res.status(403).json({ error: "Not your device" });
       const err = await mutableShopError(req.user!.id, device.shopId);
       if (err) return res.status(403).json({ error: err });
     }

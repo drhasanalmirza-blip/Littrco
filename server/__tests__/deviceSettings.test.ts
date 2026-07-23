@@ -99,7 +99,7 @@ describe("DEFAULT_DEVICE_SETTINGS", () => {
   });
 
   it("matches the documented defaults", () => {
-    expect(DEFAULT_DEVICE_SETTINGS.fill).toEqual({ emptyDistanceMm: 500, fullOffsetMm: 76 });
+    expect(DEFAULT_DEVICE_SETTINGS.fill).toEqual({ emptyDistanceMm: 500, fullOffsetMm: 200 }); // HW fix R1 W1: 20 cm floor
     expect(DEFAULT_DEVICE_SETTINGS.fire?.mode).toBe(2);
     expect(DEFAULT_DEVICE_SETTINGS.fire?.enabled).toBe(true); // fire detection on by default
     expect(DEFAULT_DEVICE_SETTINGS.fire?.vocAnalog).toBe(3072); // ≈75% of ADC range
