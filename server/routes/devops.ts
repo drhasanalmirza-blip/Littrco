@@ -13,10 +13,39 @@ import {
 } from "../auth";
 import { rateLimitByIp, deviceLimiter } from "../ratelimit";
 import { generatePairCode } from "../paircode";
+import { writeArtifact, decodeDataUrlOrBase64 } from "../blob";
 
 // Device ops: live camera, firmware/OTA, calibration, pairing
 // (spec §3.2, §3.4, §4.3, §4.4, §2.3, §2.4).
 const router = Router();
+
+// P3-S0 — artifact hosting. Staff upload a firmware .bin / content .raw; the
+// server stores it, computes the SHA-256, and returns an absolute littr.co URL
+// the Firmware/Content create forms then submit. Keeping the artifact on
+// littr.co (not S3) means the sensor's pinned-to-littr.co TLS client can
+// download it. base64-in-JSON (like the photo route) avoids a multipart dep.
+const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024; // 8 MB (esp32 apps + 800x480 raw wallpapers fit)
+const uploadBody = z.object({
+  kind: z.enum(["firmware", "content"]),
+  filename: z.string().min(1).max(200),
+  dataBase64: z.string().min(1),
+});
+
+function resolveBaseUrl(req: { protocol: string; get(h: string): string | undefined }): string {
+  const env = process.env.BASE_URL?.replace(/\/+$/, "");
+  if (env) return env;
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+router.post("/api/staff/upload", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  const body = uploadBody.safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "kind, filename, dataBase64 required" });
+  const buf = decodeDataUrlOrBase64(body.data.dataBase64);
+  if (!buf || buf.length === 0) return res.status(400).json({ error: "Invalid base64 data" });
+  if (buf.length > MAX_ARTIFACT_BYTES) return res.status(400).json({ error: "File too large (max 8 MB)" });
+  const { relUrl, sha256, sizeBytes } = await writeArtifact(body.data.kind, body.data.filename, buf);
+  res.json({ url: resolveBaseUrl(req) + relUrl, sha256, sizeBytes });
+});
 
 const PAIR_CODE_TTL_MS = 10 * 60 * 1000;
 const PG_UNIQUE_VIOLATION = "23505";

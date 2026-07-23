@@ -197,6 +197,7 @@ function NewContentDialog({
   const [sha256, setSha256] = useState("");
   const [sizeBytes, setSizeBytes] = useState("");
   const [notes, setNotes] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const reset = () => {
     setBoard("hmi");
@@ -206,6 +207,32 @@ function NewContentDialog({
     setSha256("");
     setSizeBytes("");
     setNotes("");
+  };
+
+  // P3-S0: upload the .raw/.json → server stores it + returns the littr.co URL and
+  // SHA-256. Also suggest the on-device path from the filename if none set yet.
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const dataBase64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Could not read file"));
+        r.readAsDataURL(file);
+      });
+      const res = await apiSend<{ url: string; sha256: string; sizeBytes: number }>(
+        "/api/staff/upload", "POST", { kind: "content", filename: file.name, dataBase64 },
+      );
+      setUrl(res.url);
+      setSha256(res.sha256);
+      setSizeBytes(String(res.sizeBytes));
+      setPath((p) => (p.trim() === "" ? `/ui/${file.name}` : p));
+      toast({ title: "Uploaded", description: "URL and SHA-256 filled in below." });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e?.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const create = useMutation({
@@ -282,6 +309,20 @@ function NewContentDialog({
               className="font-mono text-xs"
               data-testid="input-content-path"
             />
+          </div>
+
+          <div className="space-y-1 rounded-md border border-dashed p-3">
+            <Label>Upload asset (.raw / .json)</Label>
+            <Input
+              type="file"
+              accept=".raw,.json,.bin"
+              disabled={uploading}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }}
+              data-testid="input-content-file"
+            />
+            <p className="text-xs text-muted-foreground">
+              {uploading ? "Uploading…" : "Fills the URL + SHA-256 (and suggests a path). Or paste an external https URL below."}
+            </p>
           </div>
 
           <div className="space-y-1">
