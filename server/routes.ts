@@ -773,6 +773,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(c);
   });
 
+  // Cancel a still-pending command (misclick). No-op once the bin has polled it.
+  app.delete("/api/staff/devices/:id/commands/:commandId", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    const deviceId = Number(req.params.id);
+    const commandId = Number(req.params.commandId);
+    if (!Number.isInteger(deviceId) || !Number.isInteger(commandId))
+      return res.status(400).json({ error: "Invalid id" });
+    const c = await storage.cancelCommand(commandId, deviceId);
+    if (!c) return res.status(409).json({ error: "Command already sent to the bin or not found — cannot cancel" });
+    res.json({ ok: true, command: c });
+  });
+
   app.delete("/api/staff/devices/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
     await storage.deleteDevice(Number(req.params.id));
     res.json({ ok: true });

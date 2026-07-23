@@ -98,7 +98,7 @@ export default function BinWidget({
         <img
           src={littrOneImage}
           alt="LITTR One"
-          className="mx-auto h-20 w-16 flex-none rounded-lg object-contain sm:mx-0"
+          className="mx-auto h-36 w-28 flex-none rounded-lg object-contain sm:mx-0 sm:h-40 sm:w-32"
         />
 
         {/* Identity + stats */}

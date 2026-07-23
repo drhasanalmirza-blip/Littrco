@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
 import BinWidget from "@/components/BinWidget";
 import ReviewQueue from "@/pages/staff/panels/ReviewQueue";
@@ -49,11 +49,26 @@ export default function StaffDashboard() {
     enabled: !!user && role === "staff",
   });
 
+  const [tab, setTab] = useState("devices");
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const { data: commands = [], refetch: refetchCmds } = useQuery<any[]>({
     queryKey: [`/api/staff/devices/${selectedDeviceId}/commands`],
     queryFn: async () => (await apiRequest(`/api/staff/devices/${selectedDeviceId}/commands`)).json(),
     enabled: !!selectedDeviceId,
+    refetchInterval: selectedDeviceId ? 5000 : false,
+  });
+
+  // Jump to the Command Queue tab for a specific device (from the Devices list).
+  const viewCommands = (deviceId: number) => { setSelectedDeviceId(deviceId); setTab("commands"); };
+
+  const cancelCmd = useMutation({
+    mutationFn: async ({ deviceId, commandId }: { deviceId: number; commandId: number }) => {
+      const r = await apiRequest(`/api/staff/devices/${deviceId}/commands/${commandId}`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
+      return r.json();
+    },
+    onSuccess: () => { toast({ title: "Command cancelled" }); refetchCmds(); },
+    onError: (e: any) => toast({ title: "Couldn't cancel", description: e.message, variant: "destructive" }),
   });
 
   const enqueue = useMutation({
@@ -109,7 +124,7 @@ export default function StaffDashboard() {
       <div className="max-w-7xl mx-auto">
         <DashboardHeader title="Staff Dashboard" subtitle="LITTR One fleet control" />
 
-        <Tabs defaultValue="devices">
+        <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="mb-4 flex flex-wrap h-auto justify-start">
             <TabsTrigger value="devices" data-testid="tab-devices">Devices</TabsTrigger>
             <TabsTrigger value="commands" data-testid="tab-commands">Command Queue</TabsTrigger>
@@ -143,7 +158,7 @@ export default function StaffDashboard() {
                   { label: "Errors", value: d.errorLog ? d.errorLog.slice(0, 40) : "—" },
                 ]}
                 actions={
-                  <Button size="sm" variant="outline" onClick={() => setSelectedDeviceId(d.id)} data-testid={`button-view-cmds-${d.id}`}>View Commands</Button>
+                  <Button size="sm" variant="outline" onClick={() => viewCommands(d.id)} data-testid={`button-view-cmds-${d.id}`}>View Commands</Button>
                 }
               />
             ))}
@@ -169,13 +184,28 @@ export default function StaffDashboard() {
                     {commands.length === 0 ? <p className="text-sm text-gray-500">No commands.</p> : (
                       <div className="space-y-1">
                         {commands.map(c => (
-                          <div key={c.id} className="flex justify-between border rounded p-2 text-sm" data-testid={`row-cmd-${c.id}`}>
+                          <div key={c.id} className="flex items-center justify-between gap-2 border rounded p-2 text-sm" data-testid={`row-cmd-${c.id}`}>
                             <span>#{c.id} {c.type}</span>
-                            <Badge variant={c.status === "ACKED" ? "default" : "secondary"}>{c.status}</Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={c.status === "ACKED" ? "default" : c.status === "FAILED" ? "destructive" : "secondary"}>{c.status}</Badge>
+                              {c.status === "PENDING" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-destructive hover:text-destructive"
+                                  onClick={() => cancelCmd.mutate({ deviceId: selectedDeviceId, commandId: c.id })}
+                                  disabled={cancelCmd.isPending}
+                                  data-testid={`button-cancel-cmd-${c.id}`}
+                                >
+                                  <X className="mr-1 h-3.5 w-3.5" /> Cancel
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
+                    <p className="mt-2 text-xs text-muted-foreground">Only PENDING commands can be cancelled — once the bin picks one up it can't be recalled.</p>
                   </>
                 ) : <p className="text-sm text-gray-500">Pick a device to view its command queue.</p>}
               </CardContent>

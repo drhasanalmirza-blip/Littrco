@@ -50,8 +50,13 @@ export default function PartnerDashboard() {
   const partnerEnabled = !!user && (role === "partner" || role === "staff");
   // The caller's membership role for the selected shop (STAFF acts as full-access).
   const myRole: ShopRole | undefined = role === "staff" ? "STAFF" : shop?.myRole;
-  const canManage = myRole != null && myRole !== "VIEWER"; // OWNER/MANAGER/STAFF may mutate
-  const isOwner = myRole === "OWNER" || myRole === "STAFF";
+  // Client gating only HIDES controls from a CONFIRMED read-only VIEWER; when the
+  // role hasn't loaded (undefined) we show the controls and let the server enforce,
+  // so an owner is never accidentally locked out of settings. OWNER/MANAGER manage
+  // bins & settings; VIEWER is read-only. (Server enforces on every mutation.)
+  const canManage = myRole !== "VIEWER";
+  const canPair = myRole !== "VIEWER"; // owner/manager pair; server requires OWNER/MANAGER
+  const isOwner = myRole !== "VIEWER" && myRole !== "MANAGER"; // OWNER or STAFF (or unknown)
 
   const { data: devices = [], refetch: refetchDevices } = useQuery<Device[]>({
     queryKey: [`/api/partner/shops/${shopId}/devices`],
@@ -238,7 +243,7 @@ export default function PartnerDashboard() {
             </TabsContent>
 
             <TabsContent value="pairing">
-              {isOwner || myRole === "MANAGER" ? (
+              {canPair ? (
                 <Pairing shopId={shopId ?? 0} enabled={partnerEnabled} />
               ) : (
                 <Card><CardContent className="p-8 text-center text-gray-500">Only owners and managers can pair new bins.</CardContent></Card>

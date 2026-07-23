@@ -332,6 +332,20 @@ export const storage = {
       .returning();
     return c;
   },
+  // Cancel a still-PENDING command (staff misclick). Only PENDING can be cancelled —
+  // once the bin has polled it (SENT/ACKED) it cannot be recalled. Returns the
+  // updated row, or undefined if it was not found / no longer PENDING.
+  async cancelCommand(commandId: number, deviceId: number) {
+    const [c] = await db.update(deviceCommands)
+      .set({ status: "FAILED", ackedAt: new Date(), ackResult: "cancelled by staff" })
+      .where(and(
+        eq(deviceCommands.id, commandId),
+        eq(deviceCommands.deviceId, deviceId),
+        eq(deviceCommands.status, "PENDING"),
+      ))
+      .returning();
+    return c;
+  },
 
   // ====== Drop sessions / drops ======
   async createDropSession(deviceId: number, shopId: number | null): Promise<DropSession> {
