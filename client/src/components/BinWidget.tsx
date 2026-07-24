@@ -10,7 +10,7 @@ import {
   AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
   AlertDialogCancel, AlertDialogAction,
 } from "@/components/ui/alert-dialog";
-import { Pencil, Check, X, Trash2 } from "lucide-react";
+import { Pencil, Check, X, Trash2, HardDrive } from "lucide-react";
 import { vocPctFromAnalog, celsiusToFahrenheit } from "@shared/deviceSettings";
 import littrOneImage from "@/assets/images/littr-one-official.png";
 
@@ -22,6 +22,8 @@ export interface BinDevice {
   fillPercent?: number;
   vapesSinceEmpty?: number;
   tempC?: number | null;
+  tempDevices?: number | null;
+  tempRawC?: number | null;
   vocRaw?: number | null;
   firmwareVersion?: string | null;
   lastHeartbeatAt?: string | null;
@@ -177,31 +179,44 @@ export default function BinWidget({
  * Confirm-guarded "Remove bin" action, rendered as a BinWidget action button.
  * The caller supplies the endpoint semantics via `onConfirm` (partner vs staff
  * delete differ) and toggles `pending` while the mutation runs.
+ *
+ * Two modes:
+ * - Uncontrolled (partner dashboard): renders its own trigger button.
+ * - Controlled (`open`/`onOpenChange` provided — staff "⋯" menu): no trigger is
+ *   rendered; the caller lifts the open state so the dialog survives the
+ *   DropdownMenu unmounting on select.
  */
 export function RemoveBinDialog({
   deviceId,
   deviceName,
   onConfirm,
   pending,
+  open,
+  onOpenChange,
 }: {
   deviceId: number;
   deviceName: string;
   onConfirm: () => void;
   pending?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
+  const controlled = open !== undefined;
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-red-600 hover:text-red-700"
-          disabled={pending}
-          data-testid={`button-remove-bin-${deviceId}`}
-        >
-          <Trash2 className="mr-1 h-4 w-4" /> Remove bin
-        </Button>
-      </AlertDialogTrigger>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      {!controlled && (
+        <AlertDialogTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-red-600 hover:text-red-700"
+            disabled={pending}
+            data-testid={`button-remove-bin-${deviceId}`}
+          >
+            <Trash2 className="mr-1 h-4 w-4" /> Remove bin
+          </Button>
+        </AlertDialogTrigger>
+      )}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Remove {deviceName}?</AlertDialogTitle>
@@ -218,6 +233,68 @@ export function RemoveBinDialog({
             data-testid={`button-confirm-remove-bin-${deviceId}`}
           >
             Remove
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/**
+ * Confirm-guarded "Reset sensor SD data" action (HW_FIXES_R3). Enqueues a
+ * FORMAT_SD device command that wipes + reformats the bin's SENSOR SD card only.
+ * The confirm copy is explicit that the HMI/display card is NOT affected and the
+ * action can't be undone. Staff-only (rendered from the staff dashboard).
+ */
+export function ResetSdDialog({
+  deviceId,
+  deviceName,
+  onConfirm,
+  pending,
+  open,
+  onOpenChange,
+}: {
+  deviceId: number;
+  deviceName: string;
+  onConfirm: () => void;
+  pending?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const controlled = open !== undefined;
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      {!controlled && (
+        <AlertDialogTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-amber-700 hover:text-amber-800 dark:text-amber-500"
+            disabled={pending}
+            data-testid={`button-reset-sd-${deviceId}`}
+          >
+            <HardDrive className="mr-1 h-4 w-4" /> Reset SD data
+          </Button>
+        </AlertDialogTrigger>
+      )}
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Reset sensor SD data on {deviceName}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently deletes all locally stored drop photos on this bin's{" "}
+            <span className="font-semibold">sensor</span> SD card and reformats it. The
+            display (HMI) card is <span className="font-semibold">not</span> affected.
+            This can't be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid={`button-cancel-reset-sd-${deviceId}`}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-amber-600 text-white hover:bg-amber-700"
+            data-testid={`button-confirm-reset-sd-${deviceId}`}
+          >
+            Reset SD data
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

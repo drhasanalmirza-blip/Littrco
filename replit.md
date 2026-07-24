@@ -43,7 +43,15 @@ There is no pair-request approval step, no PENDING_SETUP, no admin claim, no mod
 - **Customer (`/app`)**: Wallet (battery balance + transactions), Store (redeem batteries), public Claim landing at `/claim/:token`.
 
 ## Storage
-PostgreSQL via `DATABASE_URL`. Photos saved to local disk under `uploads/photos/{deviceId}/` and served at `/uploads/...`.
+PostgreSQL via `DATABASE_URL`.
+
+Blobs (device photos, firmware/content artifacts) go through the `StorageDriver`
+seam in `server/blobstore/`. With `STORAGE_DRIVER` unset (default) the
+`LocalDiskDriver` runs: photos under `uploads/photos/{deviceId}/`, artifacts
+content-addressed under `uploads/artifacts/{firmware|content}/{sha256}{.ext}`,
+both served at `/uploads/...` — exactly as before the seam. Swapping to a bucket
+is one new file implementing the interface; see the `TODO(s3)` contract in
+`server/blobstore/driver.ts`.
 
 ## Key tables
 `users`, `sessions`, `shops`, `shop_members`, `leads`, `contacts`, `volunteers`, `pickup_requests`, `customers`, `wallets`, `transactions`, `store_items`, `redemptions`, `reward_configs`, `devices`, `pairing_nonces`, `device_settings`, `device_commands`, `drop_sessions`, `drops`, `photos`, `battery_transactions`, `shop_point_transactions`, `shop_rewards`, `shop_reward_redemptions`.

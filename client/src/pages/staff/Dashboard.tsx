@@ -1,19 +1,44 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
+  SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+  SidebarProvider, SidebarTrigger, useSidebar,
+} from "@/components/ui/sidebar";
+import {
+  Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
+} from "@/components/ui/empty";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, X } from "lucide-react";
+import {
+  Bell, Camera, ChevronDown, ClipboardCheck, Cpu, HardDrive, History, Inbox,
+  LayoutDashboard, MapPin, Megaphone, MoreHorizontal, Package, Phone, Plus,
+  QrCode, Recycle, Store, Terminal, Trash2, UserPlus, Users as UsersIcon,
+  Wrench, X, Mail,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
-import BinWidget, { RemoveBinDialog } from "@/components/BinWidget";
+import BinWidget, { RemoveBinDialog, ResetSdDialog } from "@/components/BinWidget";
+import DeviceLogsDialog from "@/components/DeviceLogsDialog";
+import Overview from "@/pages/staff/panels/Overview";
 import ReviewQueue from "@/pages/staff/panels/ReviewQueue";
 import Sessions from "@/pages/staff/panels/Sessions";
+import StaffPairing from "@/pages/staff/panels/Pairing";
 import Alerts from "@/pages/staff/panels/Alerts";
 import LiveCamera from "@/pages/staff/panels/LiveCamera";
 import Firmware from "@/pages/staff/panels/Firmware";
@@ -21,8 +46,235 @@ import DeviceOps from "@/pages/staff/panels/DeviceOps";
 import ContentPacks from "@/pages/staff/panels/ContentPacks";
 import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
+/* ------------------------------------------------------------------ */
+/* Navigation model (STAFF_UI_REDESIGN §1)                             */
+/* ------------------------------------------------------------------ */
+
+type ViewKey =
+  | "overview"
+  | "devices" | "pairing" | "commands" | "camera" | "deviceops"
+  | "sessions" | "review" | "alerts"
+  | "firmware" | "content" | "notifications"
+  | "shops" | "users" | "leads";
+
+interface NavItem { key: ViewKey; label: string; icon: LucideIcon }
+
+// View keys double as location-hash slugs AND keep the historical
+// `tab-<key>` data-testids (hard constraint: every testid preserved).
+const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
+  {
+    label: null,
+    items: [{ key: "overview", label: "Overview", icon: LayoutDashboard }],
+  },
+  {
+    label: "Fleet",
+    items: [
+      { key: "devices", label: "Bins", icon: Trash2 },
+      { key: "pairing", label: "Pairing", icon: QrCode },
+      { key: "commands", label: "Commands", icon: Terminal },
+      { key: "camera", label: "Live Camera", icon: Camera },
+      { key: "deviceops", label: "Device Ops", icon: Wrench },
+    ],
+  },
+  {
+    label: "Activity",
+    items: [
+      { key: "sessions", label: "Sessions", icon: History },
+      { key: "review", label: "Review", icon: ClipboardCheck },
+      { key: "alerts", label: "Alerts", icon: Bell },
+    ],
+  },
+  {
+    label: "Platform",
+    items: [
+      { key: "firmware", label: "Firmware", icon: Cpu },
+      { key: "content", label: "Content", icon: Package },
+      { key: "notifications", label: "Notifications", icon: Megaphone },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { key: "shops", label: "Shops", icon: Store },
+      { key: "users", label: "Users", icon: UsersIcon },
+      { key: "leads", label: "Leads", icon: UserPlus },
+    ],
+  },
+];
+
+const VIEW_KEYS = new Set<string>(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.key)));
+
+/** Per-section page header copy (STAFF_UI_REDESIGN §4). */
+const PAGE_META: Record<ViewKey, { title: string; description: string }> = {
+  overview: { title: "Overview", description: "Fleet at a glance — live status, attention items, and recent alerts." },
+  devices: { title: "Bins", description: "Every LITTR One in the fleet, live health and controls." },
+  pairing: { title: "Pairing", description: "Pick a shop and pair a new bin with a claim code." },
+  commands: { title: "Commands", description: "Queue commands to a bin and track acknowledgement." },
+  camera: { title: "Live Camera", description: "On-demand snapshots straight from a bin's camera." },
+  deviceops: { title: "Device Ops", description: "Firmware targets and per-bin operational settings." },
+  sessions: { title: "Sessions", description: "Disposal sessions across the fleet — filter, page, export." },
+  review: { title: "Review", description: "Approve or reject detected drops from the review queue." },
+  alerts: { title: "Alerts", description: "Active and resolved device alerts." },
+  firmware: { title: "Firmware", description: "Upload builds and manage firmware rollout." },
+  content: { title: "Content", description: "Content packs delivered to the bins' displays." },
+  notifications: { title: "Notifications", description: "Your staff notification preferences for all bins." },
+  shops: { title: "Shops", description: "Partner shops that host LITTR bins." },
+  users: { title: "Users", description: "Accounts, roles, and partner-shop assignment." },
+  leads: { title: "Leads", description: "Inbound partner interest from the marketing site." },
+};
+
+/** Read the active view from the location hash; default #overview. */
+function viewFromHash(): ViewKey {
+  const h = window.location.hash.replace(/^#/, "");
+  return (VIEW_KEYS.has(h) ? h : "overview") as ViewKey;
+}
+
+function StaffSidebar({ view, onNavigate }: { view: ViewKey; onNavigate: (v: ViewKey) => void }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  const go = (v: ViewKey) => {
+    onNavigate(v);
+    if (isMobile) setOpenMobile(false);
+  };
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <div className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-green-500">
+            <Recycle className="h-4 w-4 text-white" />
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold">LITTR Staff</div>
+            <div className="text-xs text-muted-foreground">Fleet control</div>
+          </div>
+        </div>
+      </SidebarHeader>
+      <SidebarContent>
+        {NAV_GROUPS.map((group) => (
+          <SidebarGroup key={group.label ?? "root"}>
+            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton
+                      isActive={view === item.key}
+                      onClick={() => go(item.key)}
+                      data-testid={`tab-${item.key}`}
+                    >
+                      <item.icon />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </SidebarContent>
+    </Sidebar>
+  );
+}
+
+function PageHeader({ view }: { view: ViewKey }) {
+  const meta = PAGE_META[view];
+  return (
+    <div className="mb-4">
+      <h2 className="text-lg font-semibold tracking-tight">{meta.title}</h2>
+      <p className="text-sm text-muted-foreground">{meta.description}</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Bin-card actions (STAFF_UI_REDESIGN §3)                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Staff bin-card actions: Logs + Commands stay visible; destructive actions
+ * live behind a "⋯" menu. The confirm dialogs are CONTROLLED siblings of the
+ * DropdownMenu — a trigger inside a DropdownMenuItem would unmount with the
+ * menu when it closes on select, killing the dialog. Menu items only set state.
+ */
+function StaffBinActions({
+  device,
+  onViewCommands,
+  onResetSd,
+  resetPending,
+  onRemove,
+  removePending,
+}: {
+  device: any;
+  onViewCommands: () => void;
+  onResetSd: () => void;
+  resetPending: boolean;
+  onRemove: () => void;
+  removePending: boolean;
+}) {
+  const [resetOpen, setResetOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const name = device.label && String(device.label).trim() !== "" ? device.label : device.serial;
+  return (
+    <>
+      <DeviceLogsDialog deviceId={device.id} deviceName={name} basePath="/api/staff/devices" />
+      <Button size="sm" variant="outline" onClick={onViewCommands} data-testid={`button-view-cmds-${device.id}`}>
+        <Terminal className="mr-1 h-4 w-4" /> Commands
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 w-8 p-0"
+            aria-label="More bin actions"
+            data-testid={`button-bin-menu-${device.id}`}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => setResetOpen(true)}
+            data-testid={`button-reset-sd-${device.id}`}
+          >
+            <HardDrive className="mr-2 h-4 w-4" /> Reset SD data
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => setRemoveOpen(true)}
+            className="text-red-600 focus:text-red-600 dark:text-red-500 dark:focus:text-red-500"
+            data-testid={`button-remove-bin-${device.id}`}
+          >
+            <Trash2 className="mr-2 h-4 w-4" /> Remove bin
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ResetSdDialog
+        deviceId={device.id}
+        deviceName={name}
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+        onConfirm={onResetSd}
+        pending={resetPending}
+      />
+      <RemoveBinDialog
+        deviceId={device.id}
+        deviceName={name}
+        open={removeOpen}
+        onOpenChange={setRemoveOpen}
+        onConfirm={onRemove}
+        pending={removePending}
+      />
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Dashboard                                                           */
+/* ------------------------------------------------------------------ */
+
 export default function StaffDashboard() {
-  const { user, role, clearAuth, tempUnit } = useStore();
+  const { user, role, tempUnit } = useStore();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -49,7 +301,19 @@ export default function StaffDashboard() {
     enabled: !!user && role === "staff",
   });
 
-  const [tab, setTab] = useState("devices");
+  // Active view <-> location hash (init from hash; back/forward + refresh keep
+  // your place; default #overview).
+  const [view, setViewState] = useState<ViewKey>(viewFromHash);
+  useEffect(() => {
+    const onHashChange = () => setViewState(viewFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  const setView = (v: ViewKey) => {
+    setViewState(v);
+    if (window.location.hash !== `#${v}`) window.location.hash = v;
+  };
+
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const { data: commands = [], refetch: refetchCmds } = useQuery<any[]>({
     queryKey: [`/api/staff/devices/${selectedDeviceId}/commands`],
@@ -58,8 +322,8 @@ export default function StaffDashboard() {
     refetchInterval: selectedDeviceId ? 5000 : false,
   });
 
-  // Jump to the Command Queue tab for a specific device (from the Devices list).
-  const viewCommands = (deviceId: number) => { setSelectedDeviceId(deviceId); setTab("commands"); };
+  // Jump to the Commands view for a specific device (bin card / Overview deep-link).
+  const viewCommands = (deviceId: number) => { setSelectedDeviceId(deviceId); setView("commands"); };
 
   const cancelCmd = useMutation({
     mutationFn: async ({ deviceId, commandId }: { deviceId: number; commandId: number }) => {
@@ -129,60 +393,88 @@ export default function StaffDashboard() {
     );
   }
 
+  const staffEnabled = !!user && role === "staff";
+
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <DashboardHeader title="Staff Dashboard" subtitle="LITTR One fleet control" />
+    <SidebarProvider>
+      <StaffSidebar view={view} onNavigate={setView} />
+      <SidebarInset>
+        <div className="mx-auto w-full max-w-7xl px-4 py-4 md:px-8 md:py-6">
+          <div className="flex items-start gap-2">
+            <SidebarTrigger className="mt-2.5 flex-none" data-testid="button-sidebar-toggle" />
+            <div className="min-w-0 flex-1">
+              <DashboardHeader title="Staff Dashboard" subtitle="LITTR One fleet control" />
+            </div>
+          </div>
 
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="mb-4 flex flex-wrap h-auto justify-start">
-            <TabsTrigger value="devices" data-testid="tab-devices">Devices</TabsTrigger>
-            <TabsTrigger value="commands" data-testid="tab-commands">Command Queue</TabsTrigger>
-            <TabsTrigger value="review" data-testid="tab-review">Review</TabsTrigger>
-            <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
-            <TabsTrigger value="alerts" data-testid="tab-alerts">Alerts</TabsTrigger>
-            <TabsTrigger value="camera" data-testid="tab-camera">Live Camera</TabsTrigger>
-            <TabsTrigger value="firmware" data-testid="tab-firmware">Firmware</TabsTrigger>
-            <TabsTrigger value="deviceops" data-testid="tab-deviceops">Device Ops</TabsTrigger>
-            <TabsTrigger value="content" data-testid="tab-content">Content</TabsTrigger>
-            <TabsTrigger value="shops" data-testid="tab-shops">Shops</TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
-            <TabsTrigger value="leads" data-testid="tab-leads">Leads</TabsTrigger>
-            <TabsTrigger value="notifications" data-testid="tab-notifications">Notifications</TabsTrigger>
-          </TabsList>
+          <PageHeader view={view} />
 
-          <TabsContent value="devices" className="space-y-3">
-            {devices.length === 0 ? (
-              <Card><CardContent className="p-8 text-center text-gray-500">No devices yet.</CardContent></Card>
-            ) : devices.map(d => (
-              <BinWidget
-                key={d.id}
-                device={d}
-                tempUnit={tempUnit}
-                canManage
-                shopName={shops.find(s => s.id === d.shopId)?.name || (d.shopId ? `Shop #${d.shopId}` : "Unassigned")}
-                onChanged={() => refetchDevices()}
-                extraStats={[
-                  { label: "RSSI", value: d.wifiRssi ?? "—" },
-                  { label: "SD free", value: d.sdFreeMb != null ? `${d.sdFreeMb} MB` : "—" },
-                  { label: "Errors", value: d.errorLog ? d.errorLog.slice(0, 40) : "—" },
-                ]}
-                actions={
-                  <>
-                    <Button size="sm" variant="outline" onClick={() => viewCommands(d.id)} data-testid={`button-view-cmds-${d.id}`}>View Commands</Button>
-                    <RemoveBinDialog
-                      deviceId={d.id}
-                      deviceName={d.label && String(d.label).trim() !== "" ? d.label : d.serial}
-                      onConfirm={() => removeDevice.mutate(d.id)}
-                      pending={removeDevice.isPending}
-                    />
-                  </>
-                }
-              />
-            ))}
-          </TabsContent>
+          {view === "overview" && (
+            <Overview
+              enabled={staffEnabled}
+              devices={devices}
+              onNavigate={(v) => setView(v as ViewKey)}
+              onViewCommands={viewCommands}
+            />
+          )}
 
-          <TabsContent value="commands">
+          {view === "devices" && (
+            devices.length === 0 ? (
+              <Empty className="border">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><Trash2 /></EmptyMedia>
+                  <EmptyTitle>No bins yet</EmptyTitle>
+                  <EmptyDescription>Pair the first LITTR One from the Pairing page.</EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button onClick={() => setView("pairing")} data-testid="button-empty-goto-pairing">
+                    <QrCode className="mr-1.5 h-4 w-4" /> Go to Pairing
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            ) : (
+              <div className="space-y-3">
+                {devices.map(d => (
+                  <BinWidget
+                    key={d.id}
+                    device={d}
+                    tempUnit={tempUnit}
+                    canManage
+                    shopName={shops.find(s => s.id === d.shopId)?.name || (d.shopId ? `Shop #${d.shopId}` : "Unassigned")}
+                    onChanged={() => refetchDevices()}
+                    extraStats={[
+                      { label: "RSSI", value: d.wifiRssi ?? "—" },
+                      { label: "SD free", value: d.sdFreeMb != null ? `${d.sdFreeMb} MB` : "—" },
+                      // Temp diagnostics (HW_FIXES_R3): "0 devices" (red) ⇒ the DS18B20
+                      // isn't enumerating on the 1-Wire bus (wiring / GPIO45 strapping);
+                      // a count with a raw of 85.0/−127 ⇒ probe present but not ready.
+                      {
+                        label: "Temp bus",
+                        value: d.tempDevices == null ? "—"
+                          : d.tempDevices === 0
+                            ? <span className="text-red-600 dark:text-red-500">0 devices</span>
+                            : `${d.tempDevices} dev`,
+                      },
+                      { label: "Temp raw", value: d.tempRawC != null ? `${d.tempRawC.toFixed(1)}°C` : "—" },
+                      { label: "Errors", value: d.errorLog ? d.errorLog.slice(0, 40) : "—" },
+                    ]}
+                    actions={
+                      <StaffBinActions
+                        device={d}
+                        onViewCommands={() => viewCommands(d.id)}
+                        onResetSd={() => enqueue.mutate({ deviceId: d.id, type: "FORMAT_SD" })}
+                        resetPending={enqueue.isPending}
+                        onRemove={() => removeDevice.mutate(d.id)}
+                        removePending={removeDevice.isPending}
+                      />
+                    }
+                  />
+                ))}
+              </div>
+            )
+          )}
+
+          {view === "commands" && (
             <Card>
               <CardHeader>
                 <CardTitle>Command Queue</CardTitle>
@@ -195,7 +487,10 @@ export default function StaffDashboard() {
                 {selectedDeviceId ? (
                   <>
                     <div className="flex gap-2 mb-3 flex-wrap">
-                      {["RESET_FILL_AND_COUNT", "REBOOT", "TAKE_PHOTO", "PING"].map(t => (
+                      {/* UPDATE_ASSETS = M4 content packs: bin pulls the newest active
+                          pack (staff Content page) and pushes changed wallpapers to the
+                          HMI screen without a reboot. */}
+                      {["RESET_FILL_AND_COUNT", "REBOOT", "TAKE_PHOTO", "PING", "UPDATE_ASSETS"].map(t => (
                         <Button key={t} size="sm" variant="outline" onClick={() => enqueue.mutate({ deviceId: selectedDeviceId, type: t })} data-testid={`button-cmd-${t}`}>{t}</Button>
                       ))}
                     </div>
@@ -225,121 +520,186 @@ export default function StaffDashboard() {
                     )}
                     <p className="mt-2 text-xs text-muted-foreground">Only PENDING commands can be cancelled — once the bin picks one up it can't be recalled.</p>
                   </>
-                ) : <p className="text-sm text-gray-500">Pick a device to view its command queue.</p>}
+                ) : (
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon"><Terminal /></EmptyMedia>
+                      <EmptyTitle>No device selected</EmptyTitle>
+                      <EmptyDescription>Pick a device above to view and queue its commands.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )}
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="review">
-            <ReviewQueue enabled={!!user && role === "staff"} />
-          </TabsContent>
+          {view === "pairing" && <StaffPairing enabled={staffEnabled} />}
+          {view === "review" && <ReviewQueue enabled={staffEnabled} />}
+          {view === "sessions" && <Sessions enabled={staffEnabled} />}
+          {view === "alerts" && <Alerts enabled={staffEnabled} />}
+          {view === "camera" && <LiveCamera enabled={staffEnabled} />}
+          {view === "firmware" && <Firmware enabled={staffEnabled} />}
+          {view === "deviceops" && <DeviceOps enabled={staffEnabled} />}
+          {view === "content" && <ContentPacks enabled={staffEnabled} />}
+          {view === "notifications" && <StaffNotifications enabled={staffEnabled} />}
 
-          <TabsContent value="sessions">
-            <Sessions enabled={!!user && role === "staff"} />
-          </TabsContent>
+          {view === "shops" && (
+            <div className="space-y-3">
+              <CreateShopForm onCreate={(d) => createShop.mutate(d)} />
+              {shops.length === 0 ? (
+                <Empty className="border">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon"><Store /></EmptyMedia>
+                    <EmptyTitle>No shops yet</EmptyTitle>
+                    <EmptyDescription>Create the first partner shop above.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {shops.map(s => (
+                    <Card key={s.id} data-testid={`card-shop-${s.id}`}>
+                      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                        <div className="min-w-0">
+                          <CardTitle className="truncate text-base">{s.name}</CardTitle>
+                          <p className="mt-0.5 text-sm text-muted-foreground">{s.address}, {s.city}</p>
+                        </div>
+                        <Badge className="flex-none">{s.status}</Badge>
+                      </CardHeader>
+                      {(s.serviceArea || s.phone) && (
+                        <CardContent className="pt-0 text-sm text-muted-foreground">
+                          {s.serviceArea}{s.serviceArea && s.phone ? " · " : ""}{s.phone}
+                        </CardContent>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-          <TabsContent value="alerts">
-            <Alerts enabled={!!user && role === "staff"} />
-          </TabsContent>
-
-          <TabsContent value="camera">
-            <LiveCamera enabled={!!user && role === "staff"} />
-          </TabsContent>
-
-          <TabsContent value="firmware">
-            <Firmware enabled={!!user && role === "staff"} />
-          </TabsContent>
-
-          <TabsContent value="deviceops">
-            <DeviceOps enabled={!!user && role === "staff"} />
-          </TabsContent>
-
-          <TabsContent value="content">
-            <ContentPacks enabled={!!user && role === "staff"} />
-          </TabsContent>
-
-          <TabsContent value="shops" className="space-y-3">
-            <CreateShopForm onCreate={(d) => createShop.mutate(d)} />
-            {shops.map(s => (
-              <Card key={s.id} data-testid={`card-shop-${s.id}`}>
-                <CardContent className="p-4 flex justify-between items-center">
-                  <div>
-                    <div className="font-semibold">{s.name}</div>
-                    <div className="text-sm text-gray-500">{s.address}, {s.city}</div>
-                  </div>
-                  <Badge>{s.status}</Badge>
+          {view === "users" && (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="p-0">
+                  {users.length === 0 ? (
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><UsersIcon /></EmptyMedia>
+                        <EmptyTitle>No users</EmptyTitle>
+                        <EmptyDescription>Accounts appear here as people sign up.</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead className="text-right">Set role</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {users.map((u: any) => (
+                            <TableRow key={u.id} data-testid={`row-user-${u.id}`}>
+                              <TableCell className="font-medium">{u.email}</TableCell>
+                              <TableCell><Badge variant="outline">{u.role}</Badge></TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  {["STAFF", "PARTNER", "CUSTOMER"].map(r => (
+                                    <Button key={r} size="sm" variant={u.role === r ? "default" : "outline"} onClick={() => updateRole.mutate({ id: u.id, role: r })} data-testid={`button-role-${r}-${u.id}`}>{r}</Button>
+                                  ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            ))}
-          </TabsContent>
+              <Card>
+                <CardHeader><CardTitle>Assign Partner to Shop</CardTitle></CardHeader>
+                <CardContent>
+                  <AssignMemberForm shops={shops} users={users} onSubmit={(d) => addMember.mutate(d)} />
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-          <TabsContent value="users">
-            <Card>
-              <CardContent className="p-4 space-y-2">
-                {users.map((u: any) => (
-                  <div key={u.id} className="flex items-center justify-between border rounded p-2" data-testid={`row-user-${u.id}`}>
-                    <div className="text-sm">
-                      <div>{u.email}</div>
-                      <div className="text-xs text-gray-500">{u.role}</div>
-                    </div>
-                    <div className="flex gap-1">
-                      {["STAFF", "PARTNER", "CUSTOMER"].map(r => (
-                        <Button key={r} size="sm" variant={u.role === r ? "default" : "outline"} onClick={() => updateRole.mutate({ id: u.id, role: r })} data-testid={`button-role-${r}-${u.id}`}>{r}</Button>
-                      ))}
-                    </div>
-                  </div>
+          {view === "leads" && (
+            leads.length === 0 ? (
+              <Empty className="border">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><Inbox /></EmptyMedia>
+                  <EmptyTitle>No leads yet</EmptyTitle>
+                  <EmptyDescription>Partner sign-ups from the marketing site land here.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {leads.map((l: any) => (
+                  <Card key={l.id} data-testid={`row-lead-${l.id}`}>
+                    <CardContent className="p-4">
+                      <div className="font-semibold">{l.businessName}</div>
+                      {l.contactName && <div className="text-sm text-muted-foreground">{l.contactName}</div>}
+                      <div className="mt-2 space-y-1 text-sm">
+                        {l.email && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Mail className="h-3.5 w-3.5 flex-none" /><span className="truncate">{l.email}</span>
+                          </div>
+                        )}
+                        {l.phone && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Phone className="h-3.5 w-3.5 flex-none" /><span>{l.phone}</span>
+                          </div>
+                        )}
+                        {l.address && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <MapPin className="h-3.5 w-3.5 flex-none" /><span className="truncate">{l.address}</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
-              </CardContent>
-            </Card>
-            <Card className="mt-4">
-              <CardHeader><CardTitle>Assign Partner to Shop</CardTitle></CardHeader>
-              <CardContent>
-                <AssignMemberForm shops={shops} users={users} onSubmit={(d) => addMember.mutate(d)} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="leads">
-            <Card>
-              <CardContent className="p-4 space-y-2">
-                {leads.length === 0 ? <p className="text-sm text-gray-500">No leads.</p> : leads.map((l: any) => (
-                  <div key={l.id} className="border rounded p-2 text-sm" data-testid={`row-lead-${l.id}`}>
-                    <div className="font-semibold">{l.businessName}</div>
-                    <div className="text-xs text-gray-500">{l.contactName} · {l.email} · {l.phone}</div>
-                    <div className="text-xs">{l.address}</div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="notifications">
-            <StaffNotifications enabled={!!user && role === "staff"} />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+              </div>
+            )
+          )}
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
-function Stat({ label, value }: { label: string; value: any }) {
-  return <div className="bg-gray-100 dark:bg-gray-900 rounded p-2"><div className="text-gray-500">{label}</div><div className="font-semibold">{String(value)}</div></div>;
-}
-
+/** New-shop form, collapsed by default behind a "New shop" header button (§4). */
 function CreateShopForm({ onCreate }: { onCreate: (d: any) => void }) {
+  const [open, setOpen] = useState(false);
   const [d, setD] = useState({ name: "", address: "", city: "", serviceArea: "Upstate NY", phone: "" });
   return (
-    <Card>
-      <CardHeader><CardTitle>New Shop</CardTitle></CardHeader>
-      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <Input placeholder="Name" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} data-testid="input-shop-name" />
-        <Input placeholder="Address" value={d.address} onChange={(e) => setD({ ...d, address: e.target.value })} data-testid="input-shop-address" />
-        <Input placeholder="City" value={d.city} onChange={(e) => setD({ ...d, city: e.target.value })} data-testid="input-shop-city" />
-        <Input placeholder="Service Area" value={d.serviceArea} onChange={(e) => setD({ ...d, serviceArea: e.target.value })} />
-        <Input placeholder="Phone" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} />
-        <Button onClick={() => onCreate(d)} data-testid="button-create-shop"><Plus className="h-4 w-4 mr-1" />Create</Button>
-      </CardContent>
-    </Card>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CardHeader className="flex flex-row items-center space-y-0 py-4">
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" size="sm" data-testid="button-toggle-create-shop">
+              <Plus className="mr-1 h-4 w-4" /> New shop
+              <ChevronDown className={`ml-1 h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+            </Button>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="grid grid-cols-1 gap-2 pt-0 md:grid-cols-2">
+            <Input placeholder="Name" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} data-testid="input-shop-name" />
+            <Input placeholder="Address" value={d.address} onChange={(e) => setD({ ...d, address: e.target.value })} data-testid="input-shop-address" />
+            <Input placeholder="City" value={d.city} onChange={(e) => setD({ ...d, city: e.target.value })} data-testid="input-shop-city" />
+            <Input placeholder="Service Area" value={d.serviceArea} onChange={(e) => setD({ ...d, serviceArea: e.target.value })} />
+            <Input placeholder="Phone" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} />
+            <Button onClick={() => onCreate(d)} data-testid="button-create-shop"><Plus className="h-4 w-4 mr-1" />Create</Button>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 

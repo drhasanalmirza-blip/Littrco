@@ -1,39 +1,18 @@
-import { promises as fs } from "fs";
-import path from "path";
+// Pure binary-payload helpers. NO fs — the actual writing of photos and
+// firmware/content artifacts moved behind the StorageDriver seam in
+// `server/blobstore/` (DEPLOY_HARDENING §D2), so storage can be swapped for
+// S3/R2 in one file instead of at every call site:
+//
+//   writePhotoJpeg(deviceId, buf)        -> storageDriver.putPhoto(deviceId, buf)
+//   writeArtifact(kind, name, buf)       -> storageDriver.putArtifact(kind, name, buf)
+//
+// The default driver (LocalDiskDriver) reproduces exactly what used to live
+// here, so behavior with STORAGE_DRIVER unset is unchanged.
+
 import crypto from "crypto";
-import { artifactStoredName, artifactRelUrl, type ArtifactKind } from "./artifactName";
-
-const ROOT = path.resolve(process.cwd(), "uploads");
-
-export async function writePhotoJpeg(deviceId: number, jpeg: Buffer): Promise<{ url: string; absPath: string }> {
-  const dir = path.join(ROOT, "photos", String(deviceId));
-  await fs.mkdir(dir, { recursive: true });
-  const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.jpg`;
-  const absPath = path.join(dir, name);
-  await fs.writeFile(absPath, jpeg);
-  return { url: `/uploads/photos/${deviceId}/${name}`, absPath };
-}
 
 export function sha256Hex(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
-}
-
-// Store a firmware/content artifact (P3-S0). Content-addressed by SHA-256 so the
-// server owns both the path and the hash the device will verify against. Returns
-// a root-relative URL; the caller makes it absolute (littr.co) for the DB row.
-// NOTE: local disk is per-instance ephemeral on autoscaled hosting — swap this
-// body for S3/R2 before multi-instance deployment (ROADMAP pre-deploy checklist).
-export async function writeArtifact(
-  kind: ArtifactKind,
-  origName: string,
-  buf: Buffer,
-): Promise<{ relUrl: string; sha256: string; sizeBytes: number }> {
-  const sha256 = sha256Hex(buf);
-  const name = artifactStoredName(sha256, origName);
-  const dir = path.join(ROOT, "artifacts", kind);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, name), buf);
-  return { relUrl: artifactRelUrl(kind, name), sha256, sizeBytes: buf.length };
 }
 
 export function decodeDataUrlOrBase64(input: string): Buffer | null {

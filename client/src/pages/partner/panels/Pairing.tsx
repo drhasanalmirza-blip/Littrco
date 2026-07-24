@@ -58,7 +58,19 @@ const STEPS: { icon: ComponentType<{ className?: string }>; text: ReactNode }[] 
   { icon: CheckCircle2, text: "The bin connects to WiFi and appears below as LIVE." },
 ];
 
-export default function Pairing({ shopId, enabled }: { shopId: number; enabled: boolean }) {
+// Shared pairing panel used by BOTH the partner (§4.4) and staff (§3.4) dashboards.
+// The two sides differ only in which endpoints they hit, so those are passed in:
+//   pairCodeUrl — POST target that mints a pair code for the chosen shop
+//   devicesUrl  — GET source polled for the new bin coming LIVE (returns Device[])
+// The guided flow, countdown, copy, steps and LIVE detection are identical.
+export interface PairingProps {
+  shopId: number;
+  enabled: boolean;
+  pairCodeUrl: string;
+  devicesUrl: string;
+}
+
+export default function Pairing({ shopId, enabled, pairCodeUrl, devicesUrl }: PairingProps) {
   const { toast } = useToast();
   const gated = enabled && shopId > 0;
 
@@ -66,10 +78,8 @@ export default function Pairing({ shopId, enabled }: { shopId: number; enabled: 
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
-  const devicesUrl = `/api/partner/shops/${shopId}/devices`;
-
   const genCode = useMutation({
-    mutationFn: () => apiSend<PairCode>(`/api/partner/shops/${shopId}/pair-code`, "POST"),
+    mutationFn: () => apiSend<PairCode>(pairCodeUrl, "POST"),
     onSuccess: (data) => {
       setPairing(data);
       setNow(Date.now());

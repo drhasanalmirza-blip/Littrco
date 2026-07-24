@@ -6,6 +6,7 @@ import {
   serial,
   timestamp,
   integer,
+  bigint,
   boolean,
   jsonb,
   pgEnum,
@@ -35,6 +36,7 @@ export const ledgerTypeEnum = pgEnum("ledger_type", ["EARNED", "REDEEMED", "ADJU
 export const photoReasonEnum = pgEnum("photo_reason", ["idle", "drop_before", "drop_after", "maintenance", "calibration", "live"]);
 export const dropReviewStatusEnum = pgEnum("drop_review_status", ["UNREVIEWED", "APPROVED", "REJECTED"]);
 export const alertSeverityEnum = pgEnum("alert_severity", ["INFO", "WARNING", "CRITICAL"]);
+export const deviceLogLevelEnum = pgEnum("device_log_level", ["DEBUG", "INFO", "WARN", "ERROR"]);
 
 // ==================== Users / Sessions ====================
 export const users = pgTable("users", {
@@ -240,6 +242,12 @@ export const devices = pgTable("devices", {
   vapesSinceEmpty: integer("vapes_since_empty").notNull().default(0),
   fillPercent: integer("fill_percent").notNull().default(0),
   tempC: real("temp_c"),
+  // Temp diagnostics (HW_FIXES_R3): 1-Wire probe count last seen (0 ⇒ bus not
+  // enumerating) and the last raw DS18B20 read (kept even when invalid, e.g.
+  // −127/85.0). Surfaced on the staff bin card so "temp shows —" is diagnosable
+  // without serial. tempC stays the validated value used for display/alerts.
+  tempDevices: integer("temp_devices"),
+  tempRawC: real("temp_raw_c"),
   vocRaw: integer("voc_raw"),
   wifiRssi: integer("wifi_rssi"),
   sdFreeMb: integer("sd_free_mb"),
@@ -298,6 +306,30 @@ export const deviceCommands = pgTable("device_commands", {
   deviceIdx: index("device_commands_device_idx").on(t.deviceId),
 }));
 export type DeviceCommand = typeof deviceCommands.$inferSelect;
+
+// Device diagnostic logs — the bin's serial output, surfaced on the dashboard so
+// the operator (who has no serial/USB read access) can see temp/session/wifi/boot
+// diagnostics and paste them to support. Sensor keeps a small ring buffer and
+// batches lines to POST /api/device/logs. Dedup on (deviceId, bootId, seq): seq
+// is device-monotonic and restarts at 0 each boot, so bootId keeps it unique and
+// the sensor's at-least-once retry can't double-insert. Pruned to the newest N
+// rows per device on ingest (no cron needed).
+export const deviceLogs = pgTable("device_logs", {
+  id: serial("id").primaryKey(),
+  deviceId: integer("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+  bootId: integer("boot_id").notNull().default(0),
+  seq: integer("seq").notNull(),
+  level: deviceLogLevelEnum("level").notNull().default("INFO"),
+  tag: text("tag").notNull().default(""),
+  msg: text("msg").notNull(),
+  // millis() at emit — bigint so it survives past int4 range (~24 days uptime).
+  atDeviceMs: bigint("at_device_ms", { mode: "number" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  deviceIdx: index("device_logs_device_idx").on(t.deviceId, t.id),
+  dedupUniq: unique("device_logs_dedup_uniq").on(t.deviceId, t.bootId, t.seq),
+}));
+export type DeviceLog = typeof deviceLogs.$inferSelect;
 
 // Drop sessions — first IR beam starts a session, last beam + countdown finalizes
 export const dropSessions = pgTable("drop_sessions", {

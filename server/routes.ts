@@ -19,7 +19,8 @@ import {
   hashPassword, deviceAuthMiddleware,
 } from "./auth";
 import { z } from "zod";
-import { writePhotoJpeg, decodeDataUrlOrBase64 } from "./blob";
+import { decodeDataUrlOrBase64 } from "./blob";
+import { storageDriver } from "./blobstore";
 import { rateLimit, rateLimitByIp, deviceLimiter } from "./ratelimit";
 import { claimSessionForCustomer } from "./claims";
 import { evaluateTelemetry, handleDeviceEvent, notifyFireDisabled } from "./notify";
@@ -438,6 +439,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ settingsJson: s?.settingsJson || {}, version: s?.version || 0 });
   });
 
+  // Bin diagnostic logs (read). A read is fine for any shop member incl. VIEWER,
+  // so this checks membership (isPartnerOfShop), not mutability. Never leaks
+  // another shop's bin: a shopId-null (unassigned) device is staff-only.
+  app.get("/api/partner/devices/:id/logs", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF") {
+      if (!device.shopId || !(await isPartnerOfShop(req.user!.id, device.shopId)))
+        return res.status(403).json({ error: "Not your device" });
+    }
+    const limit = Number(req.query.limit) || 200;
+    const afterId = Number(req.query.afterId) || 0;
+    res.json(await storage.getDeviceLogs(device.id, { limit, afterId }));
+  });
+
   app.put("/api/partner/devices/:id/settings", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
     const device = await storage.getDevice(Number(req.params.id));
     if (!device) return res.status(404).json({ error: "Device not found" });
@@ -531,6 +547,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       vapesSinceEmpty: z.number().optional(),
       fillPercent: z.number().optional(),
       tempC: z.number().optional(),
+      tempDevices: z.number().int().optional(),  // HW_FIXES_R3 temp diagnostics
+      tempRawC: z.number().optional(),
       vocRaw: z.number().optional(),
       wifiRssi: z.number().optional(),
       sdFreeMb: z.number().optional(),
@@ -567,6 +585,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!body.success) return res.status(400).json({ error: "bad event" });
     const alertId = await handleDeviceEvent(req.device!, body.data);
     res.status(202).json({ alertId: alertId ?? null });
+  });
+
+  // Diagnostic log ingest — the bin's serial output, surfaced on the dashboard so
+  // the operator (no serial access) can see temp/session/wifi/boot diagnostics.
+  // Idempotent (dedup on deviceId,bootId,seq) so the sensor's at-least-once retry
+  // is safe. Bounded per request; oversized msgs are truncated, not rejected.
+  app.post("/api/device/logs", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
+    const body = z.object({
+      bootId: z.number().int().nonnegative().max(2_000_000_000),
+      lines: z.array(z.object({
+        seq: z.number().int().nonnegative().max(2_000_000_000),
+        level: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).optional(),
+        tag: z.string().max(24).optional(),
+        msg: z.string().max(240),
+        atMs: z.number().int().nonnegative().optional(),
+      })).max(64),
+    }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: "bad logs" });
+    const { inserted, ackSeq } = await storage.insertDeviceLogs(
+      req.device!.id,
+      body.data.bootId,
+      body.data.lines,
+    );
+    // Logs prove liveness too.
+    await storage.updateDevice(req.device!.id, { lastHeartbeatAt: new Date() });
+    res.json({ ok: true, inserted, ackSeq });
   });
 
   app.get("/api/device/settings", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
@@ -679,22 +723,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const buf = decodeDataUrlOrBase64(body.data.imageBase64);
     const uploadError = jpegUploadError(buf);
     if (uploadError) return res.status(400).json({ error: uploadError });
-    const { url } = await writePhotoJpeg(req.device!.id, buf!);
-    const photo = await storage.createPhoto({
-      deviceId: req.device!.id, dropId, storageUrl: url,
-      reason: body.data.imageRole === "before" ? "drop_before" : "drop_after",
-    } as any);
-    // Link the photo back onto the drop so the FK joins in the review queue and
-    // training export resolve (spec §3.1); without this beforePhotoId/afterPhotoId
-    // stay NULL and both endpoints emit null before/after URLs.
-    await storage.updateDrop(dropId, body.data.imageRole === "before"
-      ? { beforePhotoId: photo.id }
-      : { afterPhotoId: photo.id });
-    // latestPhotoUrl from after-photo
-    if (body.data.imageRole === "after") {
-      await storage.updateDevice(req.device!.id, { latestPhotoUrl: url, latestPhotoTakenAt: new Date() });
+    // Express 4 does NOT forward an async handler's rejection to the error
+    // middleware in server/index.ts, and there is no asyncHandler wrapper here —
+    // so an uncaught throw past this point sends NO response at all (the device
+    // sits on a dead socket until its own timeout) and, with no
+    // unhandledRejection listener, terminates the process on Node >= 15. The
+    // driver contract (server/blobstore/driver.ts, DURABILITY SEMANTICS) REQUIRES
+    // putPhoto to throw when the bytes did not land, so this catch is what turns
+    // that into something the device can retry against.
+    let url: string;
+    try {
+      ({ url } = await storageDriver.putPhoto(req.device!.id, buf!));
+    } catch (e) {
+      console.error("[photos] putPhoto failed", { deviceId: req.device!.id, dropId, err: e });
+      return res.status(500).json({ error: "Storage unavailable" });
     }
-    res.json({ photoId: photo.id, url });
+    try {
+      const photo = await storage.createPhoto({
+        deviceId: req.device!.id, dropId, storageUrl: url,
+        reason: body.data.imageRole === "before" ? "drop_before" : "drop_after",
+      } as any);
+      // Link the photo back onto the drop so the FK joins in the review queue and
+      // training export resolve (spec §3.1); without this beforePhotoId/afterPhotoId
+      // stay NULL and both endpoints emit null before/after URLs.
+      await storage.updateDrop(dropId, body.data.imageRole === "before"
+        ? { beforePhotoId: photo.id }
+        : { afterPhotoId: photo.id });
+      // latestPhotoUrl from after-photo
+      if (body.data.imageRole === "after") {
+        await storage.updateDevice(req.device!.id, { latestPhotoUrl: url, latestPhotoTakenAt: new Date() });
+      }
+      res.json({ photoId: photo.id, url });
+    } catch (e) {
+      console.error("[photos] recording drop photo failed", { deviceId: req.device!.id, dropId, url, err: e });
+      return res.status(500).json({ error: "Could not record photo" });
+    }
   });
 
   // Idle / maintenance / calibration / live-view photos (not tied to a drop)
@@ -708,12 +771,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const buf = decodeDataUrlOrBase64(body.data.imageBase64);
     const uploadError = jpegUploadError(buf);
     if (uploadError) return res.status(400).json({ error: uploadError });
-    const { url } = await writePhotoJpeg(req.device!.id, buf!);
-    const photo = await storage.createPhoto({
-      deviceId: req.device!.id, sessionId: body.data.sessionId, storageUrl: url, reason: body.data.reason,
-    } as any);
-    await storage.updateDevice(req.device!.id, { latestPhotoUrl: url, latestPhotoTakenAt: new Date() });
-    res.json({ photoId: photo.id, url });
+    // Same Express-4 reasoning as /api/device/drops/:dropId/photos above: an
+    // unhandled rejection here is a dead socket, not a 500.
+    let url: string;
+    try {
+      ({ url } = await storageDriver.putPhoto(req.device!.id, buf!));
+    } catch (e) {
+      console.error("[photos] putPhoto failed", { deviceId: req.device!.id, reason: body.data.reason, err: e });
+      return res.status(500).json({ error: "Storage unavailable" });
+    }
+    try {
+      const photo = await storage.createPhoto({
+        deviceId: req.device!.id, sessionId: body.data.sessionId, storageUrl: url, reason: body.data.reason,
+      } as any);
+      await storage.updateDevice(req.device!.id, { latestPhotoUrl: url, latestPhotoTakenAt: new Date() });
+      res.json({ photoId: photo.id, url });
+    } catch (e) {
+      console.error("[photos] recording photo failed", { deviceId: req.device!.id, url, err: e });
+      return res.status(500).json({ error: "Could not record photo" });
+    }
   });
 
   // Finalize a session: award shop points, generate claim token.
@@ -835,6 +911,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/staff/devices/:id/commands", authMiddleware, requireRole("STAFF"), async (req, res) => {
     res.json(await storage.getCommandsByDevice(Number(req.params.id), 100));
+  });
+
+  // Bin diagnostic logs (staff — any device incl. unassigned).
+  app.get("/api/staff/devices/:id/logs", authMiddleware, requireRole("STAFF"), async (req, res) => {
+    const limit = Number(req.query.limit) || 200;
+    const afterId = Number(req.query.afterId) || 0;
+    res.json(await storage.getDeviceLogs(Number(req.params.id), { limit, afterId }));
   });
 
   app.post("/api/staff/devices/:id/commands", authMiddleware, requireRole("STAFF"), async (req, res) => {
