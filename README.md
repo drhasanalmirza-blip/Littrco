@@ -10,9 +10,17 @@ LITTR.co is a recycling platform for vapes and batteries, targeting upstate New 
 ## Quick Start
 ```bash
 npm install
-npm run db:push      # apply Drizzle schema to DATABASE_URL
+npm run db:migrate   # apply the committed migrations to DATABASE_URL
 npm run dev          # starts Express + Vite on port 5000
 ```
+
+Schema changes: edit `shared/schema.ts` → `npx drizzle-kit generate` → commit the
+new `migrations/*.sql` **and** `migrations/meta/`. Production applies schema only
+with `npm run db:migrate`; `npm run db:push` is for throwaway local databases —
+it rewrites the live DB in place and can drop tables/columns, and it only prompts
+for ones that contain rows. Adopting migrations on a database that `push` created
+is the one-time `npm run db:baseline` step. See
+[`migrations/README.md`](migrations/README.md).
 
 ## Architecture
 
@@ -46,7 +54,16 @@ Browsers without Web Bluetooth (Firefox, iOS Safari) get a friendly fallback mes
 - **Customer** (`/app`): Wallet (battery balance + transactions), Store (redeem batteries), public Claim landing at `/claim/:token`.
 
 ## Storage
-PostgreSQL via `DATABASE_URL`. Photos saved to local disk under `uploads/photos/{deviceId}/` and served at `/uploads/...`.
+PostgreSQL via `DATABASE_URL`.
+
+Blobs (device photos, firmware `.bin` / content `.raw` artifacts) go through the
+`StorageDriver` seam in `server/blobstore/`. `STORAGE_DRIVER` unset (the default)
+selects `LocalDiskDriver`: photos under `uploads/photos/{deviceId}/`, artifacts
+content-addressed under `uploads/artifacts/{firmware|content}/{sha256}{.ext}`,
+both served at `/uploads/...`. Local disk is per-instance, so a multi-instance
+deploy needs a bucket driver — the contract one must satisfy (including the
+device's pinned-CA and no-redirect requirements) is the `TODO(s3)` block in
+`server/blobstore/driver.ts`.
 
 ## Key tables
 `users`, `sessions`, `shops`, `shop_members`, `leads`, `contacts`, `volunteers`, `pickup_requests`, `customers`, `wallets`, `transactions`, `store_items`, `redemptions`, `reward_configs`, `devices`, `pairing_nonces`, `device_settings`, `device_commands`, `drop_sessions`, `drops`, `photos`, `battery_transactions`, `shop_point_transactions`, `shop_rewards`, `shop_reward_redemptions`.

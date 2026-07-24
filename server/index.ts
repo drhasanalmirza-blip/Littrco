@@ -2,8 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { startOfflineSweep } from "./notify";
 import { serveStatic } from "./static";
+import { storageDriver } from "./blobstore";
 import { createServer } from "http";
-import path from "path";
 
 const app = express();
 // Behind the platform reverse proxy (Replit), the socket peer is the proxy, so
@@ -31,10 +31,12 @@ app.use(
 
 app.use(express.urlencoded({ extended: false, limit: "20mb" }));
 
-app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads"), {
-  maxAge: "1d",
-  index: false,
-}));
+// How stored objects are read back is the StorageDriver's call (§D2). The
+// default local-disk driver returns the same `/uploads` express.static mount
+// this used to hardcode; a bucket driver returns null because its objects are
+// served by the bucket/CDN at the absolute URLs it handed out at write time.
+const uploadsMount = storageDriver.staticMount();
+if (uploadsMount) app.use(uploadsMount.path, uploadsMount.handler);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

@@ -78,6 +78,8 @@ Body (all optional):
   "vapesSinceEmpty": 7,
   "fillPercent": 24,
   "tempC": 23.4,
+  "tempDevices": 1,
+  "tempRawC": 23.44,
   "vocRaw": 312,
   "wifiRssi": -65,
   "sdFreeMb": 14820,
@@ -105,6 +107,15 @@ Phase 3 fields (spec §3.1) — the sensor board reports both on behalf of the H
 
 Both persist onto the `devices` row and appear next to the sensor FW version in the staff
 Device Ops panel.
+
+Temp diagnostics (HW_FIXES_R3 — the operator has no serial access, so the temp
+failure mode must be visible on the dashboard):
+- **`tempDevices`** — the 1-Wire probe count last seen by the DS18B20 driver. Send it
+  UNCONDITIONALLY once scanned (**0 is the meaningful signal**: bus not enumerating).
+- **`tempRawC`** — the last raw probe read, sent even when invalid (−127 disconnected /
+  85.0 power-on-reset), so staff can tell a missing probe from a not-ready one.
+Both persist to `devices.tempDevices` / `devices.tempRawC` and render as the staff bin
+card's **Temp bus** / **Temp raw** tiles. `tempC` remains the VALIDATED value only.
 
 After persisting, the server runs the **alert engine**: fill-threshold crossings and
 `FULL` fire notifications (with hysteresis), and a heartbeat auto-clears any `OFFLINE`
@@ -190,6 +201,7 @@ Command types and payloads:
 | `SOUND_ALARM` | `{ seconds }` | sound the local alarm (e.g. from a FIRE `ALARM` action) |
 | `UPDATE_FIRMWARE` | `{ version, board }` | flash the OTA target on `board` (`sensor\|hmi`); see §6 |
 | `UPDATE_ASSETS` | `{ theme?, version? }` | pull a HMI content pack; see §7. Omitted keys = newest active pack |
+| `FORMAT_SD` | — | wipe + reformat the **sensor** SD card (drop-photo cache) and reset the local drop counters. The HMI's SD (branding/wallpapers) is NEVER touched — there is deliberately no board-targeted variant. Ack `ok`/`error`. Staff bin card → "Reset SD data" |
 
 The bin should upload the resulting photo for `TAKE_PHOTO` via `POST /api/device/photos`
 with `reason: "live"`. `UPDATE_FIRMWARE` carries the target `board` so the sensor board
@@ -200,6 +212,32 @@ content-manifest sync (§7); on failure of either, post a `UPDATE_FAILED` event.
 ```json
 { "commandId": 42, "result": "ok" }
 ```
+
+---
+
+## 4b. Push: diagnostic logs (HW_LOGS.md)
+
+### `POST /api/device/logs`
+
+The bin's serial diagnostics, surfaced on the dashboard — the operator has no
+serial/USB access, so `devLog()` lines ship here (batched, at-least-once) and
+appear in the per-bin **Logs** dialog (staff Devices / partner Bins).
+
+```json
+{ "bootId": 3, "lines": [
+  { "seq": 41, "level": "WARN", "tag": "temp", "msg": "bus scan: 0 devices", "atMs": 1523 }
+] }
+```
+- `bootId` increments each power-up (NVS) so `seq` (monotonic per boot) stays
+  unique; the server dedups on `(device, bootId, seq)` — retries are safe.
+- ≤ 64 lines/request; `msg` ≤ 240 chars (truncated, not rejected);
+  `level ∈ DEBUG|INFO|WARN|ERROR` (default INFO).
+- Response `{ ok, inserted, ackSeq }` — advance the unsent cursor past `ackSeq`.
+- Server keeps the newest **500 lines per device** (pruned on ingest) and bumps
+  `lastHeartbeatAt`. Read-back is dashboard-only
+  (`GET /api/staff/devices/:id/logs`, `GET /api/partner/devices/:id/logs` —
+  session-authenticated, NOT device endpoints); browsing to `/api/device/logs`
+  returns 404 by design (POST-only).
 
 ---
 

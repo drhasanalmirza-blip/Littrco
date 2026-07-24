@@ -13,7 +13,9 @@ import {
 } from "../auth";
 import { rateLimitByIp, deviceLimiter } from "../ratelimit";
 import { generatePairCode } from "../paircode";
-import { writeArtifact, decodeDataUrlOrBase64 } from "../blob";
+import { buildClaimByCodeUpdate } from "../claimByCode";
+import { decodeDataUrlOrBase64 } from "../blob";
+import { absoluteUrl, storageDriver } from "../blobstore";
 
 // Device ops: live camera, firmware/OTA, calibration, pairing
 // (spec §3.2, §3.4, §4.3, §4.4, §2.3, §2.4).
@@ -24,6 +26,9 @@ const router = Router();
 // the Firmware/Content create forms then submit. Keeping the artifact on
 // littr.co (not S3) means the sensor's pinned-to-littr.co TLS client can
 // download it. base64-in-JSON (like the photo route) avoids a multipart dep.
+// Where the bytes actually land is now the StorageDriver's call (server/blobstore);
+// the TLS/redirect constraints an off-box origin must satisfy are spelled out in
+// the TODO(s3) contract there.
 const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024; // 8 MB (esp32 apps + 800x480 raw wallpapers fit)
 const uploadBody = z.object({
   kind: z.enum(["firmware", "content"]),
@@ -43,8 +48,20 @@ router.post("/api/staff/upload", authMiddleware, requireRole("STAFF"), async (re
   const buf = decodeDataUrlOrBase64(body.data.dataBase64);
   if (!buf || buf.length === 0) return res.status(400).json({ error: "Invalid base64 data" });
   if (buf.length > MAX_ARTIFACT_BYTES) return res.status(400).json({ error: "File too large (max 8 MB)" });
-  const { relUrl, sha256, sizeBytes } = await writeArtifact(body.data.kind, body.data.filename, buf);
-  res.json({ url: resolveBaseUrl(req) + relUrl, sha256, sizeBytes });
+  // putArtifact is REQUIRED to throw when the object is not durably stored
+  // (server/blobstore/driver.ts, DURABILITY SEMANTICS). Express 4 does not
+  // forward an async handler's rejection to the error middleware, so without
+  // this catch that throw would send no response at all and kill the process on
+  // Node >= 15 — and a half-written artifact would look like a hung upload.
+  try {
+    const { relUrl, sha256, sizeBytes } = await storageDriver.putArtifact(body.data.kind, body.data.filename, buf);
+    // Local disk hands back a root-relative URL that needs this origin prefixed; a
+    // bucket driver already returns an absolute one. absoluteUrl() handles both.
+    res.json({ url: absoluteUrl(relUrl, resolveBaseUrl(req)), sha256, sizeBytes });
+  } catch (e) {
+    console.error("[upload] putArtifact failed", { kind: body.data.kind, filename: body.data.filename, err: e });
+    return res.status(500).json({ error: "Storage unavailable" });
+  }
 });
 
 const PAIR_CODE_TTL_MS = 10 * 60 * 1000;
@@ -290,17 +307,13 @@ router.post("/api/device/claim-by-code", claimByCodeLimiter, async (req, res) =>
   if (!consumed) return res.status(400).json({ error: "Invalid or expired code" });
   const device = await storage.getDevice(consumed.deviceId);
   if (!device) return res.status(404).json({ error: "Device not found" });
-  // Fresh key, returned exactly once — only its hash is stored
+  // Fresh key, returned exactly once — only its hash is stored. shopId is left
+  // untouched by design so the bin stays attached to its shop (W2a).
   const deviceKey = generateDeviceKey();
-  const updated = await storage.updateDevice(device.id, {
-    deviceKeyHash: hashDeviceKey(deviceKey),
-    status: "LIVE",
-    firmwareVersion: body.data.firmwareVersion || device.firmwareVersion,
-    lastHeartbeatAt: new Date(),
-    // serial is NOT NULL so pair-code devices always have a generated one;
-    // the MAC-derived uid only lands here for legacy rows missing it (§2.3)
-    ...(device.serial ? {} : { serial: body.data.uid }),
-  });
+  const updated = await storage.updateDevice(
+    device.id,
+    buildClaimByCodeUpdate(device, body.data, { deviceKeyHash: hashDeviceKey(deviceKey), now: new Date() }),
+  );
   res.json({ deviceId: device.id, serial: updated.serial, deviceKey, shopId: device.shopId });
 });
 

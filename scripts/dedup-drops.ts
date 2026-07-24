@@ -2,7 +2,9 @@
 // unique(session_id, sequence) constraint on `drops` is pushed to a populated DB.
 //
 //   Order:  tsx scripts/dedup-drops.ts   (this script — must exit 0)
-//           npm run db:push               (adds drops_session_sequence_uniq)
+//           then add the constraint: `npm run db:migrate` on a DB that migrations
+//           built, or `0001_dedup_drops_before_unique.sql` by hand on the baselined
+//           prod DB (migrations/README.md). `npm run db:push` is local-dev only.
 //
 // The constraint prevents FUTURE firmware-retry double-inserts, but it CANNOT be
 // created while historical duplicate rows exist (CREATE UNIQUE INDEX fails with a
@@ -152,7 +154,10 @@ async function main() {
         `reconciliation required): ${summary.claimedNeedingBatteryReview.join(", ")}`,
     );
   }
-  console.log("  guard: 0 duplicate (session_id, sequence) groups remain -> safe to run `npm run db:push`");
+  console.log(
+    "  guard: 0 duplicate (session_id, sequence) groups remain -> safe to add " +
+      "drops_session_sequence_uniq (see migrations/README.md; prod NEVER runs db:push)",
+  );
 }
 
 main()

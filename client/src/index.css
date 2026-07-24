@@ -43,6 +43,16 @@
   --color-chart-4: hsl(142 40% 75%);
   --color-chart-5: hsl(142 30% 85%);
 
+  /* shadcn sidebar tokens (staff dashboard navigation) */
+  --color-sidebar: hsl(0 0% 98%);
+  --color-sidebar-foreground: hsl(0 0% 8%);
+  --color-sidebar-primary: hsl(142 70% 45%);
+  --color-sidebar-primary-foreground: hsl(0 0% 100%);
+  --color-sidebar-accent: hsl(0 0% 93%);
+  --color-sidebar-accent-foreground: hsl(0 0% 8%);
+  --color-sidebar-border: hsl(0 0% 90%);
+  --color-sidebar-ring: hsl(142 70% 45%);
+
   --font-sans: 'Inter', system-ui, sans-serif;
   --radius: 0.75rem;
 }
@@ -97,6 +107,15 @@
   --color-chart-3: hsl(142 50% 70%);
   --color-chart-4: hsl(142 40% 75%);
   --color-chart-5: hsl(142 30% 80%);
+
+  --color-sidebar: hsl(0 0% 9%);
+  --color-sidebar-foreground: hsl(0 0% 93%);
+  --color-sidebar-primary: hsl(142 70% 45%);
+  --color-sidebar-primary-foreground: hsl(0 0% 100%);
+  --color-sidebar-accent: hsl(0 0% 15%);
+  --color-sidebar-accent-foreground: hsl(0 0% 93%);
+  --color-sidebar-border: hsl(0 0% 17%);
+  --color-sidebar-ring: hsl(142 70% 45%);
 
   --littr-green: #22c55e;
   --littr-green-dark: #16a34a;

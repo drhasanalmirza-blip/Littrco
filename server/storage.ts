@@ -17,6 +17,7 @@ import {
   type PairingNonce,
   type DeviceSettings,
   type DeviceCommand,
+  type DeviceLog,
   type DropSession,
   type Drop,
   type Photo,
@@ -28,10 +29,14 @@ import {
   pickupRequests, customers, wallets, transactions, storeItems, redemptions,
   rewardConfigs, devices, pairingNonces, deviceSettings, deviceCommands,
   dropSessions, drops, photos, batteryTransactions, shopPointTransactions,
-  shopRewards, shopRewardRedemptions,
+  shopRewards, shopRewardRedemptions, deviceLogs,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gt, lt, sql, inArray, isNull } from "drizzle-orm";
+import { normalizeDeviceLogLines, type RawLogLine } from "./deviceLogsIngest";
+
+// Retention cap for per-device diagnostic logs (see insertDeviceLogs).
+const DEVICE_LOG_KEEP = 500;
 
 export const storage = {
   // ====== Users ======
@@ -271,6 +276,47 @@ export const storage = {
   },
   async deleteDevice(id: number) {
     await db.delete(devices).where(eq(devices.id, id));
+  },
+
+  // ====== Device logs (diagnostics surfaced on the dashboard) ======
+  // Idempotent bulk insert (dedup on deviceId,bootId,seq) + retention prune.
+  async insertDeviceLogs(
+    deviceId: number,
+    bootId: number,
+    lines: RawLogLine[],
+  ): Promise<{ inserted: number; ackSeq: number }> {
+    if (lines.length === 0) return { inserted: 0, ackSeq: 0 };
+    const { rows: norm, ackSeq } = normalizeDeviceLogLines(lines);
+    const rows = norm.map((l) => ({ deviceId, bootId, ...l }));
+    await db.insert(deviceLogs).values(rows)
+      .onConflictDoNothing({ target: [deviceLogs.deviceId, deviceLogs.bootId, deviceLogs.seq] });
+    // Retention: keep only the newest DEVICE_LOG_KEEP rows for this device so the
+    // table can't grow unbounded (no cron). Runs on every ingest — cheap on the
+    // (device_id, id) index.
+    await db.execute(sql`
+      DELETE FROM device_logs
+      WHERE device_id = ${deviceId}
+        AND id NOT IN (
+          SELECT id FROM device_logs
+          WHERE device_id = ${deviceId}
+          ORDER BY id DESC
+          LIMIT ${DEVICE_LOG_KEEP}
+        )
+    `);
+    return { inserted: rows.length, ackSeq };
+  },
+
+  // Newest `limit` rows (optionally only those newer than afterId), returned
+  // chronological (oldest→newest) for a natural console tail.
+  async getDeviceLogs(deviceId: number, opts: { limit?: number; afterId?: number } = {}): Promise<DeviceLog[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 200, 1), 500);
+    const conds = [eq(deviceLogs.deviceId, deviceId)];
+    if (opts.afterId && opts.afterId > 0) conds.push(gt(deviceLogs.id, opts.afterId));
+    const rows = await db.select().from(deviceLogs)
+      .where(and(...conds))
+      .orderBy(desc(deviceLogs.id))
+      .limit(limit);
+    return rows.reverse();
   },
 
   // ====== Pairing nonces ======
