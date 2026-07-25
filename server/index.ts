@@ -75,11 +75,17 @@ app.use((req, res, next) => {
   await registerRoutes(httpServer, app);
   startOfflineSweep();
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
+    // The client reads `.error` (see client/src/lib/apiJson.ts), so responding
+    // with `{ message }` produced a generic "HTTP 500" with the real reason
+    // dropped. Send both: `error` for the client, `message` for back-compat.
     const message = err.message || "Internal Server Error";
-    res.status(status).json({ message });
-    throw err;
+    console.error(`[error] ${req.method} ${req.path} -> ${status}:`, err);
+    if (!res.headersSent) res.status(status).json({ error: message, message });
+    // NOTE: do NOT re-throw. Throwing from an error handler after responding
+    // escapes as an unhandled exception and can take the process down — which
+    // turns one failed request into an outage for every other user.
   });
 
   if (process.env.NODE_ENV === "production") {

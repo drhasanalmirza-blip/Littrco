@@ -2,10 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import {
-  firmwareReleases, pairingCodes, photos, shopMembers,
+  devices, firmwareReleases, pairingCodes, photos, shopMembers,
   type FirmwareRelease, type PairingCode,
 } from "@shared/schema";
 import { db } from "../db";
+import { asyncHandler } from "../asyncHandler";
 import { storage } from "../storage";
 import {
   authMiddleware, requireRole, deviceAuthMiddleware,
@@ -85,21 +86,38 @@ async function partnerRoleForShop(userId: string, shopId: number) {
 // Shared by the staff (§3.4) and partner (§4.4) pair-code routes: a fresh
 // PROVISIONING device plus its single-use SoftAP pairing code. The key hash is
 // a throwaway — the real device key is minted at claim-by-code (§2.3).
+// One transaction: the device row and its code are created together or not at
+// all. Previously the device was inserted first and un-transacted, so every
+// failure after that point (code collision exhaustion, a DB blip) leaked an
+// orphan PROVISIONING device — and a user re-clicking a hung button piled them
+// into the shop's bin list.
 async function createPairCodeForShop(shopId: number, userId: string) {
-  const device = await storage.createDevice({
-    serial: generateSerial(),
-    deviceKeyHash: hashDeviceKey(generateDeviceKey()),
-    shopId,
-    partnerId: userId,
-    status: "PROVISIONING",
-  } as any);
   const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MS);
+
+  // The RETRY wraps the whole transaction, not the inner insert: in postgres a
+  // unique violation aborts the enclosing transaction, so retrying the insert on
+  // the same tx would just fail with "current transaction is aborted". Each
+  // attempt is therefore a fresh transaction — and because the device insert is
+  // inside it, a failed attempt rolls the device row back instead of leaking an
+  // orphan PROVISIONING device (which is what a re-clicked hung button used to
+  // pile into the shop's bin list).
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const [row] = await db.insert(pairingCodes)
-        .values({ code: generatePairCode(), deviceId: device.id, createdByUserId: userId, expiresAt })
-        .returning();
-      return { deviceId: device.id, serial: device.serial, code: row.code, expiresAt: row.expiresAt };
+      return await db.transaction(async (tx) => {
+        const [device] = await tx.insert(devices).values({
+          serial: generateSerial(),
+          deviceKeyHash: hashDeviceKey(generateDeviceKey()),
+          shopId,
+          partnerId: userId,
+          status: "PROVISIONING",
+        } as any).returning();
+
+        const [row] = await tx.insert(pairingCodes)
+          .values({ code: generatePairCode(), deviceId: device.id, createdByUserId: userId, expiresAt })
+          .returning();
+
+        return { deviceId: device.id, serial: device.serial, code: row.code, expiresAt: row.expiresAt };
+      });
     } catch (e: any) {
       if (e?.code !== PG_UNIQUE_VIOLATION) throw e; // collision → regenerate
     }
@@ -243,11 +261,11 @@ router.post("/api/staff/devices/:id/ota", authMiddleware, requireRole("STAFF"), 
 // but this router mounts BEFORE contentRouter so this copy shadowed the intended
 // one — removed to keep a single source of truth.
 
-router.post("/api/staff/shops/:id/pair-code", authMiddleware, requireRole("STAFF"), async (req, res) => {
+router.post("/api/staff/shops/:id/pair-code", authMiddleware, requireRole("STAFF"), asyncHandler(async (req, res) => {
   const shop = await storage.getShop(Number(req.params.id));
   if (!shop) return res.status(404).json({ error: "Shop not found" });
   res.json(await createPairCodeForShop(shop.id, req.user!.id));
-});
+}));
 
 // ==================== §4.3 Fill calibration ====================
 
@@ -282,7 +300,7 @@ router.post("/api/partner/devices/:id/calibrate", authMiddleware, requireRole("P
 
 // ==================== §4.4 Pairing (partner-scoped, OWNER or MANAGER) ====================
 
-router.post("/api/partner/shops/:id/pair-code", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
+router.post("/api/partner/shops/:id/pair-code", authMiddleware, requireRole("PARTNER", "STAFF"), asyncHandler(async (req, res) => {
   const shop = await storage.getShop(Number(req.params.id));
   if (!shop) return res.status(404).json({ error: "Shop not found" });
   if (req.user!.role !== "STAFF") {
@@ -291,7 +309,7 @@ router.post("/api/partner/shops/:id/pair-code", authMiddleware, requireRole("PAR
     if (role !== "OWNER" && role !== "MANAGER") return res.status(403).json({ error: "Forbidden" });
   }
   res.json(await createPairCodeForShop(shop.id, req.user!.id));
-});
+}));
 
 // ==================== §2.3 SoftAP pairing exchange ====================
 // Deliberately no device key (the device does not have one yet); TLS only.

@@ -4,11 +4,13 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ShoppingBag, CheckCircle, Battery } from "lucide-react";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function StorePage() {
   const { user, role } = useStore();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [redeemingId, setRedeemingId] = useState<number | null>(null);
   const [successItem, setSuccessItem] = useState<any>(null);
 
@@ -36,8 +38,10 @@ export default function StorePage() {
     mutationFn: async (storeItemId: number) => {
       setRedeemingId(storeItemId);
       const res = await apiRequest('/api/customer/redeem', {
+        // The server validates `itemId` (routes.ts POST /api/customer/redeem).
+        // This previously sent `storeItemId`, so every redemption 400'd.
         method: 'POST',
-        body: JSON.stringify({ storeItemId }),
+        body: JSON.stringify({ itemId: storeItemId }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -54,7 +58,11 @@ export default function StorePage() {
       setRedeemingId(null);
     },
     onError: (error: any) => {
-      alert(error.message);
+      toast({
+        title: "Couldn't redeem",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
       setRedeemingId(null);
     },
   });

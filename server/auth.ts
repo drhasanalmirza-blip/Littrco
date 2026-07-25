@@ -52,13 +52,20 @@ declare global {
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const sessionId = (req.headers["x-session-id"] as string) || (req as any).cookies?.sessionId;
   if (!sessionId) return res.status(401).json({ error: "Unauthorized" });
-  const session = await storage.getSession(sessionId);
-  if (!session) return res.status(401).json({ error: "Session expired" });
-  const user = await storage.getUser(session.userId);
-  if (!user) return res.status(401).json({ error: "User not found" });
-  req.user = user;
-  req.sessionId = sessionId;
-  next();
+  // Guarded: this runs on EVERY authenticated route, and Express 4 does not
+  // forward an async rejection to the error middleware. An unguarded DB error
+  // here would send no response at all, hanging the client's request forever.
+  try {
+    const session = await storage.getSession(sessionId);
+    if (!session) return res.status(401).json({ error: "Session expired" });
+    const user = await storage.getUser(session.userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+    req.user = user;
+    req.sessionId = sessionId;
+    next();
+  } catch (e) {
+    next(e);   // -> the error middleware, which responds 500 { error }
+  }
 }
 
 export async function optionalAuthMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -88,12 +95,21 @@ export function requireRole(...roles: string[]) {
 export async function deviceAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   const key = req.headers["x-device-key"] as string;
   if (!key) return res.status(401).json({ error: "Missing X-Device-Key" });
-  const hash = hashDeviceKey(key);
-  const device = await storage.getDeviceByKeyHash(hash);
-  if (!device) return res.status(401).json({ error: "Invalid device key" });
-  if (device.status === "RETIRED") return res.status(403).json({ error: "Device retired" });
-  req.device = device;
-  next();
+  // Guarded for the same Express-4 reason as authMiddleware, but the stakes are
+  // higher here: a bin whose device row is gone MUST receive a clean 401 so its
+  // self-unpair streak advances and it returns to the pairing portal. An
+  // unguarded DB error hangs the socket instead, the bin sees only a transport
+  // timeout, and it stays wedged on a dead key forever.
+  try {
+    const hash = hashDeviceKey(key);
+    const device = await storage.getDeviceByKeyHash(hash);
+    if (!device) return res.status(401).json({ error: "Invalid device key" });
+    if (device.status === "RETIRED") return res.status(403).json({ error: "Device retired" });
+    req.device = device;
+    next();
+  } catch (e) {
+    next(e);
+  }
 }
 
 export async function login(email: string, password: string) {

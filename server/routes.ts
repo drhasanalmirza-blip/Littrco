@@ -26,6 +26,7 @@ import { claimSessionForCustomer } from "./claims";
 import { evaluateTelemetry, handleDeviceEvent, notifyFireDisabled } from "./notify";
 import { validateDeviceSettings, mergeDeviceSettings } from "@shared/deviceSettings";
 import { finalizeDecision, finalizeReplayKind } from "./offlineFinalize";
+import { mapCustomerSessionRow } from "@shared/customerFeed";
 import reviewRouter from "./routes/review";
 import { partnerRoleForShop } from "./routes/team";
 import alertsRouter from "./routes/alerts";
@@ -45,6 +46,15 @@ const MAX_PHOTO_BYTES = 4 * 1024 * 1024; // 4 MB decoded cap (spec §2.5)
 const photoLimiter = rateLimit({ max: 30 });
 const authLimiter = rateLimitByIp(10);
 const claimLimiter = rateLimitByIp(20);
+
+// Fallback labels for ledger rows with no explicit description. Keyed by the
+// full ledgerTypeEnum — a two-way ternary previously labelled an ADJUST row
+// (a staff clawback) as "Reward redemption", i.e. as if the customer had spent it.
+const DEFAULT_TX_DESCRIPTION: Record<"EARNED" | "REDEEMED" | "ADJUST", string> = {
+  EARNED: "Drop session claim",
+  REDEEMED: "Reward redemption",
+  ADJUST: "Balance adjustment",
+};
 
 // Returns an error string, or null when buf is an acceptable JPEG (spec §2.5)
 function jpegUploadError(buf: Buffer | null): string | null {
@@ -201,6 +211,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(shops);
   });
 
+  // Map pins for the public drop-off finder. client/src/components/ShopMap.tsx
+  // has always fetched this path, but the route never existed — so the /dropoff
+  // map rendered an empty basemap. Public, like /api/shops.
+  app.get("/api/shops/locations", async (_req, res) => {
+    res.json(await storage.getShopLocations());
+  });
+
   // ==================== CUSTOMER ====================
   app.get("/api/customer/wallet", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
     const customer = await storage.getCustomerByUserId(req.user!.id);
@@ -218,9 +235,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const txs = await storage.getBatteryTransactions(customer.id, 100);
     res.json(txs.map(t => ({
       id: t.id,
+      // sessionId lets the client dedupe a ledger row against the richer
+      // /api/customer/sessions row for the same drop. Non-sensitive: it is the
+      // customer's own session.
+      sessionId: t.sessionId,
       amount: t.type === "REDEEMED" ? -t.amount : t.amount,
       type: t.type,
-      description: t.description || (t.type === "EARNED" ? "Drop session claim" : "Reward redemption"),
+      // Only POSTED rows count toward the balance (see getBatteryBalance), so
+      // the client needs status to avoid implying a PENDING/VOID row was paid.
+      status: t.status,
+      description: t.description || DEFAULT_TX_DESCRIPTION[t.type],
       createdAt: t.createdAt,
     })));
   });
@@ -229,6 +253,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const customer = await storage.getCustomerByUserId(req.user!.id);
     if (!customer) return res.json([]);
     res.json(await storage.getRedemptionsByCustomer(customer.id));
+  });
+
+  // Claimed drop history with shop names — powers the activity feed and the
+  // earnings trend. Shaped by a pure mapper so the shape is unit-tested.
+  app.get("/api/customer/sessions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    const customer = await storage.getCustomerByUserId(req.user!.id);
+    if (!customer) return res.json([]);
+    const q = z.object({
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+    }).safeParse(req.query);
+    if (!q.success) return res.status(400).json({ error: "limit must be 1-200" });
+    const rows = await storage.getClaimedSessionsByCustomer(customer.id, q.data.limit ?? 50);
+    res.json(rows.map(mapCustomerSessionRow));
+  });
+
+  // Lifetime totals for the impact hero. Separate from /sessions because the
+  // hero must not be derived from a capped list.
+  app.get("/api/customer/stats", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+    const customer = await storage.getCustomerByUserId(req.user!.id);
+    if (!customer) {
+      return res.json({
+        lifetimeVapes: 0, lifetimeSessions: 0, lifetimeBatteries: 0,
+        distinctShops: 0, firstDropAt: null, lastDropAt: null,
+      });
+    }
+    res.json(await storage.getCustomerImpactStats(customer.id));
   });
 
   app.get("/api/customer/store", async (_req, res) => {
