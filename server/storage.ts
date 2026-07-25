@@ -29,7 +29,7 @@ import {
   pickupRequests, customers, wallets, transactions, storeItems, redemptions,
   rewardConfigs, devices, pairingNonces, deviceSettings, deviceCommands,
   dropSessions, drops, photos, batteryTransactions, shopPointTransactions,
-  shopRewards, shopRewardRedemptions, deviceLogs,
+  shopRewards, shopRewardRedemptions, deviceLogs, selfReports,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gt, lt, sql, inArray, isNull } from "drizzle-orm";
@@ -37,6 +37,34 @@ import { normalizeDeviceLogLines, type RawLogLine } from "./deviceLogsIngest";
 
 // Retention cap for per-device diagnostic logs (see insertDeviceLogs).
 const DEVICE_LOG_KEEP = 500;
+
+// A shop as exposed on PUBLIC, unauthenticated routes: every column EXCEPT
+// `secretPin` (the staff/partner pairing PIN). Anything that needs the PIN must
+// use getShop/getAllShops, which are auth-gated at the route layer.
+export type PublicShop = Omit<Shop, "secretPin">;
+
+const PUBLIC_SHOP_COLUMNS = {
+  id: shops.id,
+  name: shops.name,
+  address: shops.address,
+  city: shops.city,
+  serviceArea: shops.serviceArea,
+  phone: shops.phone,
+  latitude: shops.latitude,
+  longitude: shops.longitude,
+  status: shops.status,
+  createdAt: shops.createdAt,
+} as const;
+
+// Map-pin subset for the public drop-off finder.
+export type ShopLocation = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  latitude: number | null;
+  longitude: number | null;
+};
 
 export const storage = {
   // ====== Users ======
@@ -128,8 +156,32 @@ export const storage = {
   async getAllShops(): Promise<Shop[]> {
     return db.select().from(shops).orderBy(desc(shops.createdAt));
   },
-  async getVerifiedShops(): Promise<Shop[]> {
-    return db.select().from(shops).where(eq(shops.status, "VERIFIED"));
+  // PUBLIC data — `GET /api/shops` serves this with no auth, so the projection
+  // is explicit and MUST NOT include `secretPin` (an unprojected select() here
+  // previously leaked every shop's PIN to anonymous callers). The PublicShop
+  // return type makes any caller that needs the PIN fail to compile rather than
+  // silently re-widen this.
+  async getVerifiedShops(): Promise<PublicShop[]> {
+    return db
+      .select(PUBLIC_SHOP_COLUMNS)
+      .from(shops)
+      .where(eq(shops.status, "VERIFIED"));
+  },
+  // Map pins for the public drop-off finder (`GET /api/shops/locations`).
+  // Matches the ShopLocation interface in client/src/components/ShopMap.tsx.
+  async getShopLocations(): Promise<ShopLocation[]> {
+    return db
+      .select({
+        id: shops.id,
+        name: shops.name,
+        address: shops.address,
+        city: shops.city,
+        latitude: shops.latitude,
+        longitude: shops.longitude,
+      })
+      .from(shops)
+      .where(eq(shops.status, "VERIFIED"))
+      .orderBy(shops.name);
   },
   async updateShopStatus(id: number, status: any) {
     const [s] = await db.update(shops).set({ status }).where(eq(shops.id, id)).returning();
@@ -204,6 +256,79 @@ export const storage = {
       .orderBy(desc(batteryTransactions.createdAt))
       .limit(limit);
   },
+
+  // ====== Customer drop history + lifetime impact ======
+  //
+  // Both queries are driven FROM battery_transactions, not drop_sessions:
+  //   - battery_tx_customer_idx indexes customerId, while
+  //     drop_sessions.claimed_by_customer_id is unindexed;
+  //   - battery_tx_session_uniq guarantees at most one ledger row per session,
+  //     so the inner join is 1:1 and cannot fan out and double-count.
+  // The redundant claimedByCustomerId predicate is a cheap correctness assert.
+  // Columns are projected explicitly — a bare select() on dropSessions would
+  // leak claimToken/deviceId to the customer.
+
+  async getClaimedSessionsByCustomer(customerId: number, limit = 50) {
+    return db
+      .select({
+        sessionId: dropSessions.id,
+        claimedAt: dropSessions.claimedAt,
+        createdAt: dropSessions.createdAt,
+        acceptedDropCount: dropSessions.acceptedDropCount,
+        offline: dropSessions.offline,
+        amount: batteryTransactions.amount,
+        ledgerStatus: batteryTransactions.status,
+        shopId: shops.id,
+        shopName: shops.name,
+        shopCity: shops.city,
+        selfReportId: selfReports.id,
+      })
+      .from(batteryTransactions)
+      .innerJoin(dropSessions, eq(dropSessions.id, batteryTransactions.sessionId))
+      // shopId is nullable (ON DELETE SET NULL), so LEFT JOIN.
+      .leftJoin(shops, eq(shops.id, dropSessions.shopId))
+      .leftJoin(selfReports, eq(selfReports.sessionId, dropSessions.id))
+      .where(and(
+        eq(batteryTransactions.customerId, customerId),
+        eq(batteryTransactions.type, "EARNED"),
+        eq(dropSessions.claimedByCustomerId, customerId),
+      ))
+      .orderBy(desc(dropSessions.claimedAt))
+      .limit(limit);
+  },
+
+  // Lifetime aggregate for the impact hero. Deriving these from the capped
+  // session list would silently under-report for any heavy user, so this is a
+  // separate unbounded aggregate. POSTED only — matching getBatteryBalance.
+  async getCustomerImpactStats(customerId: number) {
+    const [row] = await db
+      .select({
+        lifetimeSessions: sql<string>`count(*)`,
+        lifetimeVapes: sql<string>`coalesce(sum(${dropSessions.acceptedDropCount}), 0)`,
+        lifetimeBatteries: sql<string>`coalesce(sum(${batteryTransactions.amount}), 0)`,
+        distinctShops: sql<string>`count(distinct ${dropSessions.shopId})`,
+        firstDropAt: sql<Date | null>`min(${dropSessions.claimedAt})`,
+        lastDropAt: sql<Date | null>`max(${dropSessions.claimedAt})`,
+      })
+      .from(batteryTransactions)
+      .innerJoin(dropSessions, eq(dropSessions.id, batteryTransactions.sessionId))
+      .where(and(
+        eq(batteryTransactions.customerId, customerId),
+        eq(batteryTransactions.type, "EARNED"),
+        eq(batteryTransactions.status, "POSTED"),
+        eq(dropSessions.claimedByCustomerId, customerId),
+      ));
+
+    // pg returns COUNT/SUM as strings — coerce before they reach the client.
+    return {
+      lifetimeSessions: Number(row?.lifetimeSessions ?? 0),
+      lifetimeVapes: Number(row?.lifetimeVapes ?? 0),
+      lifetimeBatteries: Number(row?.lifetimeBatteries ?? 0),
+      distinctShops: Number(row?.distinctShops ?? 0),
+      firstDropAt: row?.firstDropAt ?? null,
+      lastDropAt: row?.lastDropAt ?? null,
+    };
+  },
   async createBatteryTransaction(data: typeof batteryTransactions.$inferInsert) {
     const [t] = await db.insert(batteryTransactions).values(data).returning();
     return t;
@@ -225,8 +350,30 @@ export const storage = {
     const [r] = await db.insert(redemptions).values(data).returning();
     return r;
   },
+  // Joins the catalog so the UI can name the reward. Without this the client
+  // only has storeItemId and renders rows as a bare "Redemption #12".
+  // LEFT JOIN (not inner) so a redemption survives its catalog item being deleted.
   async getRedemptionsByCustomer(customerId: number) {
-    return db.select().from(redemptions).where(eq(redemptions.customerId, customerId)).orderBy(desc(redemptions.createdAt));
+    const rows = await db
+      .select({
+        id: redemptions.id,
+        pointsSpent: redemptions.pointsSpent,
+        status: redemptions.status,
+        fulfilledAt: redemptions.fulfilledAt,
+        createdAt: redemptions.createdAt,
+        itemId: storeItems.id,
+        itemName: storeItems.name,
+        itemImageUrl: storeItems.imageUrl,
+      })
+      .from(redemptions)
+      .leftJoin(storeItems, eq(storeItems.id, redemptions.storeItemId))
+      .where(eq(redemptions.customerId, customerId))
+      .orderBy(desc(redemptions.createdAt));
+
+    return rows.map(({ itemId, itemName, itemImageUrl, ...r }) => ({
+      ...r,
+      item: itemId == null ? null : { id: itemId, name: itemName, imageUrl: itemImageUrl },
+    }));
   },
 
   // ====== Reward Configs ======
