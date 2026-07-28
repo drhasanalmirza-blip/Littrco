@@ -301,3 +301,56 @@ export function ResetSdDialog({
     </AlertDialog>
   );
 }
+
+/**
+ * Confirm-guarded "Factory reset" — enqueues FACTORY_RESET, which makes the bin
+ * erase its device key + WiFi credentials and reboot into the littr.bin setup
+ * portal. Use when a bin needs to be re-paired (moved shops, reassigned, or
+ * misbehaving) without a trip to the site with a USB cable.
+ *
+ * Controlled-only (open/onOpenChange), because it is rendered from a dropdown
+ * menu: a trigger nested in a DropdownMenuItem unmounts with the menu before
+ * the dialog can open.
+ */
+export function FactoryResetDialog({
+  deviceId,
+  deviceName,
+  onConfirm,
+  open,
+  onOpenChange,
+}: {
+  deviceId: number;
+  deviceName: string;
+  onConfirm: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Factory reset {deviceName}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The bin erases its pairing (device key and WiFi) and reboots into its
+            setup portal, so it will go <span className="font-semibold">offline until
+            someone re-pairs it on site</span> with a new pair code. Drop history
+            already sent to the cloud is kept. This can't be undone remotely.
+            <br /><br />
+            Note: this only reaches a bin that is still online. If it has already
+            lost its pairing, it must be recovered over USB.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid={`button-cancel-factory-reset-${deviceId}`}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-red-600 text-white hover:bg-red-700"
+            data-testid={`button-confirm-factory-reset-${deviceId}`}
+          >
+            Factory reset
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}

@@ -27,6 +27,7 @@ import { evaluateTelemetry, handleDeviceEvent, notifyFireDisabled } from "./noti
 import { validateDeviceSettings, mergeDeviceSettings } from "@shared/deviceSettings";
 import { finalizeDecision, finalizeReplayKind } from "./offlineFinalize";
 import { mapCustomerSessionRow } from "@shared/customerFeed";
+import { asyncHandler } from "./asyncHandler";
 import reviewRouter from "./routes/review";
 import { partnerRoleForShop } from "./routes/team";
 import alertsRouter from "./routes/alerts";
@@ -592,7 +593,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // All routes below require X-Device-Key
-  app.post("/api/device/telemetry", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
+  app.post("/api/device/telemetry", deviceAuthMiddleware, deviceLimiter, asyncHandler(async (req, res) => {
     const body = z.object({
       vapesSinceEmpty: z.number().optional(),
       fillPercent: z.number().optional(),
@@ -621,7 +622,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const after = await storage.updateDevice(before.id, patch);
     await evaluateTelemetry(before, after); // alert engine (spec §5)
     res.json({ ok: true });
-  });
+  }));
 
   // Device-initiated alerts — fire and warnings are detected on-device (spec §2.2)
   app.post("/api/device/events", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
@@ -685,7 +686,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
-  app.post("/api/device/drop-sessions/start", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
+  app.post("/api/device/drop-sessions/start", deviceAuthMiddleware, deviceLimiter, asyncHandler(async (req, res) => {
     // Offline sessions (captured while WiFi was down) award shop points but no
     // batteries/claim at finalize (spec §3.4).
     const body = z.object({ offline: z.boolean().optional() }).safeParse(req.body ?? {});
@@ -693,9 +694,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const s = await storage.createDropSession(req.device!.id, req.device!.shopId || null);
     if (body.data.offline) await storage.updateDropSession(s.id, { offline: true });
     res.json({ sessionId: s.id });
-  });
+  }));
 
-  app.post("/api/device/drops", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
+  app.post("/api/device/drops", deviceAuthMiddleware, deviceLimiter, asyncHandler(async (req, res) => {
     const body = z.object({
       sessionId: z.number(),
       sequence: z.number(),
@@ -755,7 +756,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (result.kind === "closed") return res.status(400).json({ error: "Session not open" });
     // Both a fresh insert and a replayed duplicate return { dropId } (200).
     res.json({ dropId: result.dropId });
-  });
+  }));
 
   // Photo upload — multipart not required; accepts base64 in JSON body
   app.post("/api/device/drops/:dropId/photos", deviceAuthMiddleware, photoLimiter, async (req, res) => {
@@ -848,7 +849,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // both pass the status===OPEN check and both insert an EARNED shop-point row —
   // the second blocks on the lock, then sees FINALIZED and 400s. (Batteries are
   // already race-safe via UNIQUE(session_id) at claim time.)
-  app.post("/api/device/drop-sessions/:id/finalize", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
+  app.post("/api/device/drop-sessions/:id/finalize", deviceAuthMiddleware, deviceLimiter, asyncHandler(async (req, res) => {
     const sessionId = Number(req.params.id);
     const device = req.device!;
 
@@ -951,7 +952,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       claimUrl,
       expiresAt: outcome.expiresAt,
     });
-  });
+  }));
 
   // ==================== STAFF ====================
   app.get("/api/staff/devices", authMiddleware, requireRole("STAFF"), async (_req, res) => {

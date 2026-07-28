@@ -27,13 +27,13 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Bell, Camera, ChevronDown, ClipboardCheck, Cpu, HardDrive, History, Inbox,
-  LayoutDashboard, MapPin, Megaphone, MoreHorizontal, Package, Phone, Plus,
+  LayoutDashboard, MapPin, Megaphone, MoreHorizontal, Package, Phone, Plus, RotateCcw,
   QrCode, Recycle, Store, Terminal, Trash2, UserPlus, Users as UsersIcon,
   Wrench, X, Mail,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
-import BinWidget, { RemoveBinDialog, ResetSdDialog } from "@/components/BinWidget";
+import BinWidget, { RemoveBinDialog, ResetSdDialog, FactoryResetDialog } from "@/components/BinWidget";
 import DeviceLogsDialog from "@/components/DeviceLogsDialog";
 import Overview from "@/pages/staff/panels/Overview";
 import ReviewQueue from "@/pages/staff/panels/ReviewQueue";
@@ -200,6 +200,7 @@ function StaffBinActions({
   onViewCommands,
   onResetSd,
   resetPending,
+  onFactoryReset,
   onRemove,
   removePending,
 }: {
@@ -207,10 +208,12 @@ function StaffBinActions({
   onViewCommands: () => void;
   onResetSd: () => void;
   resetPending: boolean;
+  onFactoryReset: () => void;
   onRemove: () => void;
   removePending: boolean;
 }) {
   const [resetOpen, setResetOpen] = useState(false);
+  const [factoryOpen, setFactoryOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const name = device.label && String(device.label).trim() !== "" ? device.label : device.serial;
   return (
@@ -238,6 +241,12 @@ function StaffBinActions({
           >
             <HardDrive className="mr-2 h-4 w-4" /> Reset SD data
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => setFactoryOpen(true)}
+            data-testid={`button-factory-reset-${device.id}`}
+          >
+            <RotateCcw className="mr-2 h-4 w-4" /> Factory reset (un-pair)
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => setRemoveOpen(true)}
@@ -256,6 +265,13 @@ function StaffBinActions({
         onOpenChange={setResetOpen}
         onConfirm={onResetSd}
         pending={resetPending}
+      />
+      <FactoryResetDialog
+        deviceId={device.id}
+        deviceName={name}
+        open={factoryOpen}
+        onOpenChange={setFactoryOpen}
+        onConfirm={onFactoryReset}
       />
       <RemoveBinDialog
         deviceId={device.id}
@@ -464,6 +480,7 @@ export default function StaffDashboard() {
                         onViewCommands={() => viewCommands(d.id)}
                         onResetSd={() => enqueue.mutate({ deviceId: d.id, type: "FORMAT_SD" })}
                         resetPending={enqueue.isPending}
+                        onFactoryReset={() => enqueue.mutate({ deviceId: d.id, type: "FACTORY_RESET" })}
                         onRemove={() => removeDevice.mutate(d.id)}
                         removePending={removeDevice.isPending}
                       />
