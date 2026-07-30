@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Wallet, Gift, QrCode, ShoppingBag, Settings, MapPin, Recycle, LogOut, Star, Battery, Sun, Moon, History } from "lucide-react";
+import { DashboardSwitcher } from "@/components/DashboardSwitcher";
 
 export default function CustomerDashboard() {
   const { user, role, clearAuth, theme, toggleTheme } = useStore();
@@ -44,7 +45,11 @@ export default function CustomerDashboard() {
     setLocation('/');
   };
 
-  if (!user || role !== 'customer') {
+  // Any signed-in account gets the customer dashboard. STAFF and PARTNER users
+  // hold a wallet of their own (the server provisions one on first use), so
+  // gating on role here would have locked the very people who run the bins out
+  // of earning and redeeming from them.
+  if (!user) {
     return (
       <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col items-center justify-center p-6">
         <div className="text-center max-w-sm">
@@ -90,6 +95,10 @@ export default function CustomerDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {/* Return path to the staff/partner dashboard. Renders nothing for a
+                plain customer. Without it, a staff or partner account that came
+                here to check its wallet had no way back except editing the URL. */}
+            <DashboardSwitcher current="customer" className="mr-1" />
             <button
               onClick={toggleTheme}
               data-testid="button-theme-toggle"

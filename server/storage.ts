@@ -34,6 +34,13 @@ import {
 import { db } from "./db";
 import { desc, eq, and, gt, lt, sql, inArray, isNull } from "drizzle-orm";
 import { normalizeDeviceLogLines, type RawLogLine } from "./deviceLogsIngest";
+import crypto from "crypto";
+
+// Same format as auth.ts generatePublicId(). Duplicated deliberately rather than
+// imported: auth.ts imports this module, so importing back would close a cycle.
+function newPublicId(): string {
+  return `LITTR-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+}
 
 // Retention cap for per-device diagnostic logs (see insertDeviceLogs).
 const DEVICE_LOG_KEEP = 500;
@@ -224,6 +231,28 @@ export const storage = {
   async getCustomerByUserId(userId: string): Promise<Customer | undefined> {
     const [c] = await db.select().from(customers).where(eq(customers.userId, userId));
     return c;
+  },
+  // Return this user's customer profile, creating it (and its wallet) on first
+  // use. register() only provisions one for role CUSTOMER, so STAFF and PARTNER
+  // accounts had no wallet at all and could not hold points or redeem a reward —
+  // every /api/customer route 404'd for them. Every account is now also a
+  // customer; the profile is created lazily so no migration or backfill is
+  // needed and existing customers are untouched.
+  //
+  // Idempotent under a race: customers.userId is UNIQUE, so a concurrent insert
+  // loses and we re-read the winner rather than throwing at the caller.
+  async ensureCustomerForUser(userId: string): Promise<Customer> {
+    const existing = await this.getCustomerByUserId(userId);
+    if (existing) return existing;
+    try {
+      const c = await this.createCustomer({ userId, publicId: newPublicId() });
+      await this.createWallet(c.id);
+      return c;
+    } catch {
+      const raced = await this.getCustomerByUserId(userId);
+      if (raced) return raced;
+      throw new Error("Could not create customer profile");
+    }
   },
   async createWallet(customerId: number): Promise<Wallet> {
     const [w] = await db.insert(wallets).values({ customerId }).returning();

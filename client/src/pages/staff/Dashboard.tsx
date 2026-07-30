@@ -29,7 +29,7 @@ import {
   Bell, Camera, ChevronDown, ClipboardCheck, Cpu, HardDrive, History, Inbox,
   LayoutDashboard, MapPin, Megaphone, MoreHorizontal, Package, Phone, Plus, RotateCcw,
   QrCode, Recycle, Store, Terminal, Trash2, UserPlus, Users as UsersIcon,
-  Wrench, X, Mail,
+  Wrench, X, Mail, SlidersHorizontal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
@@ -43,6 +43,10 @@ import Alerts from "@/pages/staff/panels/Alerts";
 import LiveCamera from "@/pages/staff/panels/LiveCamera";
 import Firmware from "@/pages/staff/panels/Firmware";
 import DeviceOps from "@/pages/staff/panels/DeviceOps";
+// The SAME component partners use, not a staff-only copy: one implementation
+// means staff and partners can never drift to different settings behaviour, and
+// the routes behind it already accept STAFF.
+import BinSettings from "@/pages/partner/panels/BinSettings";
 import ContentPacks from "@/pages/staff/panels/ContentPacks";
 import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
@@ -52,7 +56,7 @@ import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
 type ViewKey =
   | "overview"
-  | "devices" | "pairing" | "commands" | "camera" | "deviceops"
+  | "devices" | "pairing" | "commands" | "camera" | "deviceops" | "binsettings"
   | "sessions" | "review" | "alerts"
   | "firmware" | "content" | "notifications"
   | "shops" | "users" | "leads";
@@ -74,6 +78,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { key: "commands", label: "Commands", icon: Terminal },
       { key: "camera", label: "Live Camera", icon: Camera },
       { key: "deviceops", label: "Device Ops", icon: Wrench },
+      { key: "binsettings", label: "Bin Settings", icon: SlidersHorizontal },
     ],
   },
   {
@@ -112,6 +117,7 @@ const PAGE_META: Record<ViewKey, { title: string; description: string }> = {
   commands: { title: "Commands", description: "Queue commands to a bin and track acknowledgement." },
   camera: { title: "Live Camera", description: "On-demand snapshots straight from a bin's camera." },
   deviceops: { title: "Device Ops", description: "Firmware targets and per-bin operational settings." },
+  binsettings: { title: "Bin Settings", description: "Fill calibration, accepted items, and fire detection for any bin — the same controls partners have." },
   sessions: { title: "Sessions", description: "Disposal sessions across the fleet — filter, page, export." },
   review: { title: "Review", description: "Approve or reject detected drops from the review queue." },
   alerts: { title: "Alerts", description: "Active and resolved device alerts." },
@@ -564,6 +570,34 @@ export default function StaffDashboard() {
           {view === "camera" && <LiveCamera enabled={staffEnabled} />}
           {view === "firmware" && <Firmware enabled={staffEnabled} />}
           {view === "deviceops" && <DeviceOps enabled={staffEnabled} />}
+
+          {view === "binsettings" && (
+            <div className="space-y-3">
+              {/* Staff can edit ANY bin, including one whose shop was deleted
+                  (shopId null) — those are unreachable from the partner UI by
+                  design, so staff are the only ones who can fix them. */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Bin</CardTitle>
+                  <select
+                    className="border rounded px-2 py-1 text-sm mt-2 w-fit"
+                    value={selectedDeviceId ?? ""}
+                    onChange={(e) => setSelectedDeviceId(Number(e.target.value))}
+                    data-testid="select-binsettings-device"
+                  >
+                    <option value="">Select a bin…</option>
+                    {devices.map((d) => (
+                      <option key={d.id} value={d.id}>{d.serial}</option>
+                    ))}
+                  </select>
+                </CardHeader>
+              </Card>
+              <BinSettings
+                device={devices.find((d) => d.id === selectedDeviceId) ?? null}
+                enabled={staffEnabled && !!selectedDeviceId}
+              />
+            </div>
+          )}
           {view === "content" && <ContentPacks enabled={staffEnabled} />}
           {view === "notifications" && <StaffNotifications enabled={staffEnabled} />}
 

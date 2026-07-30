@@ -29,7 +29,8 @@ export default function ClaimPage() {
 
   // Auto-claim if signed in customer and not claimed
   useEffect(() => {
-    if (data && !data.claimed && user && role === "customer" && claimState === "idle") {
+    // Any signed-in account may claim — staff and partners have wallets too.
+    if (data && !data.claimed && user && claimState === "idle") {
       doClaim();
     }
   }, [data, user, role]);
@@ -91,8 +92,6 @@ export default function ClaimPage() {
               <Button className="w-full" onClick={() => setLocation(`/app/login?next=${encodeURIComponent(`/claim/${token}`)}`)} data-testid="button-signin">Sign In</Button>
               <Button variant="outline" className="w-full" onClick={() => setLocation(`/app/register?next=${encodeURIComponent(`/claim/${token}`)}`)} data-testid="button-register">Create Account</Button>
             </div>
-          ) : role !== "customer" ? (
-            <p className="text-sm text-center text-red-600">You must claim from a customer account.</p>
           ) : claimState === "loading" ? (
             <div className="flex justify-center"><Loader2 className="animate-spin" /></div>
           ) : claimState === "done" && claimResult ? (

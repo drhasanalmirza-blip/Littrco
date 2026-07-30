@@ -114,13 +114,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // the customer row exists, so the QR flow needs no second request.
       let claim: { ok: boolean; batteries?: number; error?: string } | undefined;
       if (typeof claimToken === "string" && claimToken.length > 0) {
-        const customer = await storage.getCustomerByUserId(r.user.id);
-        if (!customer) {
-          claim = { ok: false, error: "No customer profile for this account" };
-        } else {
-          const result = await claimSessionForCustomer(customer.id, claimToken);
-          claim = result.ok ? { ok: true, batteries: result.batteries } : { ok: false, error: result.error };
-        }
+        // ensure, not get: register() only provisions a customer row for role
+        // CUSTOMER, so a PARTNER signing up straight from a bin's QR code had no
+        // profile and lost the claim.
+        const customer = await storage.ensureCustomerForUser(r.user.id);
+        const result = await claimSessionForCustomer(customer.id, claimToken);
+        claim = result.ok ? { ok: true, batteries: result.batteries } : { ok: false, error: result.error };
       }
       res.json({
         user: { id: r.user.id, email: r.user.email, role: r.user.role },
@@ -220,18 +219,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ==================== CUSTOMER ====================
-  app.get("/api/customer/wallet", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    const customer = await storage.getCustomerByUserId(req.user!.id);
+  app.get("/api/customer/wallet", authMiddleware, asyncHandler(async (req, res) => {
+    const customer = await storage.ensureCustomerForUser(req.user!.id);
     if (!customer) return res.status(404).json({ error: "Customer profile not found" });
     const { balance, lifetimeEarned } = await storage.getBatteryBalance(customer.id);
     res.json({
       customer: { id: customer.id, publicId: customer.publicId },
       wallet: { pointsBalance: balance, lifetimeEarned },
     });
-  });
+  }));
 
-  app.get("/api/customer/transactions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    const customer = await storage.getCustomerByUserId(req.user!.id);
+  app.get("/api/customer/transactions", authMiddleware, asyncHandler(async (req, res) => {
+    const customer = await storage.ensureCustomerForUser(req.user!.id);
     if (!customer) return res.json([]);
     const txs = await storage.getBatteryTransactions(customer.id, 100);
     res.json(txs.map(t => ({
@@ -248,18 +247,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       description: t.description || DEFAULT_TX_DESCRIPTION[t.type],
       createdAt: t.createdAt,
     })));
-  });
+  }));
 
-  app.get("/api/customer/redemptions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    const customer = await storage.getCustomerByUserId(req.user!.id);
+  app.get("/api/customer/redemptions", authMiddleware, asyncHandler(async (req, res) => {
+    const customer = await storage.ensureCustomerForUser(req.user!.id);
     if (!customer) return res.json([]);
     res.json(await storage.getRedemptionsByCustomer(customer.id));
-  });
+  }));
 
   // Claimed drop history with shop names — powers the activity feed and the
   // earnings trend. Shaped by a pure mapper so the shape is unit-tested.
-  app.get("/api/customer/sessions", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    const customer = await storage.getCustomerByUserId(req.user!.id);
+  app.get("/api/customer/sessions", authMiddleware, asyncHandler(async (req, res) => {
+    const customer = await storage.ensureCustomerForUser(req.user!.id);
     if (!customer) return res.json([]);
     const q = z.object({
       limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -267,12 +266,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!q.success) return res.status(400).json({ error: "limit must be 1-200" });
     const rows = await storage.getClaimedSessionsByCustomer(customer.id, q.data.limit ?? 50);
     res.json(rows.map(mapCustomerSessionRow));
-  });
+  }));
 
   // Lifetime totals for the impact hero. Separate from /sessions because the
   // hero must not be derived from a capped list.
-  app.get("/api/customer/stats", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    const customer = await storage.getCustomerByUserId(req.user!.id);
+  app.get("/api/customer/stats", authMiddleware, asyncHandler(async (req, res) => {
+    const customer = await storage.ensureCustomerForUser(req.user!.id);
     if (!customer) {
       return res.json({
         lifetimeVapes: 0, lifetimeSessions: 0, lifetimeBatteries: 0,
@@ -280,16 +279,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
     }
     res.json(await storage.getCustomerImpactStats(customer.id));
-  });
+  }));
 
   app.get("/api/customer/store", async (_req, res) => {
     res.json(await storage.getActiveStoreItems("customer"));
   });
 
-  app.post("/api/customer/redeem", authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
+  app.post("/api/customer/redeem", authMiddleware, asyncHandler(async (req, res) => {
     const body = z.object({ itemId: z.number() }).safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: "itemId required" });
-    const customer = await storage.getCustomerByUserId(req.user!.id);
+    const customer = await storage.ensureCustomerForUser(req.user!.id);
     if (!customer) return res.status(404).json({ error: "Customer profile not found" });
     const item = await storage.getStoreItem(body.data.itemId);
     if (!item || !item.active) return res.status(404).json({ error: "Item not available" });
@@ -303,7 +302,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       customerId: customer.id, storeItemId: item.id, pointsSpent: item.pointsCost, status: "PENDING",
     });
     res.json({ ok: true, redemption, balance: balance - item.pointsCost });
-  });
+  }));
 
   // ==================== CLAIM FLOW ====================
   app.get("/api/claim/:token", claimLimiter, async (req, res) => {
@@ -321,13 +320,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  app.post("/api/customer/claim/:token", claimLimiter, authMiddleware, requireRole("CUSTOMER"), async (req, res) => {
-    const customer = await storage.getCustomerByUserId(req.user!.id);
+  app.post("/api/customer/claim/:token", claimLimiter, authMiddleware, asyncHandler(async (req, res) => {
+    const customer = await storage.ensureCustomerForUser(req.user!.id);
     if (!customer) return res.status(404).json({ error: "Customer profile not found" });
     const result = await claimSessionForCustomer(customer.id, req.params.token);
     if (!result.ok) return res.status(result.status).json({ error: result.error });
     res.json({ ok: true, batteries: result.batteries, balance: result.balance });
-  });
+  }));
 
   // ==================== PARTNER ====================
   app.get("/api/partner/shops", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {

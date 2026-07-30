@@ -67,7 +67,8 @@ export default function StorePage() {
     },
   });
 
-  if (!user || role !== 'customer') {
+  // Open to any signed-in account — see the note in customer/Dashboard.tsx.
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-4">
         <div className="text-center">

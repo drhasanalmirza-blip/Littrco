@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { useStore, apiRequest } from "@/lib/store";
+import { DashboardSwitcher } from "@/components/DashboardSwitcher";
 
 /**
  * Shared header for the staff/partner dashboards.
@@ -19,7 +20,7 @@ import { useStore, apiRequest } from "@/lib/store";
  *   password, and sign out. When signed out, only the plain theme toggle shows.
  */
 export default function DashboardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  const { user, theme, toggleTheme, tempUnit, setTempUnit, clearAuth } = useStore();
+  const { user, role, theme, toggleTheme, tempUnit, setTempUnit, clearAuth } = useStore();
   const [, setLocation] = useLocation();
 
   const signOut = async () => {
@@ -48,6 +49,12 @@ export default function DashboardHeader({ title, subtitle }: { title: string; su
       </div>
 
       <div className="flex items-center gap-1">
+        {/* Switch to this account's own customer wallet. Renders nothing for a
+            plain CUSTOMER, who has no second dashboard. The "My wallet" item in
+            the settings menu below goes to the same place, but a buried dropdown
+            entry is not a way to move between two dashboards you use daily. */}
+        {user && <DashboardSwitcher current={role === "staff" ? "staff" : "partner"} className="mr-1" />}
+
         {/* Leave dashboard — does NOT sign out */}
         <Button
           variant="ghost"
