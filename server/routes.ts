@@ -475,8 +475,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const err = await mutableShopError(req.user!.id, device.shopId);
       if (err) return res.status(403).json({ error: err });
     }
-    await storage.deleteDevice(device.id);
-    res.json({ ok: true });
+    // Same two-phase un-pair-then-remove as the staff route — see the long note
+    // on DELETE /api/staff/devices/:id. A partner removing their own bin should
+    // leave it on the setup portal, not holding a key nobody honours.
+    if (req.query.force === "true") {
+      await storage.deleteDevice(device.id);
+      return res.json({ ok: true, removed: true, unpaired: false });
+    }
+    await storage.enqueueCommand(device.id, "FACTORY_RESET", { removeAfter: true });
+    res.json({
+      ok: true,
+      removed: false,
+      pending: true,
+      message: "Un-pairing the bin — it will be removed once it confirms (usually within ~10s). Use Force remove if it never does.",
+    });
   });
 
   // Per-device settings editor
@@ -725,6 +737,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!body.success) return res.status(400).json({ error: "commandId required" });
     const c = await storage.ackCommand(body.data.commandId, req.device!.id, body.data.result);
     if (!c) return res.status(404).json({ error: "Command not found" });
+
+    // Completion of the two-phase bin removal (see DELETE /api/staff/devices/:id).
+    // The firmware acks FACTORY_RESET *before* erasing its key precisely so this
+    // ack still authenticates; by the time we delete the row the bin is already
+    // on its way back to the pairing portal.
+    if (c.type === "FACTORY_RESET" && (c.payload as any)?.removeAfter) {
+      await storage.deleteDevice(req.device!.id);
+      console.log(`[devices] bin ${req.device!.serial} un-paired and removed`);
+    }
     res.json({ ok: true });
   });
 
@@ -1035,10 +1056,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true, command: c });
   });
 
-  app.delete("/api/staff/devices/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
-    await storage.deleteDevice(Number(req.params.id));
-    res.json({ ok: true });
-  });
+  // Remove a bin — UNPAIRING IT FIRST.
+  //
+  // Deleting the row on its own leaves the physical bin holding a key nobody
+  // honours. It does eventually notice (three consecutive auth rejections trip
+  // cloudKeyRevoked and it reboots into the setup portal), but that is a failure
+  // path, not a handover: it takes several polls, it looks like an outage to
+  // anyone standing at the bin, and if the bin happens to be offline at the
+  // moment of deletion it can sit on a dead key indefinitely.
+  //
+  // So removal is two-phase. We queue FACTORY_RESET tagged `removeAfter`, and the
+  // row is deleted when the bin ACKS it (see the ack route) — by which point the
+  // bin has wiped its credentials and rebooted into the pairing portal, ready to
+  // be paired again. The device row must stay LIVE until then: deviceAuthMiddleware
+  // 403s a RETIRED device, and a bin that cannot authenticate cannot collect the
+  // very command that frees it.
+  //
+  // `?force=true` skips straight to deletion, for a bin that is dead, lost, or
+  // already unpaired and will never ack.
+  app.delete("/api/staff/devices/:id", authMiddleware, requireRole("STAFF"), asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const device = await storage.getDevice(id);
+    if (!device) return res.status(404).json({ error: "Device not found" });
+
+    const force = req.query.force === "true";
+    if (force) {
+      await storage.deleteDevice(id);
+      return res.json({ ok: true, removed: true, unpaired: false });
+    }
+
+    await storage.enqueueCommand(id, "FACTORY_RESET", { removeAfter: true });
+    res.json({
+      ok: true,
+      removed: false,
+      pending: true,
+      message: "Un-pairing the bin — it will be removed once it confirms (usually within ~10s). Use Force remove if it never does.",
+    });
+  }));
 
   app.get("/api/staff/shops", authMiddleware, requireRole("STAFF"), async (_req, res) => {
     res.json(await storage.getAllShops());

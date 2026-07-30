@@ -4,6 +4,8 @@ import {
   DEFAULT_DEVICE_SETTINGS,
   validateDeviceSettings,
   mergeDeviceSettings,
+  vocAnalogFromPct,
+  VOC_RECOMMENDED_PCT,
 } from "@shared/deviceSettings";
 
 describe("deviceSettingsSchema (spec §7)", () => {
@@ -102,7 +104,10 @@ describe("DEFAULT_DEVICE_SETTINGS", () => {
     expect(DEFAULT_DEVICE_SETTINGS.fill).toEqual({ emptyDistanceMm: 500, fullOffsetMm: 200 }); // HW fix R1 W1: 20 cm floor
     expect(DEFAULT_DEVICE_SETTINGS.fire?.mode).toBe(2);
     expect(DEFAULT_DEVICE_SETTINGS.fire?.enabled).toBe(true); // fire detection on by default
-    expect(DEFAULT_DEVICE_SETTINGS.fire?.vocAnalog).toBe(3072); // ≈75% of ADC range
+    // Tied to VOC_RECOMMENDED_PCT rather than a bare literal, so the default and
+    // the "Recommended" control in the UI cannot drift apart. 60% since 2026-07-29.
+    expect(DEFAULT_DEVICE_SETTINGS.fire?.vocAnalog).toBe(vocAnalogFromPct(VOC_RECOMMENDED_PCT));
+    expect(DEFAULT_DEVICE_SETTINGS.fire?.vocAnalog).toBe(2457); // = 60% of the 0-4095 ADC range
     expect(DEFAULT_DEVICE_SETTINGS.fire?.onBoth).toEqual(["DISPLAY", "ALARM"]);
     expect(DEFAULT_DEVICE_SETTINGS.session).toEqual({ stackWindowSec: 6, qrTtlSec: 30 });
     expect(DEFAULT_DEVICE_SETTINGS.camera).toEqual({ idleSnapshotSec: 8 });

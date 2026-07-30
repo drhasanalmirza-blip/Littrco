@@ -208,6 +208,7 @@ function StaffBinActions({
   resetPending,
   onFactoryReset,
   onRemove,
+  onForceRemove,
   removePending,
 }: {
   device: any;
@@ -216,6 +217,7 @@ function StaffBinActions({
   resetPending: boolean;
   onFactoryReset: () => void;
   onRemove: () => void;
+  onForceRemove: () => void;
   removePending: boolean;
 }) {
   const [resetOpen, setResetOpen] = useState(false);
@@ -285,6 +287,7 @@ function StaffBinActions({
         open={removeOpen}
         onOpenChange={setRemoveOpen}
         onConfirm={onRemove}
+        onForce={onForceRemove}
         pending={removePending}
       />
     </>
@@ -368,12 +371,25 @@ export default function StaffDashboard() {
   });
 
   const removeDevice = useMutation({
-    mutationFn: async (deviceId: number) => {
-      const r = await apiRequest(`/api/staff/devices/${deviceId}`, { method: "DELETE" });
+    mutationFn: async ({ deviceId, force }: { deviceId: number; force?: boolean }) => {
+      const r = await apiRequest(
+        `/api/staff/devices/${deviceId}${force ? "?force=true" : ""}`,
+        { method: "DELETE" },
+      );
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
-    onSuccess: () => { toast({ title: "Bin removed" }); qc.invalidateQueries({ queryKey: ["/api/staff/devices"] }); },
+    // The normal path does NOT remove the row yet — it queues the un-pair and the
+    // bin's ack completes the removal. Saying "Bin removed" there would be a lie
+    // the operator finds out about when the card is still on screen.
+    onSuccess: (res: any) => {
+      toast(
+        res?.removed
+          ? { title: "Bin removed", description: "Deleted without un-pairing — it keeps its old key until it is rejected a few times." }
+          : { title: "Un-pairing the bin", description: res?.message || "It will disappear once it confirms, usually within ~10s." },
+      );
+      qc.invalidateQueries({ queryKey: ["/api/staff/devices"] });
+    },
     onError: (e: any) => toast({ title: "Failed to remove", description: e.message, variant: "destructive" }),
   });
 
@@ -483,7 +499,8 @@ export default function StaffDashboard() {
                         onResetSd={() => enqueue.mutate({ deviceId: d.id, type: "FORMAT_SD" })}
                         resetPending={enqueue.isPending}
                         onFactoryReset={() => enqueue.mutate({ deviceId: d.id, type: "FACTORY_RESET" })}
-                        onRemove={() => removeDevice.mutate(d.id)}
+                        onRemove={() => removeDevice.mutate({ deviceId: d.id })}
+                        onForceRemove={() => removeDevice.mutate({ deviceId: d.id, force: true })}
                         removePending={removeDevice.isPending}
                       />
                     }

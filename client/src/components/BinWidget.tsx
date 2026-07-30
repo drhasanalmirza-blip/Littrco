@@ -204,13 +204,17 @@ export function RemoveBinDialog({
   deviceId,
   deviceName,
   onConfirm,
+  onForce,
   pending,
   open,
   onOpenChange,
 }: {
   deviceId: number;
   deviceName: string;
+  /** Normal path: un-pair the bin, then remove it once it confirms. */
   onConfirm: () => void;
+  /** Escape hatch: delete the row now, without waiting for the bin. */
+  onForce?: () => void;
   pending?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -234,19 +238,42 @@ export function RemoveBinDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Remove {deviceName}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This permanently removes the bin and its history from your dashboard.
-            This can't be undone.
+          <AlertDialogDescription asChild>
+            <div className="space-y-2">
+              <p>
+                The bin is un-paired first: it erases its pairing credentials and
+                reboots into the setup portal, ready to be paired again. It leaves
+                the dashboard once it confirms — usually within about ten seconds.
+              </p>
+              <p>This permanently removes the bin and its history. It can't be undone.</p>
+              {onForce && (
+                <p className="text-xs">
+                  A bin that is offline, dead, or already un-paired will never
+                  confirm. <span className="font-medium">Force remove</span> deletes
+                  it here and now — but that bin keeps its old key and only falls
+                  back to the portal by itself, after a few rejected calls.
+                </p>
+              )}
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel data-testid={`button-cancel-remove-bin-${deviceId}`}>Cancel</AlertDialogCancel>
+          {onForce && (
+            <AlertDialogAction
+              onClick={onForce}
+              className="border border-red-300 bg-transparent text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+              data-testid={`button-force-remove-bin-${deviceId}`}
+            >
+              Force remove
+            </AlertDialogAction>
+          )}
           <AlertDialogAction
             onClick={onConfirm}
             className="bg-red-600 text-white hover:bg-red-700"
             data-testid={`button-confirm-remove-bin-${deviceId}`}
           >
-            Remove
+            Un-pair &amp; remove
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

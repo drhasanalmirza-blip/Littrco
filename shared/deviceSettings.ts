@@ -127,7 +127,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
     enabled: true, // always on unless explicitly disabled (partner disable notifies staff)
     mode: 2,
     tempC: 40,
-    vocAnalog: 3072, // ≈75% of the 0–4095 ADC range (recommended to avoid false alarms)
+    vocAnalog: 2457, // = 60% of the 0–4095 ADC range (VOC_RECOMMENDED_PCT)
     vocWarmupSec: 30,
     onBoth: ["DISPLAY", "ALARM"],
     onTempOnly: ["DISPLAY"],
@@ -159,9 +159,16 @@ export function validateDeviceSettings(json: unknown): DeviceSettingsValidation 
 
 // VOC threshold is stored as the sensor's raw ADC value (0–4095) because the
 // firmware compares raw readings; UIs present it as a 0–100% slider.
-// Recommended setting: 75% — high enough to avoid false alarms from vaping/smoke.
+//
+// Recommended setting: 60% (= 2457 raw). Lowered from 75% on 2026-07-29 at the
+// owner's request. NOTE this makes the alarm MORE sensitive, not less — a bin
+// that never reached 75% will now trip sooner. That is only safe because the
+// alarm can finally stand down on its own: it auto-clears once readings hold
+// below 90% of the threshold for a minute, and staff/partners have a Clear
+// alarm control (HW_FIXES_R6). Before those existed, a lower threshold would
+// have meant more bins latched on the fire screen with no way back.
 export const VOC_ANALOG_MAX = 4095;
-export const VOC_RECOMMENDED_PCT = 75;
+export const VOC_RECOMMENDED_PCT = 60;
 
 export function vocPctFromAnalog(analog: number): number {
   return Math.round(Math.min(Math.max(analog / VOC_ANALOG_MAX, 0), 1) * 100);

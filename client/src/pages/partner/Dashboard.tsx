@@ -153,13 +153,22 @@ export default function PartnerDashboard() {
   });
 
   const removeDevice = useMutation({
-    mutationFn: async (deviceId: number) => {
-      const r = await apiRequest(`/api/partner/devices/${deviceId}`, { method: "DELETE" });
+    mutationFn: async ({ deviceId, force }: { deviceId: number; force?: boolean }) => {
+      const r = await apiRequest(
+        `/api/partner/devices/${deviceId}${force ? "?force=true" : ""}`,
+        { method: "DELETE" },
+      );
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
-    onSuccess: () => {
-      toast({ title: "Bin removed" });
+    // The normal path queues the un-pair; the bin's ack completes the removal.
+    // Reporting "Bin removed" there would be wrong — the card is still on screen.
+    onSuccess: (res: any) => {
+      toast(
+        res?.removed
+          ? { title: "Bin removed", description: "Deleted without un-pairing — it keeps its old key until it is rejected a few times." }
+          : { title: "Un-pairing the bin", description: res?.message || "It will disappear once it confirms, usually within ~10s." },
+      );
       qc.invalidateQueries({ queryKey: [`/api/partner/shops/${shopId}/devices`] });
     },
     onError: (e: any) => toast({ title: "Failed to remove", description: e.message, variant: "destructive" }),
@@ -264,7 +273,8 @@ export default function PartnerDashboard() {
                           <RemoveBinDialog
                             deviceId={d.id}
                             deviceName={d.label && d.label.trim() !== "" ? d.label : d.serial}
-                            onConfirm={() => removeDevice.mutate(d.id)}
+                            onConfirm={() => removeDevice.mutate({ deviceId: d.id })}
+                            onForce={() => removeDevice.mutate({ deviceId: d.id, force: true })}
                             pending={removeDevice.isPending}
                           />
                         </>

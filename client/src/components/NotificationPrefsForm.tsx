@@ -13,6 +13,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { X, Plus, Phone, Thermometer, Wind } from "lucide-react";
+// Single source of truth for the recommended VOC threshold — the same constant
+// the bin's default settings are built from, so the "Recommended" shortcut here
+// can never drift away from what a bin actually ships with.
+import { VOC_RECOMMENDED_PCT } from "@shared/deviceSettings";
 
 export interface NotificationChannels {
   email: boolean;
@@ -269,7 +273,7 @@ export default function NotificationPrefsForm({
               <Switch
                 checked={events.vocThresholdPct != null}
                 onCheckedChange={(v) =>
-                  setEvents((prev) => ({ ...prev, vocThresholdPct: v ? 75 : null }))
+                  setEvents((prev) => ({ ...prev, vocThresholdPct: v ? VOC_RECOMMENDED_PCT : null }))
                 }
                 data-testid="switch-voc-threshold"
               />
@@ -285,7 +289,7 @@ export default function NotificationPrefsForm({
                   data-testid="slider-voc-threshold"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Recommended: <button type="button" className="underline" onClick={() => setEvents((p) => ({ ...p, vocThresholdPct: 75 }))}>75%</button> — avoids frequent false alarms from nearby vaping or smoke.
+                  Recommended: <button type="button" className="underline" onClick={() => setEvents((p) => ({ ...p, vocThresholdPct: VOC_RECOMMENDED_PCT }))}>{VOC_RECOMMENDED_PCT}%</button> — the bin stands itself down once levels normalise.
                 </p>
               </>
             )}
