@@ -462,21 +462,17 @@ export default function StaffDashboard() {
                     device={d}
                     tempUnit={tempUnit}
                     canManage
+                    showVocRaw
                     shopName={shops.find(s => s.id === d.shopId)?.name || (d.shopId ? `Shop #${d.shopId}` : "Unassigned")}
                     onChanged={() => refetchDevices()}
                     extraStats={[
                       { label: "RSSI", value: d.wifiRssi ?? "—" },
                       { label: "SD free", value: d.sdFreeMb != null ? `${d.sdFreeMb} MB` : "—" },
-                      // Temp diagnostics (HW_FIXES_R3): "0 devices" (red) ⇒ the DS18B20
-                      // isn't enumerating on the 1-Wire bus (wiring / GPIO45 strapping);
-                      // a count with a raw of 85.0/−127 ⇒ probe present but not ready.
-                      {
-                        label: "Temp bus",
-                        value: d.tempDevices == null ? "—"
-                          : d.tempDevices === 0
-                            ? <span className="text-red-600 dark:text-red-500">0 devices</span>
-                            : `${d.tempDevices} dev`,
-                      },
+                      // "Temp bus" (the 1-Wire device count) removed — it was a
+                      // bring-up aid for the GPIO45 strapping problem, which is
+                      // settled: the probe lives on GPIO2 now. Overview still
+                      // surfaces a 0-device bus as an attention item, so the fault
+                      // is not going unreported.
                       { label: "Temp raw", value: d.tempRawC != null ? `${d.tempRawC.toFixed(1)}°C` : "—" },
                       { label: "Errors", value: d.errorLog ? d.errorLog.slice(0, 40) : "—" },
                     ]}

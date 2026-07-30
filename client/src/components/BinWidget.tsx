@@ -43,6 +43,14 @@ export interface BinWidgetProps {
   actions?: React.ReactNode;
   /** Additional stat tiles appended after Fill/Temp/VOC/Vapes (staff diagnostics). */
   extraStats?: { label: string; value: React.ReactNode }[];
+  /**
+   * Show the VOC sensor's raw ADC count alongside the percentage, e.g. "31% (1254)".
+   * Staff only: the percentage is what a partner acts on, while the raw count is
+   * what the fire threshold is actually stored and compared in (firmware compares
+   * raw, the UI presents 0-100%), so it is the number you need when calibrating a
+   * bin or explaining why an alarm did or did not fire.
+   */
+  showVocRaw?: boolean;
 }
 
 function tempDisplay(tempC: number | null | undefined, unit: "C" | "F"): string {
@@ -67,6 +75,7 @@ export default function BinWidget({
   onChanged,
   actions,
   extraStats,
+  showVocRaw = false,
 }: BinWidgetProps) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
@@ -74,7 +83,12 @@ export default function BinWidget({
   const [saving, setSaving] = useState(false);
 
   const displayName = device.label && device.label.trim() !== "" ? device.label : device.serial;
-  const vocPct = device.vocRaw != null ? `${vocPctFromAnalog(device.vocRaw)}%` : "—";
+  const vocPct =
+    device.vocRaw == null
+      ? "—"
+      : showVocRaw
+        ? `${vocPctFromAnalog(device.vocRaw)}% (${device.vocRaw})`
+        : `${vocPctFromAnalog(device.vocRaw)}%`;
 
   // Simple temp tone: warn hot bins
   const tempTone =
