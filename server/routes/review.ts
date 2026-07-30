@@ -237,8 +237,13 @@ router.post("/api/staff/review/drops/:dropId/approve", authMiddleware, requireRo
 router.post("/api/staff/review/drops/:dropId/reject", authMiddleware, requireRole("STAFF"), async (req, res) => {
   const dropId = Number(req.params.dropId);
   if (!Number.isInteger(dropId) || dropId < 1) return res.status(400).json({ error: "Invalid drop id" });
-  const body = z.object({ reason: z.string().trim().min(1).max(1000) }).safeParse(req.body);
-  if (!body.success) return res.status(400).json({ error: "reason required" });
+  // The reason is OPTIONAL. Most rejections are self-evident from the photos, and
+  // forcing a sentence just produced "n/a" and "not a vape" — text that costs the
+  // reviewer time and tells the next reader nothing. An omitted/blank reason is
+  // stored as null and rendered as "no reason given", which is honest.
+  const body = z.object({ reason: z.string().trim().max(1000).optional() }).safeParse(req.body ?? {});
+  if (!body.success) return res.status(400).json({ error: "reason must be 1000 characters or fewer" });
+  const reason = body.data.reason && body.data.reason.length > 0 ? body.data.reason : null;
   const userId = req.user!.id;
 
   // Spec §6: everything in ONE transaction
@@ -252,14 +257,14 @@ router.post("/api/staff/review/drops/:dropId/reject", authMiddleware, requireRol
     if (!session) return null;
 
     const rates = await loadRates(tx, session);
-    const plan = planReject(drop, session, rates, body.data.reason);
+    const plan = planReject(drop, session, rates, reason);
     if (plan) await applyPlan(tx, session, plan);
 
     const [updated] = await tx.update(drops).set({
       reviewStatus: "REJECTED",
       reviewedByUserId: userId,
       reviewedAt: new Date(),
-      reviewNote: body.data.reason,
+      reviewNote: reason,
       ...(plan ? plan.dropUpdate : {}),
     }).where(eq(drops.id, drop.id)).returning();
     return updated;

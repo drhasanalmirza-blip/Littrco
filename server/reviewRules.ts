@@ -87,7 +87,9 @@ export function planReject(
   drop: ReviewDropState,
   session: ReviewSessionState,
   rates: ReviewRates,
-  reason: string,
+  // Optional — see the reject route. Ledger descriptions fall back to a plain
+  // "rejected in review" rather than embedding an empty string.
+  reason: string | null,
 ): RevocationPlan | null {
   if (drop.reviewStatus === "REJECTED") return null;
 
@@ -114,7 +116,7 @@ export function planReject(
       amount: -effectiveShopPointsPerVape(rates),
       type: "ADJUST",
       status: "POSTED",
-      description: `Drop #${drop.id} rejected: ${reason}`,
+      description: reason ? `Drop #${drop.id} rejected: ${reason}` : `Drop #${drop.id} rejected in review`,
     };
   }
 
@@ -126,7 +128,9 @@ export function planReject(
       amount: -rates.batteriesPerVape,
       type: "ADJUST",
       status: "POSTED",
-      description: `Drop #${drop.id} rejected (session #${session.id}): ${reason}`,
+      description: reason
+        ? `Drop #${drop.id} rejected (session #${session.id}): ${reason}`
+        : `Drop #${drop.id} rejected in review (session #${session.id})`,
     };
   } else if (!session.offline) {
     // FINALIZED-but-unclaimed (or EXPIRED): fix the estimate so a later claim

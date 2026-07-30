@@ -85,6 +85,16 @@ describe("planReject — claimed session", () => {
     expect(plan.batteryEntry!.description).toContain("blurry photo");
   });
 
+  it("falls back to a plain description when no reason was given", () => {
+    // The reason is optional — a reviewer who does not type one must still get a
+    // readable ledger row, not "Drop #555 rejected: null".
+    const plan = planReject(drop({ id: 555 }), session(), rates(), null)!;
+    expect(plan.shopPointEntry!.description).toBe("Drop #555 rejected in review");
+    expect(plan.batteryEntry!.description).toContain("Drop #555 rejected in review");
+    expect(plan.shopPointEntry!.description).not.toContain("null");
+    expect(plan.batteryEntry!.description).not.toContain("null");
+  });
+
   it("skips the shop entry when the session has no shop", () => {
     const plan = planReject(drop(), session({ shopId: null }), rates(), "x")!;
     expect(plan.shopPointEntry).toBeNull();

@@ -111,8 +111,10 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
   });
 
   const reject = useMutation({
-    mutationFn: ({ dropId, reason }: { dropId: number; reason: string }) =>
-      apiSend(`/api/staff/review/drops/${dropId}/reject`, "POST", { reason }),
+    // reason omitted entirely when blank — the server stores null rather than an
+    // empty string, so "no reason given" is distinguishable from "reason: ''".
+    mutationFn: ({ dropId, reason }: { dropId: number; reason?: string }) =>
+      apiSend(`/api/staff/review/drops/${dropId}/reject`, "POST", reason ? { reason } : {}),
     onSuccess: () => {
       toast({ title: "Drop rejected" });
       invalidate();
@@ -129,7 +131,8 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
     setRejectDropId(dropId);
   };
   const busy = approve.isPending || reject.isPending;
-  const reasonValid = rejectReason.trim().length >= 1 && rejectReason.trim().length <= 1000;
+  // Only an over-long reason is invalid now — an empty one is fine.
+  const reasonValid = rejectReason.trim().length <= 1000;
 
   return (
     <div className="space-y-3">
@@ -335,9 +338,10 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
                 </div>
               )}
 
-              {detail.drop?.reviewNote && (
+              {detail.drop?.reviewStatus === "REJECTED" && (
                 <div className="rounded border border-red-300 dark:border-red-900 p-3 text-xs">
-                  <span className="font-semibold">Reject reason: </span>{detail.drop.reviewNote}
+                  <span className="font-semibold">Reject reason: </span>
+                  {detail.drop.reviewNote || <span className="text-gray-500">no reason given</span>}
                 </div>
               )}
             </div>
@@ -369,14 +373,14 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
             <DialogTitle>Reject drop #{rejectDropId}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="reject-reason" className="text-xs">Reason (required, 1–1000 chars)</Label>
+            <Label htmlFor="reject-reason" className="text-xs">Reason (optional)</Label>
             <Textarea
               id="reject-reason"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               maxLength={1000}
               rows={4}
-              placeholder="Why is this drop being rejected? Points will be revoked."
+              placeholder="Optional — add a note only if it would not be obvious from the photos. Points will be revoked either way."
               data-testid="input-reject-reason"
             />
             <div className="text-xs text-gray-500 text-right">{rejectReason.trim().length}/1000</div>
@@ -392,7 +396,10 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
             <Button
               variant="destructive"
               disabled={!reasonValid || reject.isPending}
-              onClick={() => rejectDropId != null && reject.mutate({ dropId: rejectDropId, reason: rejectReason.trim() })}
+              onClick={() => rejectDropId != null && reject.mutate({
+                dropId: rejectDropId,
+                reason: rejectReason.trim() || undefined,
+              })}
               data-testid="button-reject-confirm"
             >
               Reject & revoke
