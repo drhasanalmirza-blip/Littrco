@@ -85,9 +85,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 
 // Fill calibration is stored in millimetres (firmware contract) but presented to
-// partners in centimetres, bounded 20–100 cm (= 200–1000 mm). Convert at the UI
+// partners in centimetres, bounded 5–100 cm (= 50–1000 mm). Convert at the UI
 // edge only so the stored `fill.*Mm` values stay in mm.
-const FILL_CM_MIN = 20;
+//
+// The 5 cm floor is the schema minimum for emptyDistanceMm (shared/deviceSettings
+// clamps it to 50–5000 mm), and it is roughly the practical limit of the
+// ultrasonic sensor itself: HC-SR04-class modules bottom out around 2–3 cm and get
+// unreliable below ~5 cm, so a calibration set under this would read noise.
+const FILL_CM_MIN = 5;
 const FILL_CM_MAX = 100;
 const mmToCm = (mm: number) => mm / 10;
 const cmToMm = (cm: number) => Math.round(cm * 10);
@@ -197,6 +202,23 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
       const next = ACTIONS.filter((a) => set.has(a));
       return { ...f, fire: { ...fire, [group]: next } };
     });
+
+  // Stand the bin down from a latched fire alarm. Separate from the settings save
+  // because it is an ACTION, not a setting: it queues a CLEAR_FIRE command for the
+  // bin and resolves the open FIRE alert immediately so the dashboard clears even
+  // if the bin is offline right now.
+  const clearFireMut = useMutation({
+    mutationFn: () => apiSend<any>(`/api/partner/devices/${id}/clear-fire`, "POST", {}),
+    onSuccess: () =>
+      toast({
+        title: "Fire alarm cleared",
+        description:
+          "The bin stands down on its next poll (within ~10s) and stays hushed for 5 minutes. " +
+          "A rising temperature still re-alarms.",
+      }),
+    onError: (e: any) =>
+      toast({ title: "Couldn't clear", description: e.message, variant: "destructive" }),
+  });
 
   const saveMut = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -352,7 +374,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               <CardTitle>Fill calibration</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Ultrasonic FILL sensor — how far it reads to the trash. Distances
-                are in centimetres (20–100 cm).
+                are in centimetres (5–100 cm).
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -521,6 +543,28 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
                   onCheckedChange={(v) => setSection("fire", { enabled: v })}
                   data-testid="switch-fire-enabled"
                 />
+              </Row>
+
+              {/* The way OUT of a false alarm. The bin latches its fire state, and
+                  until now nothing in the UI could unlatch it — a VOC spike from a
+                  vape or a solvent pinned the screen and siren indefinitely, and a
+                  REBOOT did not help because the gas sensor stays hot across a soft
+                  reset and simply re-triggered. Not gated on the alarm being
+                  active: the dashboard cannot always know, and the command is
+                  harmless when the bin is already clear. */}
+              <Row
+                label="Clear fire alarm"
+                hint="Stands the bin down from a false alarm and hushes it for 5 minutes. A rising temperature still re-alarms."
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => clearFireMut.mutate()}
+                  disabled={clearFireMut.isPending}
+                  data-testid="button-clear-fire"
+                >
+                  {clearFireMut.isPending ? "Clearing…" : "Clear alarm"}
+                </Button>
               </Row>
               {fire.enabled === false && (
                 <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">

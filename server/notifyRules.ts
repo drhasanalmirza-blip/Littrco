@@ -45,7 +45,9 @@ export function severityAtLeast(sev: AlertSeverity, min: AlertSeverity): boolean
   return SEVERITY_RANK[sev] >= SEVERITY_RANK[min];
 }
 
-export const DEVICE_EVENT_TYPES = ["FIRE", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR", "UPDATE_FAILED"] as const;
+// FIRE_CLEAR is an all-clear, not an alert: it RESOLVES the open FIRE alert
+// instead of creating a row of its own. See handleDeviceEvent.
+export const DEVICE_EVENT_TYPES = ["FIRE", "FIRE_CLEAR", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR", "UPDATE_FAILED"] as const;
 export type DeviceEventType = (typeof DEVICE_EVENT_TYPES)[number];
 
 // ==================== Timing constants ====================

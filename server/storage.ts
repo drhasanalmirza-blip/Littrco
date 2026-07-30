@@ -29,7 +29,7 @@ import {
   pickupRequests, customers, wallets, transactions, storeItems, redemptions,
   rewardConfigs, devices, pairingNonces, deviceSettings, deviceCommands,
   dropSessions, drops, photos, batteryTransactions, shopPointTransactions,
-  shopRewards, shopRewardRedemptions, deviceLogs, selfReports,
+  shopRewards, shopRewardRedemptions, deviceLogs, selfReports, alerts,
 } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, and, gt, lt, sql, inArray, isNull } from "drizzle-orm";
@@ -478,6 +478,17 @@ export const storage = {
     if (p.expiresAt < new Date()) return undefined;
     const [updated] = await db.update(pairingNonces).set({ consumedAt: new Date() }).where(and(eq(pairingNonces.id, p.id), isNull(pairingNonces.consumedAt))).returning();
     return updated;
+  },
+
+  // Mark every still-open alert of `type` for a device as resolved. Used by the
+  // fire stand-down path so the dashboard clears the moment an operator acts,
+  // without waiting for the bin to come back online and report FIRE_CLEAR.
+  async resolveOpenAlerts(deviceId: number, type: string): Promise<number> {
+    const rows = await db.update(alerts)
+      .set({ resolvedAt: new Date() })
+      .where(and(eq(alerts.deviceId, deviceId), eq(alerts.type, type), isNull(alerts.resolvedAt)))
+      .returning({ id: alerts.id });
+    return rows.length;
   },
 
   // ====== Device settings ======

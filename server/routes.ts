@@ -505,6 +505,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.getDeviceLogs(device.id, { limit, afterId }));
   });
 
+  // Stand a bin down from a latched fire alarm. Deliberately its OWN route rather
+  // than opening the general staff command endpoint to partners — a partner must
+  // be able to clear a false alarm on their own bin without also gaining
+  // FORMAT_SD/REBOOT. Same ownership check as the settings route.
+  //
+  // Resolving the alert here as well as on the device's FIRE_CLEAR event means the
+  // dashboard clears immediately, even if the bin is offline and only picks the
+  // command up later.
+  app.post("/api/partner/devices/:id/clear-fire", authMiddleware, requireRole("PARTNER", "STAFF"), asyncHandler(async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF") {
+      if (!device.shopId) return res.status(403).json({ error: "Not your device" });
+      const err = await mutableShopError(req.user!.id, device.shopId);
+      if (err) return res.status(403).json({ error: err });
+    }
+    const c = await storage.enqueueCommand(device.id, "CLEAR_FIRE", {});
+    await storage.resolveOpenAlerts(device.id, "FIRE");
+    res.json({ ok: true, command: c });
+  }));
+
   app.put("/api/partner/devices/:id/settings", authMiddleware, requireRole("PARTNER", "STAFF"), async (req, res) => {
     const device = await storage.getDevice(Number(req.params.id));
     if (!device) return res.status(404).json({ error: "Device not found" });
@@ -522,6 +543,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const storedJson = (existing?.settingsJson as Record<string, unknown>) ?? {};
     const merged = mergeDeviceSettings(storedJson, validated.value);
     const s = await storage.upsertDeviceSettings(device.id, merged);
+
+    // Nudge the bin instead of making it wait out its 60 s settings poll. The
+    // command poll runs every 10 s, so a calibration change now reaches the
+    // hardware in seconds — which is the difference between "saved" feeling like
+    // it worked and the owner concluding the bin ignored them. Best-effort: if the
+    // enqueue fails the poll still picks the change up on its normal cadence.
+    try {
+      await storage.enqueueCommand(device.id, "REFRESH_SETTINGS");
+    } catch (e) {
+      console.warn("[settings] REFRESH_SETTINGS enqueue failed", e);
+    }
 
     // Fire detection is on by default and staying on is a safety expectation.
     // A PARTNER may turn it off, but doing so notifies LITTR staff (oversight).
@@ -627,7 +659,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Device-initiated alerts — fire and warnings are detected on-device (spec §2.2)
   app.post("/api/device/events", deviceAuthMiddleware, deviceLimiter, async (req, res) => {
     const body = z.object({
-      type: z.enum(["FIRE", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR", "UPDATE_FAILED"]),
+      // FIRE_CLEAR is the bin standing down — either its readings came back to
+      // normal or an operator disarmed it. It resolves the open FIRE alert rather
+      // than raising a new one, so the dashboard stops showing a fire that ended.
+      type: z.enum(["FIRE", "FIRE_CLEAR", "TEMP_HIGH", "VOC_HIGH", "SD_ERROR", "CAMERA_ERROR", "UPDATE_FAILED"]),
       tempC: z.number().optional(),
       vocAnalog: z.number().optional(),
       fillPercent: z.number().optional(),
@@ -668,7 +703,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const have = Number((req.query.version as string) || 0);
     const s = await storage.getDeviceSettings(req.device!.id);
     if (!s) return res.json({ version: 0, settings: {} });
-    if (s.version <= have) return res.status(304).end();
+    // 304 ONLY on an exact match. `<=` meant that a device whose cached version
+    // ran AHEAD of ours could never be corrected: the settings row is recreated
+    // at version 1 whenever it is deleted (device removed and re-added, a table
+    // rebuilt, a restored backup), while the device keeps its old number in NVS.
+    // Every subsequent save adds 1, so the owner could edit the calibration
+    // repeatedly and the bin would 304 every poll and never see any of it.
+    // Serving the full settings on a mismatch in either direction lets the
+    // device resynchronise downward on its very next poll.
+    if (s.version === have) return res.status(304).end();
     res.json({ version: s.version, settings: s.settingsJson });
   });
 

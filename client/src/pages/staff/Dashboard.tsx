@@ -507,7 +507,14 @@ export default function StaffDashboard() {
                       {/* UPDATE_ASSETS = M4 content packs: bin pulls the newest active
                           pack (staff Content page) and pushes changed wallpapers to the
                           HMI screen without a reboot. */}
-                      {["RESET_FILL_AND_COUNT", "REBOOT", "TAKE_PHOTO", "PING", "UPDATE_ASSETS"].map(t => (
+                      {/* CLEAR_FIRE = stand the bin down from a latched fire alarm
+                          and hush it for 5 minutes. Before this there was no way
+                          out from the dashboard at all: a VOC spike pinned the bin
+                          on its fire screen, and even a REBOOT came straight back
+                          alarming because the gas sensor stays hot across a soft
+                          reset. Kept next to the destructive commands rather than
+                          hidden, since it is what an operator reaches for first. */}
+                      {["RESET_FILL_AND_COUNT", "REBOOT", "TAKE_PHOTO", "PING", "UPDATE_ASSETS", "CLEAR_FIRE"].map(t => (
                         <Button key={t} size="sm" variant="outline" onClick={() => enqueue.mutate({ deviceId: selectedDeviceId, type: t })} data-testid={`button-cmd-${t}`}>{t}</Button>
                       ))}
                     </div>

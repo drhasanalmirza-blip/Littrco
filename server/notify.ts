@@ -341,6 +341,19 @@ export async function handleDeviceEvent(device: Device, evt: unknown): Promise<n
       if (event[k] !== undefined) dataJson[k] = event[k];
     }
 
+    // All-clear: resolve any open FIRE alert for this device rather than raising
+    // a new one. Without this the dashboard kept showing a fire long after the
+    // bin had stood down, and there was no way to clear it from the UI at all.
+    if (event.type === "FIRE_CLEAR") {
+      const resolved = await db
+        .update(alerts)
+        .set({ resolvedAt: new Date() })
+        .where(and(eq(alerts.deviceId, device.id), eq(alerts.type, "FIRE"), isNull(alerts.resolvedAt)))
+        .returning({ id: alerts.id });
+      console.log(`[notify] FIRE_CLEAR device=${device.id} resolved ${resolved.length} alert(s)`);
+      return resolved[0]?.id ?? null;
+    }
+
     // 10-minute unresolved-alert refresh dedupe (§2.2): update dataJson, don't
     // duplicate — and don't re-notify or re-run fire actions.
     const [existing] = await db
