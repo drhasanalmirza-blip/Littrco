@@ -3,6 +3,7 @@ import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { useStore } from "@/lib/store";
@@ -102,9 +103,16 @@ function ThemeInitializer() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeInitializer />
-      <Router />
-      <Toaster />
+      {/* Radix tooltips need a Provider above every Tooltip. Mounting it once at
+          the root means a panel can add an explainer without also having to
+          remember the plumbing — and a tooltip that silently fails to render is
+          exactly the kind of thing nobody notices in review. 300 ms so hovering
+          across a row of buttons does not strobe. */}
+      <TooltipProvider delayDuration={300}>
+        <ThemeInitializer />
+        <Router />
+        <Toaster />
+      </TooltipProvider>
     </QueryClientProvider>
   );
 }

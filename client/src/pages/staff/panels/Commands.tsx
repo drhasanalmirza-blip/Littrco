@@ -14,6 +14,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { playRewardTone, playAlarmTone, playTestTone } from "@/lib/toneBank";
 import { Terminal, X, CornerDownLeft } from "lucide-react";
 
 // Every command type the sensor firmware actually dispatches, with the payload
@@ -64,7 +65,7 @@ const GROUPS: { label: string; commands: CommandSpec[] }[] = [
         label: "Update sensor fw",
         help: "Check for and apply a newer ACTIVE release for the board.",
         payload: { board: "sensor" },
-        args: '{"board":"sensor"|"hmi"}',
+        args: '{"board":"sensor"|"hmi","channel":"stable"|"beta"}',
       },
       {
         type: "UPDATE_FIRMWARE",
@@ -82,7 +83,13 @@ const GROUPS: { label: string; commands: CommandSpec[] }[] = [
         label: "Preview reward tone",
         help: "Audition a tone on the real speaker. save:true also makes it the bin's tone.",
         payload: { kind: "reward", index: 0, save: false },
-        args: '{"kind":"reward"|"alarm","index":0-4,"save":false}',
+        args: '{"kind":"reward"|"alarm","index":0-4,"save":false} or {"hz":1000,"ms":3000}',
+      },
+      {
+        type: "PLAY_TONE",
+        label: "Test tone (1 kHz, 3 s)",
+        help: "One sustained note instead of a melody — long enough to meter. Probe the audio GPIO for a few hundred mV AC, then the speaker terminals: signal at the pin but not the speaker is the amplifier or its wiring.",
+        payload: { hz: 1000, ms: 3000 },
       },
       { type: "SOUND_ALARM", label: "Sound alarm", help: "Fire the siren once. De-duplicated against a siren the bin just sounded itself." },
       {
@@ -164,11 +171,31 @@ export default function Commands({
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
+  // Play a queued PLAY_TONE here as well as on the bin. The bin is up to ten
+  // seconds away and often in another room, so without this the only feedback
+  // for "did that do anything" is silence — which is indistinguishable from the
+  // silence you are trying to debug. The browser copy is a transcription of the
+  // same score (lib/toneBank.ts), not a recording.
+  const echoLocally = (payload?: Record<string, unknown>) => {
+    if (!payload) { void playRewardTone(0); return; }
+    if (typeof payload.hz === "number") {
+      void playTestTone(payload.hz as number, Math.min(Number(payload.ms) || 3000, 5000));
+      return;
+    }
+    const index = Number(payload.index) || 0;
+    if (payload.kind === "alarm") void playAlarmTone(index);
+    else void playRewardTone(index);
+  };
+
   const enqueue = useMutation({
     mutationFn: ({ type, payload }: { type: string; payload?: Record<string, unknown> }) =>
       apiSend(cmdUrl, "POST", payload ? { type, payload } : { type }),
     onSuccess: (res: any, vars) => {
       say("ok", `#${res.id} ${vars.type} queued — the bin picks it up on its next poll`);
+      if (vars.type === "PLAY_TONE") {
+        echoLocally(vars.payload);
+        say("info", "  (playing the same tone here — the bin's own speaker follows in ~10 s)");
+      }
       refetch();
     },
     onError: (e: any, vars) => {

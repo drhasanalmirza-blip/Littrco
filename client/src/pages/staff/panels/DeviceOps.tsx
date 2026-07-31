@@ -14,6 +14,7 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UploadCloud, Save } from "lucide-react";
 
 interface Device {
@@ -98,6 +99,7 @@ function DeviceOpsRow({
   );
   const [otaBoard, setOtaBoard] = useState<"sensor" | "hmi">("sensor");
   const [otaVersion, setOtaVersion] = useState<string>(device.targetFirmwareVersion ?? "");
+  const [otaChannel, setOtaChannel] = useState<"stable" | "beta">("stable");
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/staff/devices"] });
 
@@ -115,8 +117,10 @@ function DeviceOpsRow({
   });
 
   const setOta = useMutation({
-    mutationFn: ({ version, board }: { version: string | null; board: "sensor" | "hmi" }) =>
-      apiSend(`/api/staff/devices/${device.id}/ota`, "POST", { version, board }),
+    mutationFn: ({ version, board, channel }: {
+      version: string | null; board: "sensor" | "hmi"; channel: "stable" | "beta";
+    }) =>
+      apiSend(`/api/staff/devices/${device.id}/ota`, "POST", { version, board, channel }),
     onSuccess: () => {
       toast({ title: "OTA target updated" });
       invalidate();
@@ -136,8 +140,12 @@ function DeviceOpsRow({
       toast({ title: "Failed", description: e?.message, variant: "destructive" }),
   });
 
-  // Only offer firmware versions matching the selected OTA board.
-  const boardFirmwares = firmwares.filter((f) => f.board === otaBoard);
+  // Only offer firmware versions matching the selected OTA board AND channel —
+  // pushing a beta version while the bin is following stable queues a command
+  // the bin then answers with "nothing to do", which reads as a broken button.
+  const boardFirmwares = firmwares.filter(
+    (f) => f.board === otaBoard && f.channel === otaChannel,
+  );
 
   const onSavePoints = () => {
     const trimmed = override.trim();
@@ -227,6 +235,26 @@ function DeviceOpsRow({
             <option value="sensor">sensor</option>
             <option value="hmi">hmi</option>
           </select>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <select
+                className="border rounded px-2 py-1 text-sm bg-transparent"
+                value={otaChannel}
+                onChange={(e) => {
+                  setOtaChannel(e.target.value as "stable" | "beta");
+                  setOtaVersion("");
+                }}
+                data-testid={`select-ota-channel-${device.id}`}
+              >
+                <option value="stable">stable</option>
+                <option value="beta">beta</option>
+              </select>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              Which release channel this bin follows. It sticks — the bin's own 6-hourly check
+              uses it too, so a bin put on beta stays on beta until you move it back.
+            </TooltipContent>
+          </Tooltip>
           <select
             className="border rounded px-2 py-1 text-sm bg-transparent"
             value={otaVersion}
@@ -236,33 +264,67 @@ function DeviceOpsRow({
             <option value="">None (clear pin)</option>
             {boardFirmwares.map((f) => (
               <option key={f.id} value={f.version}>
-                {f.version} · {f.channel}
+                {f.version}
                 {f.active ? "" : " (inactive)"}
               </option>
             ))}
           </select>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setOta.mutate({ version: otaVersion === "" ? null : otaVersion, board: otaBoard })}
-            disabled={setOta.isPending}
-            data-testid={`button-set-ota-${device.id}`}
-          >
-            <UploadCloud className="h-4 w-4 mr-1" />
-            Set
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOta.mutate({
+                  version: otaVersion === "" ? null : otaVersion,
+                  board: otaBoard,
+                  channel: otaChannel,
+                })}
+                disabled={setOta.isPending}
+                data-testid={`button-set-ota-${device.id}`}
+              >
+                <UploadCloud className="h-4 w-4 mr-1" />
+                Set
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              {otaVersion === "" ? (
+                <>
+                  Clears this bin's pinned version, so it follows whatever the newest active{" "}
+                  {otaChannel} release is. No update is queued.
+                </>
+              ) : (
+                <>
+                  Pins this bin to <span className="font-mono">{otaVersion}</span> and queues an
+                  UPDATE_FIRMWARE for the <strong>{otaBoard}</strong> board on{" "}
+                  <strong>{otaChannel}</strong>. The bin downloads it on its next poll (~10 s),
+                  verifies the SHA-256, flashes and reboots. A sensor update must then pass a
+                  5-minute health gate (WiFi + cloud + display link) or it rolls itself back.
+                </>
+              )}
+            </TooltipContent>
+          </Tooltip>
         </div>
         <div className="mt-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => updateAssets.mutate()}
-            disabled={updateAssets.isPending}
-            data-testid={`button-update-assets-${device.id}`}
-          >
-            <UploadCloud className="h-4 w-4 mr-1" />
-            Update assets
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => updateAssets.mutate()}
+                disabled={updateAssets.isPending}
+                data-testid={`button-update-assets-${device.id}`}
+              >
+                <UploadCloud className="h-4 w-4 mr-1" />
+                Update assets
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              Queues UPDATE_ASSETS: the bin pulls the newest active content pack and streams any
+              changed wallpapers to the display over UART, which replaces them on the display's SD
+              card and repaints without a reboot. Nothing is erased — only changed files are sent.
+              This is artwork only, not firmware.
+            </TooltipContent>
+          </Tooltip>
         </div>
       </TableCell>
     </TableRow>

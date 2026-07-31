@@ -232,15 +232,42 @@ router.patch("/api/staff/firmware/:id", authMiddleware, requireRole("STAFF"), as
   res.json(release);
 });
 
+// Remove a release row. The uploaded .bin is left where it is — a bin that is
+// mid-download when this runs must still be able to finish, and an orphaned
+// file costs nothing next to a truncated flash write.
+//
+// A device pinned to this exact version keeps its pin. That is deliberate: the
+// pin means "this bin must run 1.5.9", and silently un-pinning it here would
+// let the next check hand it something else entirely. GET /api/device/firmware
+// already returns 204 for a pin with no active release, so the bin simply stops
+// being offered anything until staff decide what it should run.
+router.delete("/api/staff/firmware/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Invalid id" });
+  const [release] = await db.delete(firmwareReleases)
+    .where(eq(firmwareReleases.id, id)).returning();
+  if (!release) return res.status(404).json({ error: "Release not found" });
+  const pinned = await storage.getAllDevices();
+  const stillPinned = pinned.filter(
+    d => d.targetFirmwareVersion === release.version,
+  ).map(d => d.serial);
+  res.json({ ok: true, release, stillPinned });
+});
+
 router.post("/api/staff/devices/:id/ota", authMiddleware, requireRole("STAFF"), async (req, res) => {
   const body = z.object({
     version: z.string().min(1).max(32).nullable(),
     board: z.enum(["sensor", "hmi"]).default("sensor"),
+    // Omitted = leave the bin on whichever channel it is already following.
+    // Sent through to the firmware, which persists it: the bin's 6-hourly
+    // background check uses the same channel, so a bin moved onto beta stays
+    // there instead of being dragged back by the next automatic poll.
+    channel: z.enum(["stable", "beta"]).optional(),
   }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: "version (string | null) required" });
   const device = await storage.getDevice(Number(req.params.id));
   if (!device) return res.status(404).json({ error: "Device not found" });
-  const { version, board } = body.data;
+  const { version, board, channel } = body.data;
   // §4.2: only the sensor board pins devices.targetFirmwareVersion. The HMI
   // target version is tracked implicitly via content/telemetry, so board=hmi
   // must NOT overwrite the sensor's targetFirmwareVersion.
@@ -249,7 +276,9 @@ router.post("/api/staff/devices/:id/ota", authMiddleware, requireRole("STAFF"), 
   }
   let commandId: number | undefined;
   if (version !== null) {
-    const cmd = await storage.enqueueCommand(device.id, "UPDATE_FIRMWARE", { version, board });
+    const cmd = await storage.enqueueCommand(device.id, "UPDATE_FIRMWARE", {
+      version, board, ...(channel ? { channel } : {}),
+    });
     commandId = cmd.id;
   }
   const targetFirmwareVersion = board === "sensor" ? version : device.targetFirmwareVersion;

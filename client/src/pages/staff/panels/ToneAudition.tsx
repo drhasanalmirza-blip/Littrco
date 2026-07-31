@@ -4,19 +4,25 @@ import { apiRequest } from "@/lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Play, Check, Volume2, Siren } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { playRewardTone, playAlarmTone } from "@/lib/toneBank";
+import { Play, Check, Volume2, Siren, Headphones } from "lucide-react";
 
 /**
- * Audition the bin's reward chirp and fire siren on the real speaker.
+ * Audition the bin's reward chirp and fire siren.
  *
- * These are taste decisions and a small bridged PAM8403 into a cheap speaker does
- * not sound like anything you can preview at a desk — the low end is simply not
- * there, and what reads as "cheerful" in isolation gets grating when a queue of
- * people triggers it back to back. So the candidates live in firmware and are
- * played on the actual bin: press Play, walk over, listen, press Use this.
+ * Two ways to hear each one, because they answer different questions:
  *
- * Play does NOT change anything the bin does; only "Use this" saves (to NVS, so
- * it survives a re-flash of the app partition).
+ *   Headphones — plays a transcription of the same score here in the browser
+ *     (see lib/toneBank.ts). Instant, and lets you narrow five candidates down
+ *     to two without walking anywhere.
+ *   Play       — queues it on the bin's actual speaker. This is the one that
+ *     decides it. A small bridged PAM8403 into a cheap speaker has no low end,
+ *     and what reads as "cheerful" through headphones gets grating when a queue
+ *     of people triggers it back to back in a shop.
+ *
+ * Neither changes what the bin uses; only "Use this" saves (to NVS, so it
+ * survives a re-flash of the app partition).
  */
 
 const REWARD_TONES = [
@@ -36,13 +42,14 @@ const ALARM_TONES = [
 ];
 
 function ToneRow({
-  kind, index, name, desc, selected, onPlay, onUse, busy,
+  kind, index, name, desc, selected, onPreview, onPlay, onUse, busy,
 }: {
   kind: "reward" | "alarm";
   index: number;
   name: string;
   desc: string;
   selected: boolean;
+  onPreview: () => void;
   onPlay: () => void;
   onUse: () => void;
   busy: boolean;
@@ -57,12 +64,38 @@ function ToneRow({
         <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>
       </div>
       <div className="flex flex-none gap-1">
-        <Button size="sm" variant="outline" onClick={onPlay} disabled={busy} data-testid={`button-play-${kind}-${index}`}>
-          <Play className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="sm" variant="secondary" onClick={onUse} disabled={busy} data-testid={`button-use-${kind}-${index}`}>
-          <Check className="mr-1 h-3.5 w-3.5" /> Use this
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="ghost" onClick={onPreview} data-testid={`button-preview-${kind}-${index}`}>
+              <Headphones className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Play it here, in this browser. Nothing is sent to the bin.
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="outline" onClick={onPlay} disabled={busy} data-testid={`button-play-${kind}-${index}`}>
+              <Play className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Queue it on the bin's own speaker. Plays within ~10 s, when the bin next polls.
+            Does not change the saved tone.
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="secondary" onClick={onUse} disabled={busy} data-testid={`button-use-${kind}-${index}`}>
+              <Check className="mr-1 h-3.5 w-3.5" /> Use this
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Save it to the bin as its {kind === "reward" ? "drop chirp" : "fire siren"}, and
+            play it once to confirm. Stored in NVS — survives a re-flash.
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -108,8 +141,11 @@ export default function ToneAudition({ deviceId, enabled }: { deviceId: number |
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Play sends the sound to the bin — it plays on the next command poll, within
-        about ten seconds. Nothing changes until you press <span className="font-medium">Use this</span>.
+        <span className="font-medium">Headphones</span> plays it here in the browser, instantly.{" "}
+        <span className="font-medium">Play</span> sends it to the bin's own speaker — it plays on the
+        next command poll, within about ten seconds. Neither changes anything until you press{" "}
+        <span className="font-medium">Use this</span>. The browser preview is a transcription of the
+        same score, not a recording: use it to narrow the list, and the bin to decide.
       </p>
 
       <Card>
@@ -124,6 +160,7 @@ export default function ToneAudition({ deviceId, enabled }: { deviceId: number |
             <ToneRow
               key={t.name} kind="reward" index={i} name={t.name} desc={t.desc}
               selected={chosen.reward === i} busy={play.isPending || !enabled}
+              onPreview={() => void playRewardTone(i)}
               onPlay={() => play.mutate({ kind: "reward", index: i, save: false })}
               onUse={() => play.mutate({ kind: "reward", index: i, save: true })}
             />
@@ -145,6 +182,7 @@ export default function ToneAudition({ deviceId, enabled }: { deviceId: number |
             <ToneRow
               key={t.name} kind="alarm" index={i} name={t.name} desc={t.desc}
               selected={chosen.alarm === i} busy={play.isPending || !enabled}
+              onPreview={() => void playAlarmTone(i)}
               onPlay={() => play.mutate({ kind: "alarm", index: i, save: false })}
               onUse={() => play.mutate({ kind: "alarm", index: i, save: true })}
             />
