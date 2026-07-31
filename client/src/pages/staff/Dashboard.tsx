@@ -43,6 +43,7 @@ import Alerts from "@/pages/staff/panels/Alerts";
 import LiveCamera from "@/pages/staff/panels/LiveCamera";
 import Firmware from "@/pages/staff/panels/Firmware";
 import DeviceOps from "@/pages/staff/panels/DeviceOps";
+import Commands from "@/pages/staff/panels/Commands";
 // The SAME component partners use, not a staff-only copy: one implementation
 // means staff and partners can never drift to different settings behaviour, and
 // the routes behind it already accept STAFF.
@@ -343,33 +344,23 @@ export default function StaffDashboard() {
   };
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
-  const { data: commands = [], refetch: refetchCmds } = useQuery<any[]>({
-    queryKey: [`/api/staff/devices/${selectedDeviceId}/commands`],
-    queryFn: async () => (await apiRequest(`/api/staff/devices/${selectedDeviceId}/commands`)).json(),
-    enabled: !!selectedDeviceId,
-    refetchInterval: selectedDeviceId ? 5000 : false,
-  });
-
   // Jump to the Commands view for a specific device (bin card / Overview deep-link).
   const viewCommands = (deviceId: number) => { setSelectedDeviceId(deviceId); setView("commands"); };
 
-  const cancelCmd = useMutation({
-    mutationFn: async ({ deviceId, commandId }: { deviceId: number; commandId: number }) => {
-      const r = await apiRequest(`/api/staff/devices/${deviceId}/commands/${commandId}`, { method: "DELETE" });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
-      return r.json();
-    },
-    onSuccess: () => { toast({ title: "Command cancelled" }); refetchCmds(); },
-    onError: (e: any) => toast({ title: "Couldn't cancel", description: e.message, variant: "destructive" }),
-  });
-
+  // The queue list, its cancel action and the full command palette all live in
+  // the Commands panel now. This mutation stays only for the two commands the
+  // BIN CARDS can fire directly (reset SD, factory reset) — it invalidates the
+  // panel's query so the new row shows up if that view is open.
   const enqueue = useMutation({
     mutationFn: async ({ deviceId, type }: { deviceId: number; type: string }) => {
       const r = await apiRequest(`/api/staff/devices/${deviceId}/commands`, { method: "POST", body: JSON.stringify({ type }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
       return r.json();
     },
-    onSuccess: () => { toast({ title: "Command queued" }); refetchCmds(); },
+    onSuccess: (_res, vars) => {
+      toast({ title: "Command queued" });
+      qc.invalidateQueries({ queryKey: [`/api/staff/devices/${vars.deviceId}/commands`] });
+    },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
@@ -514,69 +505,11 @@ export default function StaffDashboard() {
           )}
 
           {view === "commands" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Command Queue</CardTitle>
-                <select className="border rounded px-2 py-1 text-sm mt-2 w-fit" value={selectedDeviceId ?? ""} onChange={(e) => setSelectedDeviceId(Number(e.target.value))} data-testid="select-cmd-device">
-                  <option value="">Pick a device…</option>
-                  {devices.map(d => <option key={d.id} value={d.id}>{d.serial}</option>)}
-                </select>
-              </CardHeader>
-              <CardContent>
-                {selectedDeviceId ? (
-                  <>
-                    <div className="flex gap-2 mb-3 flex-wrap">
-                      {/* UPDATE_ASSETS = M4 content packs: bin pulls the newest active
-                          pack (staff Content page) and pushes changed wallpapers to the
-                          HMI screen without a reboot. */}
-                      {/* CLEAR_FIRE = stand the bin down from a latched fire alarm
-                          and hush it for 5 minutes. Before this there was no way
-                          out from the dashboard at all: a VOC spike pinned the bin
-                          on its fire screen, and even a REBOOT came straight back
-                          alarming because the gas sensor stays hot across a soft
-                          reset. Kept next to the destructive commands rather than
-                          hidden, since it is what an operator reaches for first. */}
-                      {["RESET_FILL_AND_COUNT", "REBOOT", "TAKE_PHOTO", "PING", "UPDATE_ASSETS", "CLEAR_FIRE"].map(t => (
-                        <Button key={t} size="sm" variant="outline" onClick={() => enqueue.mutate({ deviceId: selectedDeviceId, type: t })} data-testid={`button-cmd-${t}`}>{t}</Button>
-                      ))}
-                    </div>
-                    {commands.length === 0 ? <p className="text-sm text-gray-500">No commands.</p> : (
-                      <div className="space-y-1">
-                        {commands.map(c => (
-                          <div key={c.id} className="flex items-center justify-between gap-2 border rounded p-2 text-sm" data-testid={`row-cmd-${c.id}`}>
-                            <span>#{c.id} {c.type}</span>
-                            <div className="flex items-center gap-2">
-                              <Badge variant={c.status === "ACKED" ? "default" : c.status === "FAILED" ? "destructive" : "secondary"}>{c.status}</Badge>
-                              {c.status === "PENDING" && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 text-destructive hover:text-destructive"
-                                  onClick={() => cancelCmd.mutate({ deviceId: selectedDeviceId, commandId: c.id })}
-                                  disabled={cancelCmd.isPending}
-                                  data-testid={`button-cancel-cmd-${c.id}`}
-                                >
-                                  <X className="mr-1 h-3.5 w-3.5" /> Cancel
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <p className="mt-2 text-xs text-muted-foreground">Only PENDING commands can be cancelled — once the bin picks one up it can't be recalled.</p>
-                  </>
-                ) : (
-                  <Empty>
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon"><Terminal /></EmptyMedia>
-                      <EmptyTitle>No device selected</EmptyTitle>
-                      <EmptyDescription>Pick a device above to view and queue its commands.</EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                )}
-              </CardContent>
-            </Card>
+            <Commands
+              devices={devices}
+              selectedDeviceId={selectedDeviceId}
+              setSelectedDeviceId={setSelectedDeviceId}
+            />
           )}
 
           {view === "pairing" && <StaffPairing enabled={staffEnabled} />}

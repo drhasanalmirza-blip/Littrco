@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, gte, isNull, isNotNull, lte, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, isNotNull, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   devices, drops, dropSessions, photos, rewardConfigs, selfReports, shops,
@@ -316,6 +316,103 @@ router.get("/api/staff/sessions", authMiddleware, requireRole("STAFF"), async (r
     device: r.device,
     shop: r.shop,
   })));
+});
+
+// ==================== Destructive housekeeping ====================
+//
+// These exist to clear TEST data. They are deliberately blunt and deliberately
+// noisy about what they take with them.
+//
+// What a session drags along, per the schema's own FK actions:
+//   drops            ON DELETE CASCADE   — gone, so its review-queue rows go too
+//   selfReports      ON DELETE CASCADE   — gone
+//   photos           ON DELETE SET NULL  — the rows survive, unlinked
+//   batteryTransactions / shopPointTransactions  ON DELETE SET NULL
+//
+// That last one is the trap. Left alone, deleting a session removes the record
+// of WHY a customer holds their batteries while leaving the balance intact —
+// books that no longer explain themselves. So the ledger rows tied to the
+// session are deleted with it, and the response reports how many, because that
+// changes real balances. (Redemptions carry no sessionId, so they are untouched:
+// only the earnings this session created are reversed.)
+async function deleteSessions(ids: number[]) {
+  if (!ids.length) return { sessions: 0, batteryTx: 0, shopPointTx: 0 };
+  return db.transaction(async (tx) => {
+    const bat = await tx.delete(batteryTransactions)
+      .where(inArray(batteryTransactions.sessionId, ids)).returning({ id: batteryTransactions.id });
+    const spt = await tx.delete(shopPointTransactions)
+      .where(inArray(shopPointTransactions.sessionId, ids)).returning({ id: shopPointTransactions.id });
+    const ses = await tx.delete(dropSessions)
+      .where(inArray(dropSessions.id, ids)).returning({ id: dropSessions.id });
+    return { sessions: ses.length, batteryTx: bat.length, shopPointTx: spt.length };
+  });
+}
+
+router.delete("/api/staff/sessions/:id", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Invalid session id" });
+  const result = await deleteSessions([id]);
+  if (!result.sessions) return res.status(404).json({ error: "Session not found" });
+  res.json({ ok: true, ...result });
+});
+
+// Bulk delete. Takes the SAME filters as GET /api/staff/sessions so "delete
+// everything I am looking at" means exactly that, and requires the caller to
+// type the confirmation phrase — an accidental unfiltered call here would wipe
+// the fleet's entire history.
+const sessionsDeleteQuery = sessionsQuery.extend({
+  confirm: z.string(),
+});
+
+router.delete("/api/staff/sessions", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  const q = sessionsDeleteQuery.safeParse(req.query);
+  if (!q.success) return res.status(400).json({ error: "Invalid query" });
+  if (q.data.confirm !== "DELETE") {
+    return res.status(400).json({ error: "Confirmation phrase required" });
+  }
+  const conds: SQL[] = [];
+  if (q.data.status && q.data.status !== "all") conds.push(eq(dropSessions.status, q.data.status));
+  if (q.data.claimed === "true") conds.push(isNotNull(dropSessions.claimedByCustomerId));
+  if (q.data.claimed === "false") conds.push(isNull(dropSessions.claimedByCustomerId));
+  if (q.data.shopId !== undefined) conds.push(eq(dropSessions.shopId, q.data.shopId));
+  if (q.data.from) conds.push(gte(dropSessions.createdAt, q.data.from));
+  if (q.data.to) conds.push(lte(dropSessions.createdAt, q.data.to));
+
+  // Collect ids first: the delete has to hit three tables and the ledger ones
+  // have no join to filter on.
+  const target = await db.select({ id: dropSessions.id }).from(dropSessions)
+    .where(conds.length ? and(...conds) : undefined);
+  const result = await deleteSessions(target.map(r => r.id));
+  res.json({ ok: true, ...result });
+});
+
+// Delete a single drop out of the review queue.
+//
+// Its session stays, so the session's counters have to be corrected by hand —
+// an accepted drop that no longer exists would otherwise keep inflating
+// acceptedDropCount, which is what batteries are computed from. The ledger is
+// NOT adjusted here: use Reject for that, which runs the proper revocation plan.
+// Deleting is for rows that should never have been recorded at all.
+router.delete("/api/staff/review/drops/:dropId", authMiddleware, requireRole("STAFF"), async (req, res) => {
+  const dropId = Number(req.params.dropId);
+  if (!Number.isInteger(dropId) || dropId < 1) return res.status(400).json({ error: "Invalid drop id" });
+  const out = await db.transaction(async (tx) => {
+    const [drop] = await tx.select().from(drops).where(eq(drops.id, dropId));
+    if (!drop) return null;
+    const [session] = await tx.select().from(dropSessions).where(eq(dropSessions.id, drop.sessionId));
+    await tx.delete(drops).where(eq(drops.id, dropId));
+    if (session) {
+      await tx.update(dropSessions).set({
+        detectedDropCount: Math.max(0, (session.detectedDropCount ?? 0) - 1),
+        acceptedDropCount: drop.accepted
+          ? Math.max(0, (session.acceptedDropCount ?? 0) - 1)
+          : (session.acceptedDropCount ?? 0),
+      }).where(eq(dropSessions.id, session.id));
+    }
+    return { sessionId: drop.sessionId };
+  });
+  if (!out) return res.status(404).json({ error: "Drop not found" });
+  res.json({ ok: true, ...out });
 });
 
 // ==================== Training-data export (JSONL) ====================

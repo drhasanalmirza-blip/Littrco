@@ -495,6 +495,16 @@ export const storage = {
     return rows.reverse();
   },
 
+  // Wipe a bin's stored diagnostics. Server-side only — the bin's own ring
+  // buffer is untouched and it keeps shipping new lines, so this clears the
+  // history you are reading, not the logging itself.
+  async clearDeviceLogs(deviceId: number): Promise<number> {
+    const rows = await db.delete(deviceLogs)
+      .where(eq(deviceLogs.deviceId, deviceId))
+      .returning({ id: deviceLogs.id });
+    return rows.length;
+  },
+
   // ====== Pairing nonces ======
   async createPairingNonce(deviceId: number, nonce: string, expiresAt: Date): Promise<PairingNonce> {
     const [p] = await db.insert(pairingNonces).values({ deviceId, nonce, expiresAt }).returning();

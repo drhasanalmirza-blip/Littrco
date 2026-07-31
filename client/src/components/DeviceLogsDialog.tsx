@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiJson } from "@/lib/apiJson";
+import { apiRequest } from "@/lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { ScrollText, Copy, Check } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { ScrollText, Copy, Check, Trash2, Loader2 } from "lucide-react";
 
 // Per-bin diagnostic log viewer. The sensor ships its boot/wifi/temp/session
 // diagnostics to the cloud (POST /api/device/logs); this reads them back so the
@@ -64,11 +70,28 @@ export default function DeviceLogsDialog({
   const scrollRef = useRef<HTMLDivElement>(null);
   const url = `${basePath}/${deviceId}/logs?limit=400`;
 
-  const { data: logs = [], isLoading, error } = useQuery<DeviceLog[]>({
+  const { data: logs = [], isLoading, error, refetch } = useQuery<DeviceLog[]>({
     queryKey: [url],
     queryFn: () => apiJson<DeviceLog[]>(url),
     enabled: open,
     refetchInterval: open ? 4000 : false,
+  });
+
+  // Clears the SERVER's copy. The bin keeps its own ring buffer and keeps
+  // shipping, so the console refills with genuinely new lines within seconds —
+  // which is the point: a clean slate to reproduce a fault against, rather than
+  // hunting for the moment it started somewhere in 400 lines of history.
+  const clearLogs = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest(`${basePath}/${deviceId}/logs`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({} as any))).error || `HTTP ${r.status}`);
+      return r.json();
+    },
+    onSuccess: (res: any) => {
+      toast({ title: `Cleared ${res.deleted ?? 0} log lines`, description: "New lines will appear as the bin reports them." });
+      refetch();
+    },
+    onError: (e: any) => toast({ title: "Couldn't clear logs", description: e.message, variant: "destructive" }),
   });
 
   const shown = useMemo(() => logs.filter((l) => passesFilter(l.level, filter)), [logs, filter]);
@@ -131,6 +154,41 @@ export default function DeviceLogsDialog({
               {copied ? <Check className="mr-1 h-4 w-4" /> : <Copy className="mr-1 h-4 w-4" />}
               {copied ? "Copied" : "Copy"}
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  disabled={clearLogs.isPending || logs.length === 0}
+                  data-testid={`button-log-clear-${deviceId}`}
+                >
+                  {clearLogs.isPending
+                    ? <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    : <Trash2 className="mr-1 h-4 w-4" />}
+                  Clear
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear stored logs for {deviceName}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Deletes all {logs.length} stored lines for this bin. The bin keeps logging —
+                    new lines start arriving again within seconds. Copy anything you still need first;
+                    this can't be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => clearLogs.mutate()}
+                    data-testid={`button-log-clear-confirm-${deviceId}`}
+                  >
+                    Clear logs
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
 

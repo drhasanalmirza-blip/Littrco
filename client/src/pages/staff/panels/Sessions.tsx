@@ -1,7 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiJson } from "@/lib/apiJson";
 import { apiRequest } from "@/lib/store";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +19,7 @@ import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react";
 
 const LIMIT = 50;
 
@@ -55,11 +60,57 @@ export default function Sessions({ enabled }: { enabled: boolean }) {
   params.set("offset", String(offset));
   const sessionsUrl = `/api/staff/sessions?${params.toString()}`;
 
-  const { data: rows = [], isLoading } = useQuery<any[]>({
+  const { data: rows = [], isLoading, refetch } = useQuery<any[]>({
     queryKey: [sessionsUrl],
     queryFn: () => apiJson<any[]>(sessionsUrl),
     enabled,
   });
+
+  // Deleting a session takes its drops and self-reports with it (FK cascade)
+  // AND the battery / shop-point rows it created, so the customer's balance
+  // moves. The toast reports those counts rather than a bare "deleted" — a
+  // silent balance change is the kind of thing nobody notices until it is a
+  // support ticket.
+  const describe = (res: any) =>
+    `${res.sessions ?? 0} session${res.sessions === 1 ? "" : "s"}` +
+    (res.batteryTx ? `, ${res.batteryTx} battery entr${res.batteryTx === 1 ? "y" : "ies"} reversed` : "") +
+    (res.shopPointTx ? `, ${res.shopPointTx} shop-point entr${res.shopPointTx === 1 ? "y" : "ies"} reversed` : "");
+
+  const deleteOne = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await apiRequest(`/api/staff/sessions/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({} as any))).error || `HTTP ${r.status}`);
+      return r.json();
+    },
+    onSuccess: (res: any) => { toast({ title: "Session deleted", description: describe(res) }); refetch(); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
+  });
+
+  // Bulk delete sends the SAME filters the table is showing, so "delete all"
+  // always means "everything matching what is on screen" — including rows on
+  // later pages, which is why the confirmation says so explicitly.
+  const deleteAll = useMutation({
+    mutationFn: async () => {
+      const p = new URLSearchParams();
+      p.set("status", status);
+      if (claimed !== "any") p.set("claimed", claimed);
+      if (shopId.trim()) p.set("shopId", shopId.trim());
+      if (from) p.set("from", from);
+      if (to) p.set("to", to);
+      p.set("confirm", "DELETE");
+      const r = await apiRequest(`/api/staff/sessions?${p.toString()}`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({} as any))).error || `HTTP ${r.status}`);
+      return r.json();
+    },
+    onSuccess: (res: any) => {
+      toast({ title: "Sessions deleted", description: describe(res) });
+      setOffset(0);
+      refetch();
+    },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
+  });
+
+  const filtered = status !== "all" || claimed !== "any" || !!shopId.trim() || !!from || !!to;
 
   const exportTraining = async () => {
     setExporting(true);
@@ -156,11 +207,55 @@ export default function Sessions({ enabled }: { enabled: boolean }) {
               data-testid="input-session-to"
             />
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex gap-2">
             <Button onClick={exportTraining} disabled={exporting} data-testid="button-export-training">
               {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
               Export training data
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  disabled={deleteAll.isPending || rows.length === 0}
+                  data-testid="button-delete-all-sessions"
+                >
+                  {deleteAll.isPending
+                    ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    : <Trash2 className="h-4 w-4 mr-1" />}
+                  Delete {filtered ? "filtered" : "all"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Delete {filtered ? "every session matching these filters" : "EVERY session in the fleet"}?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2">
+                      <p>
+                        This is not limited to the {rows.length} rows on this page — it deletes
+                        everything the current filters match, on every page.
+                      </p>
+                      <p>
+                        Each session takes its drops (and their review-queue entries), self-reports,
+                        and the battery / shop-point entries it awarded. <strong>Customer balances
+                        will go down.</strong> Photo records survive but lose their session link.
+                      </p>
+                      <p>There is no undo.</p>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteAll.mutate()}
+                    data-testid="button-delete-all-sessions-confirm"
+                  >
+                    Delete them
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </CardContent>
       </Card>
@@ -179,13 +274,14 @@ export default function Sessions({ enabled }: { enabled: boolean }) {
                 <TableHead>Batteries</TableHead>
                 <TableHead>Claim</TableHead>
                 <TableHead>Finalized</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center text-gray-500 py-8">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center text-gray-500 py-8">Loading…</TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center text-gray-500 py-8">No sessions match these filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center text-gray-500 py-8">No sessions match these filters.</TableCell></TableRow>
               ) : (
                 rows.map((s) => (
                   <TableRow key={s.id} data-testid={`row-session-${s.id}`}>
@@ -219,6 +315,41 @@ export default function Sessions({ enabled }: { enabled: boolean }) {
                     </TableCell>
                     <TableCell className="text-xs text-gray-500">
                       {s.finalizedAt ? new Date(s.finalizedAt).toLocaleString() : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                            disabled={deleteOne.isPending}
+                            data-testid={`button-delete-session-${s.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete session #{s.id}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Removes its {s.detectedDropCount ?? 0} drop
+                              {(s.detectedDropCount ?? 0) === 1 ? "" : "s"} and review entries, and
+                              reverses the {s.batteriesConfirmed ?? s.batteriesEstimated ?? 0} batteries
+                              it awarded — the customer's balance will drop by that much. No undo.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteOne.mutate(s.id)}
+                              data-testid={`button-delete-session-confirm-${s.id}`}
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))

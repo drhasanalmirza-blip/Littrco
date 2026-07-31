@@ -516,6 +516,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.getDeviceLogs(device.id, { limit, afterId }));
   });
 
+  // Clear a bin's stored diagnostics. Unlike the read above this MUTATES, so it
+  // needs write membership rather than mere visibility — a VIEWER can read the
+  // logs but cannot erase them.
+  //
+  // Only the server-side copy goes. The bin keeps its own ring buffer and keeps
+  // shipping, so a cleared view refills with genuinely new lines within seconds:
+  // this is "give me a clean slate to reproduce against", not "stop logging".
+  app.delete("/api/partner/devices/:id/logs", authMiddleware, requireRole("PARTNER", "STAFF"), asyncHandler(async (req, res) => {
+    const device = await storage.getDevice(Number(req.params.id));
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    if (req.user!.role !== "STAFF") {
+      if (!device.shopId) return res.status(403).json({ error: "Not your device" });
+      const err = await mutableShopError(req.user!.id, device.shopId);
+      if (err) return res.status(403).json({ error: err });
+    }
+    const deleted = await storage.clearDeviceLogs(device.id);
+    res.json({ ok: true, deleted });
+  }));
+
   // Stand a bin down from a latched fire alarm. Deliberately its OWN route rather
   // than opening the general staff command endpoint to partners — a partner must
   // be able to clear a false alarm on their own bin without also gaining
@@ -1033,6 +1052,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const afterId = Number(req.query.afterId) || 0;
     res.json(await storage.getDeviceLogs(Number(req.params.id), { limit, afterId }));
   });
+
+  app.delete("/api/staff/devices/:id/logs", authMiddleware, requireRole("STAFF"), asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Invalid device id" });
+    const deleted = await storage.clearDeviceLogs(id);
+    res.json({ ok: true, deleted });
+  }));
 
   app.post("/api/staff/devices/:id/commands", authMiddleware, requireRole("STAFF"), async (req, res) => {
     const body = z.object({ type: z.string(), payload: z.any().optional() }).safeParse(req.body);

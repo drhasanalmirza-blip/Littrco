@@ -14,7 +14,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Check, X, ChevronLeft, ChevronRight, ImageOff, Trash2 } from "lucide-react";
 
 const LIMIT = 50;
 
@@ -126,11 +131,28 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
       toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
+  // Delete is NOT reject. Reject runs the revocation plan — the customer keeps a
+  // record and the ledger is corrected. Delete removes the drop as though it was
+  // never recorded, which is what you want for test rows and for a beam glitch
+  // that logged an object nobody actually put in. The session's counters are
+  // corrected server-side; the ledger is deliberately left alone, because a drop
+  // that never existed never earned anything to claw back.
+  const del = useMutation({
+    mutationFn: (dropId: number) => apiSend(`/api/staff/review/drops/${dropId}`, "DELETE"),
+    onSuccess: () => {
+      toast({ title: "Drop deleted", description: "Its session's drop counts were corrected." });
+      invalidate();
+      setSelectedDropId(null);
+    },
+    onError: (e: any) =>
+      toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
   const openReject = (dropId: number) => {
     setRejectReason("");
     setRejectDropId(dropId);
   };
-  const busy = approve.isPending || reject.isPending;
+  const busy = approve.isPending || reject.isPending || del.isPending;
   // Only an over-long reason is invalid now — an empty one is fine.
   const reasonValid = rejectReason.trim().length <= 1000;
 
@@ -242,6 +264,38 @@ export default function ReviewQueue({ enabled }: { enabled: boolean }) {
                   >
                     <X className="h-4 w-4 mr-1" />Reject
                   </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        disabled={busy}
+                        data-testid={`button-delete-drop-${r.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete drop #{r.sequence} from session {r.sessionId}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Removes the record entirely, as though it was never logged, and corrects
+                          the session's drop counts. Points already awarded are <strong>not</strong>{" "}
+                          clawed back — use Reject for that. No undo.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => del.mutate(r.id)}
+                          data-testid={`button-delete-drop-confirm-${r.id}`}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
               <div className="flex gap-3">
