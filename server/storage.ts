@@ -590,6 +590,22 @@ export const storage = {
     return c;
   },
 
+  // Clear a bin's command HISTORY. Settled rows only (ACKED / FAILED) unless
+  // `all` is set — a PENDING command the bin has not collected yet is still
+  // going to happen, and deleting the row would leave the operator with no
+  // record of something the bin is about to do. Use cancel for those.
+  //
+  // Does NOT touch the bin's own cursor: it polls for `id > lastCommandId`, so
+  // removing old rows is invisible to it.
+  async clearCommands(deviceId: number, all = false): Promise<number> {
+    const conds = [eq(deviceCommands.deviceId, deviceId)];
+    if (!all) conds.push(inArray(deviceCommands.status, ["ACKED", "FAILED"]));
+    const rows = await db.delete(deviceCommands)
+      .where(and(...conds))
+      .returning({ id: deviceCommands.id });
+    return rows.length;
+  },
+
   // ====== Drop sessions / drops ======
   async createDropSession(deviceId: number, shopId: number | null): Promise<DropSession> {
     const [s] = await db.insert(dropSessions).values({ deviceId, shopId }).returning();

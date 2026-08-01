@@ -553,6 +553,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const c = await storage.enqueueCommand(device.id, "CLEAR_FIRE", {});
     await storage.resolveOpenAlerts(device.id, "FIRE");
+    // Clear the sticky status column too. Resolving the ALERT was never enough:
+    // Errors on the bin card and the Needs attention row both read
+    // devices.error_log, which only the bin could write and older firmware never
+    // wrote back to empty. An operator pressing "clear fire alarm" is a
+    // deliberate statement that it is over — believe them here rather than
+    // waiting for a bin that may never say so.
+    await storage.updateDevice(device.id, { errorLog: null });
     res.json({ ok: true, command: c });
   }));
 
@@ -680,6 +687,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const patch: any = { ...body.data, lastHeartbeatAt: new Date() };
     delete patch.state;
     delete patch.rawDistanceMm;
+    // An empty errorLog means "nothing is wrong", which has to be able to CLEAR
+    // the column. Firmware before 1.6.8 omits the field entirely when healthy,
+    // so the value was write-only: a bin reported FIRE once and Errors / Needs
+    // attention showed it forever. Newer firmware always sends the field.
+    if (body.data.errorLog !== undefined && body.data.errorLog.trim() === "") {
+      patch.errorLog = null;
+    }
     if (body.data.rawDistanceMm !== undefined) patch.lastDistanceMm = body.data.rawDistanceMm;
     const after = await storage.updateDevice(before.id, patch);
     await evaluateTelemetry(before, after); // alert engine (spec §5)
@@ -1070,6 +1084,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     res.json(c);
   });
+
+  // Clear the command HISTORY for a bin. Settled rows by default; ?all=true also
+  // removes still-PENDING ones. The bin polls for `id > lastCommandId`, so
+  // deleting old rows is invisible to it — this is housekeeping for the operator
+  // reading the list, not a change to what the bin will do.
+  app.delete("/api/staff/devices/:id/commands", authMiddleware, requireRole("STAFF"), asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Invalid device id" });
+    const deleted = await storage.clearCommands(id, req.query.all === "true");
+    res.json({ ok: true, deleted });
+  }));
 
   // Cancel a still-pending command (misclick). No-op once the bin has polled it.
   app.delete("/api/staff/devices/:id/commands/:commandId", authMiddleware, requireRole("STAFF"), async (req, res) => {

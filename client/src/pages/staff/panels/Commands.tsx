@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiJson, apiSend } from "@/lib/apiJson";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { playRewardTone, playAlarmTone, playTestTone } from "@/lib/toneBank";
-import { Terminal, X, CornerDownLeft } from "lucide-react";
+import { Terminal, X, CornerDownLeft, Trash2 } from "lucide-react";
 
 // Every command type the sensor firmware actually dispatches, with the payload
 // it actually reads. Kept in sync by hand with the handler chain in
@@ -145,9 +145,38 @@ const GROUPS: { label: string; commands: CommandSpec[] }[] = [
 const ALL_SPECS = GROUPS.flatMap((g) => g.commands);
 const KNOWN_TYPES = Array.from(new Set(ALL_SPECS.map((c) => c.type))).sort();
 
+// A console line the OPERATOR generated — what they typed, and what the server
+// said back. These are interleaved with the bin's own log stream below.
+//
+// `afterLogId` is the newest device-log id that existed when the line was
+// created. Merging on that puts "I sent PING" immediately before the bin's
+// "cmd: poll returned 1" rather than dumping every local line at the bottom,
+// which is the whole reason to have one console instead of two panes.
 interface ConsoleLine {
   kind: "in" | "ok" | "err" | "info";
   text: string;
+  afterLogId: number;
+  seq: number;
+}
+
+interface DeviceLog {
+  id: number;
+  level: "DEBUG" | "INFO" | "WARN" | "ERROR";
+  tag: string;
+  msg: string;
+  createdAt: string;
+}
+
+const LEVEL_TONE: Record<DeviceLog["level"], string> = {
+  DEBUG: "text-muted-foreground",
+  INFO: "text-foreground",
+  WARN: "text-amber-600 dark:text-amber-400",
+  ERROR: "text-red-600 dark:text-red-400",
+};
+
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "--:--:--" : d.toLocaleTimeString([], { hour12: false });
 }
 
 export default function Commands({
@@ -160,12 +189,11 @@ export default function Commands({
   setSelectedDeviceId: (id: number | null) => void;
 }) {
   const { toast } = useToast();
-  const [lines, setLines] = useState<ConsoleLine[]>([
-    { kind: "info", text: "Type a command and press Enter. `help` lists them." },
-  ]);
+  const [lines, setLines] = useState<ConsoleLine[]>([]);
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
+  const seqRef = useRef(0);
   const consoleRef = useRef<HTMLDivElement>(null);
 
   const cmdUrl = `/api/staff/devices/${selectedDeviceId}/commands`;
@@ -176,13 +204,94 @@ export default function Commands({
     refetchInterval: selectedDeviceId ? 5000 : false,
   });
 
+  // The bin's own diagnostics. This console used to show ONLY what the operator
+  // typed, which made it a transcript of their own keystrokes — useless for the
+  // thing a console is for, which is watching what the machine did about it.
+  const logsUrl = `/api/staff/devices/${selectedDeviceId}/logs?limit=300`;
+  const { data: logs = [], refetch: refetchLogs } = useQuery<DeviceLog[]>({
+    queryKey: [logsUrl],
+    queryFn: () => apiJson<DeviceLog[]>(logsUrl),
+    enabled: !!selectedDeviceId,
+    refetchInterval: selectedDeviceId ? 4000 : false,
+  });
+  const newestLogId = logs.length ? logs[logs.length - 1].id : 0;
+  const newestLogRef = useRef(0);
+  newestLogRef.current = newestLogId;
+
   const say = (kind: ConsoleLine["kind"], text: string) =>
-    setLines((l) => [...l.slice(-200), { kind, text }]);
+    setLines((l) => [
+      ...l.slice(-200),
+      { kind, text, afterLogId: newestLogRef.current, seq: ++seqRef.current },
+    ]);
+
+  // One stream, ordered. Device lines carry their own id; operator lines sit
+  // just after whichever log line was newest when they happened.
+  const stream = useMemo(() => {
+    type Row = { key: string; logId: number; seq: number; node: ReactNode };
+    const rows: Row[] = logs.map((l) => ({
+      key: `L${l.id}`,
+      logId: l.id,
+      seq: 0,
+      node: (
+        <div className="flex gap-2 whitespace-pre-wrap break-words">
+          <span className="flex-none text-muted-foreground">{fmtTime(l.createdAt)}</span>
+          <span className={`flex-none font-semibold ${LEVEL_TONE[l.level]}`}>{l.level}</span>
+          {l.tag && (
+            <Badge variant="outline" className="h-4 flex-none px-1 py-0 text-[10px]">{l.tag}</Badge>
+          )}
+          <span className={`min-w-0 ${LEVEL_TONE[l.level]}`}>{l.msg}</span>
+        </div>
+      ),
+    }));
+    for (const c of lines) {
+      rows.push({
+        key: `C${c.seq}`,
+        logId: c.afterLogId,
+        seq: c.seq,
+        node: (
+          <div
+            className={
+              c.kind === "err" ? "text-red-600 dark:text-red-400"
+              : c.kind === "ok" ? "text-green-600 dark:text-green-400"
+              : c.kind === "in" ? "text-foreground font-semibold"
+              : "text-muted-foreground"
+            }
+          >
+            {c.text}
+          </div>
+        ),
+      });
+    }
+    rows.sort((a, b) => (a.logId - b.logId) || (a.seq - b.seq));
+    return rows;
+  }, [logs, lines]);
 
   useEffect(() => {
     const el = consoleRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [lines]);
+  }, [stream.length]);
+
+  const clearLogs = useMutation({
+    mutationFn: () => apiSend(`/api/staff/devices/${selectedDeviceId}/logs`, "DELETE"),
+    onSuccess: (r: any) => {
+      toast({ title: `Cleared ${r?.deleted ?? 0} log lines` });
+      setLines([]);
+      refetchLogs();
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const clearHistory = useMutation({
+    mutationFn: () => apiSend(`${cmdUrl}`, "DELETE"),
+    onSuccess: (r: any) => {
+      toast({
+        title: `Cleared ${r?.deleted ?? 0} command${r?.deleted === 1 ? "" : "s"}`,
+        description: "Pending commands were kept — cancel those individually.",
+      });
+      refetch();
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
 
   // Play a queued PLAY_TONE here as well as on the bin. The bin is up to ten
   // seconds away and often in another room, so without this the only feedback
@@ -387,25 +496,30 @@ export default function Commands({
 
               {/* Console */}
               <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1.5">Console</div>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">Console</span>
+                  <span className="text-xs text-muted-foreground">{logs.length} log lines</span>
+                  <Button
+                    size="sm" variant="ghost" className="ml-auto h-7 text-xs"
+                    onClick={() => clearLogs.mutate()}
+                    disabled={clearLogs.isPending || logs.length === 0}
+                    data-testid="button-cmd-clear-logs"
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" /> Clear log
+                  </Button>
+                </div>
                 <div
                   ref={consoleRef}
-                  className="h-48 overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed"
+                  className="h-72 overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed"
                   data-testid="cmd-console-output"
                 >
-                  {lines.map((l, i) => (
-                    <div
-                      key={i}
-                      className={
-                        l.kind === "err" ? "text-red-600 dark:text-red-400"
-                        : l.kind === "ok" ? "text-green-600 dark:text-green-400"
-                        : l.kind === "in" ? "text-foreground font-semibold"
-                        : "text-muted-foreground"
-                      }
-                    >
-                      {l.text}
+                  {stream.length === 0 ? (
+                    <div className="text-muted-foreground">
+                      Waiting for the bin. Type a command and press Enter — `help` lists them.
                     </div>
-                  ))}
+                  ) : (
+                    stream.map((r) => <div key={r.key}>{r.node}</div>)
+                  )}
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="font-mono text-sm text-muted-foreground">&gt;</span>
@@ -437,7 +551,17 @@ export default function Commands({
 
               {/* Queue */}
               <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1.5">Queued</div>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">Queued</span>
+                  <Button
+                    size="sm" variant="ghost" className="ml-auto h-7 text-xs"
+                    onClick={() => clearHistory.mutate()}
+                    disabled={clearHistory.isPending || commands.length === 0}
+                    data-testid="button-cmd-clear-history"
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" /> Clear history
+                  </Button>
+                </div>
                 {commands.length === 0 ? (
                   <p className="text-sm text-gray-500">No commands.</p>
                 ) : (

@@ -350,6 +350,12 @@ export async function handleDeviceEvent(device: Device, evt: unknown): Promise<n
         .set({ resolvedAt: new Date() })
         .where(and(eq(alerts.deviceId, device.id), eq(alerts.type, "FIRE"), isNull(alerts.resolvedAt)))
         .returning({ id: alerts.id });
+      // The sticky status column has to go too. Errors on the bin card and the
+      // Needs attention row both read devices.error_log, and only the bin ever
+      // wrote it — firmware before 1.6.8 omitted the field entirely once healthy,
+      // so a cleared fire stayed on the dashboard indefinitely. The bin telling
+      // us the fire is over is the authoritative moment to clear it.
+      await db.update(devices).set({ errorLog: null }).where(eq(devices.id, device.id));
       console.log(`[notify] FIRE_CLEAR device=${device.id} resolved ${resolved.length} alert(s)`);
       return resolved[0]?.id ?? null;
     }
