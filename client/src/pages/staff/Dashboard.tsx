@@ -29,7 +29,7 @@ import {
   Bell, Camera, ChevronDown, ClipboardCheck, Cpu, HardDrive, History, Inbox,
   LayoutDashboard, MapPin, Megaphone, MoreHorizontal, Package, Phone, Plus, RotateCcw,
   QrCode, Recycle, Store, Terminal, Trash2, UserPlus, Users as UsersIcon,
-  Wrench, X, Mail, SlidersHorizontal, Volume2,
+  Wrench, X, Mail, SlidersHorizontal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import DashboardHeader from "@/components/DashboardHeader";
@@ -48,7 +48,6 @@ import Commands from "@/pages/staff/panels/Commands";
 // means staff and partners can never drift to different settings behaviour, and
 // the routes behind it already accept STAFF.
 import BinSettings from "@/pages/partner/panels/BinSettings";
-import ToneAudition from "@/pages/staff/panels/ToneAudition";
 import ContentPacks from "@/pages/staff/panels/ContentPacks";
 import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
@@ -58,7 +57,7 @@ import StaffNotifications from "@/pages/staff/panels/StaffNotifications";
 
 type ViewKey =
   | "overview"
-  | "devices" | "pairing" | "commands" | "camera" | "deviceops" | "binsettings" | "sounds"
+  | "devices" | "pairing" | "commands" | "camera" | "deviceops" | "binsettings"
   | "sessions" | "review" | "alerts"
   | "firmware" | "content" | "notifications"
   | "shops" | "users" | "leads";
@@ -81,7 +80,6 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { key: "camera", label: "Live Camera", icon: Camera },
       { key: "deviceops", label: "Device Ops", icon: Wrench },
       { key: "binsettings", label: "Bin Settings", icon: SlidersHorizontal },
-      { key: "sounds", label: "Sounds", icon: Volume2 },
     ],
   },
   {
@@ -121,7 +119,6 @@ const PAGE_META: Record<ViewKey, { title: string; description: string }> = {
   camera: { title: "Live Camera", description: "On-demand snapshots straight from a bin's camera." },
   deviceops: { title: "Device Ops", description: "Firmware targets and per-bin operational settings." },
   binsettings: { title: "Bin Settings", description: "Fill calibration, accepted items, and fire detection for any bin — the same controls partners have." },
-  sounds: { title: "Sounds", description: "Audition the reward chirp and fire siren on a real bin, then pick one." },
   sessions: { title: "Sessions", description: "Disposal sessions across the fleet — filter, page, export." },
   review: { title: "Review", description: "Approve or reject detected drops from the review queue." },
   alerts: { title: "Alerts", description: "Active and resolved device alerts." },
@@ -519,28 +516,6 @@ export default function StaffDashboard() {
           {view === "camera" && <LiveCamera enabled={staffEnabled} />}
           {view === "firmware" && <Firmware enabled={staffEnabled} />}
           {view === "deviceops" && <DeviceOps enabled={staffEnabled} />}
-
-          {view === "sounds" && (
-            <div className="space-y-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Bin</CardTitle>
-                  <select
-                    className="border rounded px-2 py-1 text-sm mt-2 w-fit"
-                    value={selectedDeviceId ?? ""}
-                    onChange={(e) => setSelectedDeviceId(Number(e.target.value))}
-                    data-testid="select-sounds-device"
-                  >
-                    <option value="">Select a bin…</option>
-                    {devices.map((d) => (
-                      <option key={d.id} value={d.id}>{d.serial}</option>
-                    ))}
-                  </select>
-                </CardHeader>
-              </Card>
-              <ToneAudition deviceId={selectedDeviceId} enabled={staffEnabled} />
-            </div>
-          )}
 
           {view === "binsettings" && (
             <div className="space-y-3">

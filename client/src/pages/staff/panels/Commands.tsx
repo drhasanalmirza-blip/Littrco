@@ -80,10 +80,16 @@ const GROUPS: { label: string; commands: CommandSpec[] }[] = [
     commands: [
       {
         type: "PLAY_TONE",
-        label: "Preview reward tone",
-        help: "Audition a tone on the real speaker. save:true also makes it the bin's tone.",
-        payload: { kind: "reward", index: 0, save: false },
-        args: '{"kind":"reward"|"alarm","index":0-4,"save":false} or {"hz":1000,"ms":3000}',
+        label: "Play reward chirp",
+        help: "Play the bin's drop sound on its own speaker, and here in the browser.",
+        payload: { kind: "reward" },
+        args: '{"kind":"reward"|"alarm"} or {"hz":1000,"ms":3000}',
+      },
+      {
+        type: "PLAY_TONE",
+        label: "Play fire beep",
+        help: "Play the fire siren — about 3 seconds at full volume. Warn anyone nearby first.",
+        payload: { kind: "alarm" },
       },
       {
         type: "PLAY_TONE",
@@ -92,6 +98,13 @@ const GROUPS: { label: string; commands: CommandSpec[] }[] = [
         payload: { hz: 1000, ms: 3000 },
       },
       { type: "SOUND_ALARM", label: "Sound alarm", help: "Fire the siren once. De-duplicated against a siren the bin just sounded itself." },
+      {
+        type: "SET_WIFI_SLEEP",
+        label: "WiFi sleep off (quieter)",
+        help: "Holds the radio up between beacons instead of letting it power down. The DTIM-rate current pulse it removes is the prime suspect for a rapid tick from an idle speaker, since the amplifier shares this board's 5 V. Costs ~80 mA. Send {\"sleep\":true} to put it back.",
+        payload: { sleep: false },
+        args: '{"sleep":true|false}',
+      },
       {
         type: "CLEAR_FIRE",
         label: "Clear fire alarm",
@@ -177,14 +190,12 @@ export default function Commands({
   // silence you are trying to debug. The browser copy is a transcription of the
   // same score (lib/toneBank.ts), not a recording.
   const echoLocally = (payload?: Record<string, unknown>) => {
-    if (!payload) { void playRewardTone(0); return; }
-    if (typeof payload.hz === "number") {
+    if (payload && typeof payload.hz === "number") {
       void playTestTone(payload.hz as number, Math.min(Number(payload.ms) || 3000, 5000));
       return;
     }
-    const index = Number(payload.index) || 0;
-    if (payload.kind === "alarm") void playAlarmTone(index);
-    else void playRewardTone(index);
+    if (payload?.kind === "alarm") void playAlarmTone();
+    else void playRewardTone();
   };
 
   const enqueue = useMutation({
