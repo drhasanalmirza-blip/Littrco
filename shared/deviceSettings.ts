@@ -114,6 +114,21 @@ export const deviceSettingsSchema = z
       })
       .passthrough()
       .optional(),
+    // How many IR beams the bin PHYSICALLY has. Staff-only in the UI, because it
+    // describes the build rather than a preference — a partner cannot make a
+    // beam exist by ticking a box, and a bin set to 2 with one beam fitted just
+    // reports the missing one as a fault forever.
+    //
+    // A one-beam bin already counted correctly (the absent pin idles "clear"),
+    // but it waited 120 ms per drop for a beam that never reports, wrote a
+    // permanently-absent t1 into every drop's evidence, and had beamWatch
+    // announcing the missing hardware. Telling the firmware fixes all three.
+    beams: z
+      .object({
+        count: z.union([z.literal(1), z.literal(2)]).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -138,6 +153,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettingsJson = {
   session: { stackWindowSec: 6, qrTtlSec: 30 },
   telemetry: { idleSec: 30, activeSec: 5 },
   camera: { idleSnapshotSec: 8 },
+  beams: { count: 2 },
 };
 
 export type DeviceSettingsValidation =

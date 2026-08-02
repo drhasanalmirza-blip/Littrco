@@ -290,6 +290,7 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
   const carousel: any = ui.carousel ?? {};
   const session: any = form?.session ?? {};
   const telemetry: any = form?.telemetry ?? {};
+  const beams: any = form?.beams ?? {};
   const camera: any = form?.camera ?? {};
 
   const emptyMm: number = fill.emptyDistanceMm ?? 500;
@@ -854,6 +855,46 @@ export default function BinSettings({ device, enabled }: BinSettingsProps) {
               </Row>
             </CardContent>
           </Card>
+
+          {/* ---- Chute hardware (STAFF only) -------------------------------- */}
+          {isStaff && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Chute hardware</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Staff-only. This describes how the bin is BUILT, not how it should behave —
+                  set it to match the beams actually fitted.
+                </p>
+              </CardHeader>
+              <CardContent className="divide-y divide-gray-100 dark:divide-gray-800">
+                <Row
+                  label="IR beams fitted"
+                  hint="Two beams give fall direction and dual-beam timing for the classifier. With one, the bin counts exactly the same and is marginally faster to the screen — it stops waiting 120 ms per drop for a second beam that will never report."
+                >
+                  <Select
+                    value={String(beams.count ?? 2)}
+                    onValueChange={(v) => setSection("beams", { count: Number(v) })}
+                  >
+                    <SelectTrigger className="w-48" data-testid="select-beam-count">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">Two — top and lower</SelectItem>
+                      <SelectItem value="1">One — top only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Row>
+                {Number(beams.count ?? 2) === 1 && (
+                  <p className="pt-3 text-xs text-muted-foreground">
+                    Set to one beam, the bin stops reporting the lower beam as blocked or dead, and
+                    its drop evidence records <code>beams: 1</code> — so a single-beam build is
+                    never mistaken for a dual-beam bin with a failed beam when the classifier is
+                    trained.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* ---- Telemetry cadence (STAFF only) ------------------------------ */}
           {isStaff && (

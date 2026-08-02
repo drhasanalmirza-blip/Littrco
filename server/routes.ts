@@ -575,6 +575,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const validated = validateDeviceSettings(req.body ?? {});
     if (!validated.ok) return res.status(400).json({ error: validated.error });
+    // `beams` describes the bin's PHYSICAL build, so it is staff-only — and
+    // hiding the control in the partner UI is not the same as enforcing it. A
+    // partner setting count:1 on a two-beam bin would silently disable the
+    // lower beam's stuck-detection and drop `beams:1` into the training data;
+    // setting count:2 on a one-beam bin brings back the phantom fault and the
+    // 120 ms wait. Dropped rather than rejected, so an older client PUTting the
+    // whole settings object back is not broken by it.
+    if (req.user!.role !== "STAFF" && validated.value.beams !== undefined) {
+      delete (validated.value as Record<string, unknown>).beams;
+    }
     // Spec §7: partial updates merge server-side onto the stored JSON
     const existing = await storage.getDeviceSettings(device.id);
     const storedJson = (existing?.settingsJson as Record<string, unknown>) ?? {};
